@@ -57,7 +57,8 @@ channels_flags=P:private O:offline
 ├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
 │ 1,000,000 │       0 │ PENDING │   990,000 │ [__] │    1 │  10 │ REDWALK     │ 026935bc8ee97458163a09d8fc0b9860a8d7464a24593858cdf22fa3b170230099 │   100% │     0 │ AWAIT_LOCK │
 └───────────┴─────────┴─────────┴───────────┴──────┴──────┴─────┴─────────────┴────────────────────────────────────────────────────────────────────┴────────┴───────┴────────────┘
- received              in_channel   out_channel   in_sats   out_sats   fee_msats
+ 
+ forwards              in_channel   out_channel   in_sats   out_sats   fee_msats
  2022-12-28 14:47:28   SLIMYGLEE    REDWALK        10,000     10,000         101
  2022-12-28 14:49:12   SLIMYGLEE    REDWALK        10,000     10,000         101
  2022-12-28 14:50:13   SLIMYGLEE    REDWALK        10,000     10,000         101
@@ -69,6 +70,22 @@ channels_flags=P:private O:offline
  2022-12-30 15:50:17   SLIMYGLEE    REDWALK        10,000     10,000         101
  2023-01-04 14:00:54   SLIMYGLEE    REDWALK        10,000     10,000         101
  2023-01-04 14:10:35   SLIMYGLEE    REDWALK        10,000     10,000         101
+
+ pays                  payment_hash                                                       destination
+ 2023-01-17 21:03:10   b4222a957dc058ec5a4613e4a34f5bea26f9b2e36561497894d838774bd42dff   RoboSats
+ 2023-01-17 21:18:48   4a48c7690f4ac0a16c39ed7a71f232380fc6d3c9927a87d7c531da49204f86c7   STACKER.NEWS
+ 2023-01-17 23:20:41   12b2c23562eb77b468f679d0aec0067f60d3e39edf3b33fb0e4d9ad51ef4e9c2   WalletOfSatoshi.com
+ 2023-01-19 22:32:31   b924776ae274ddc39f41b9f170e18b67d648aa68d04dd682eef60fe8addc965d   Kraken
+ 2023-01-19 22:49:30   812e80e8e82923b8ab937d72461784542da6b605c11fb2a5be2cf16c83761c97   Kraken
+
+ invoices              label     sats_received
+ 2023-01-17 17:16:13   label1           15,000
+ 2023-01-17 23:19:11   label2               10
+ 2023-01-18 00:11:54   label3                1
+ 2023-01-18 18:16:06   label4          200,000
+ 2023-01-18 19:25:31   label5           13,000
+ 2023-01-18 23:05:04   label6          200,000
+ 2023-01-20 13:24:18   label7               10
 ```
 
 ### How to set options
@@ -93,6 +110,8 @@ Examples:
 * ``summars-sort-by`` Sort by column name. Default is ``SCID``
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forward-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
+* ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-locale`` Set locale to change the thousand delimiter. Default is ``en``
 * ``summars-refresh-alias`` How many hours between refreshing the node aliases in memory. Default is ``24`` hours
 * ``summars-max-alias-length`` How long aliases are allowed to be before they get cut off. Default is ``20`` chars
