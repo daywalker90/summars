@@ -69,6 +69,14 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         ))
         .option(options::ConfigOption::new(
+            &defaultconfig.invoices.0,
+            options::Value::OptInteger,
+            &format!(
+                "Show last x hours of invoices. Default is {}",
+                defaultconfig.invoices.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
             &defaultconfig.locale.0,
             options::Value::OptString,
             &format!(

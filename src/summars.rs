@@ -30,11 +30,11 @@ use tabled::{
 use tokio::time::Instant;
 
 use crate::config::Config;
-use crate::list_pays;
 use crate::{
     config::validateargs, get_info, list_forwards, list_funds, list_nodes, list_peers,
     make_rpc_path, PluginState,
 };
+use crate::{list_invoices, list_pays};
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
@@ -67,7 +67,7 @@ pub struct PeerAvailability {
 struct Forwards {
     #[tabled(skip)]
     received: u64,
-    #[tabled(rename = "received")]
+    #[tabled(rename = "forwards")]
     received_str: String,
     in_channel: String,
     out_channel: String,
@@ -80,10 +80,20 @@ struct Forwards {
 struct Pays {
     #[tabled(skip)]
     completed_at: u64,
-    #[tabled(rename = "completed_at")]
+    #[tabled(rename = "pays")]
     completed_at_str: String,
     payment_hash: String,
     destination: String,
+}
+
+#[derive(Debug, Tabled)]
+struct Invoices {
+    #[tabled(skip)]
+    paid_at: u64,
+    #[tabled(rename = "invoices")]
+    paid_at_str: String,
+    label: String,
+    amount_received: String,
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray)]
@@ -365,6 +375,17 @@ pub async fn summars(
         pays = None;
     }
 
+    let invoices;
+    if config.invoices.1 > 0 {
+        invoices = Some(recent_invoices(&rpc_path, &config, now).await?);
+        debug!(
+            "End of invoices table. Total: {}ms",
+            now.elapsed().as_millis().to_string()
+        );
+    } else {
+        invoices = None;
+    }
+
     let mut address = None;
     if let Some(addr) = getinfo.address {
         if addr.len() > 0 {
@@ -420,6 +441,9 @@ pub async fn summars(
     }
     if let Some(p) = pays {
         result += &("\n\n".to_owned() + &p);
+    }
+    if let Some(i) = invoices {
+        result += &("\n\n".to_owned() + &i);
     }
 
     Ok(json!({"format-hint":"simple","result":format!(
@@ -588,6 +612,50 @@ async fn recent_pays(
     let mut paystable = table.table();
     paystable.with(Style::blank());
     Ok(paystable.to_string())
+}
+
+async fn recent_invoices(
+    rpc_path: &PathBuf,
+    config: &Config,
+    now: Instant,
+) -> Result<String, Error> {
+    let invoices = list_invoices(rpc_path, None, None).await?.invoices;
+    debug!(
+        "List invoices. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    let mut table = Vec::new();
+    for invoice in invoices {
+        match invoice.status {
+            ListinvoicesInvoicesStatus::PAID => {
+                if invoice.paid_at.unwrap()
+                    > Utc::now().timestamp() as u64 - config.invoices.1 * 60 * 60
+                {
+                    let d = UNIX_EPOCH + Duration::from_secs(invoice.paid_at.unwrap());
+                    let datetime = DateTime::<Local>::from(d);
+                    let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+
+                    table.push(Invoices {
+                        paid_at: invoice.paid_at.unwrap(),
+                        paid_at_str: timestamp_str,
+                        label: invoice.label,
+                        amount_received: Amount::msat(&invoice.amount_received_msat.unwrap())
+                            .to_formatted_string(&config.locale.1),
+                    })
+                }
+            }
+            _ => (),
+        }
+    }
+    debug!(
+        "Build invoices table. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    table.sort_by_key(|x| x.paid_at);
+    let mut invoicestable = table.table();
+    invoicestable.with(Style::blank());
+    invoicestable.with(Modify::new(ByColumnName::new("amount_received")).with(Alignment::right()));
+    Ok(invoicestable.to_string())
 }
 
 async fn get_alias(
