@@ -432,35 +432,40 @@ async fn recent_forwards(
             let d = UNIX_EPOCH + Duration::from_millis((forward.received_time * 1000.0) as u64);
             let datetime = DateTime::<Local>::from(d);
             let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-            let inchan = match chanpeermap.get(&forward.in_channel.to_string()) {
-                Some(peer) => match alias_map.get::<String>(peer) {
-                    Some(alias) => {
-                        if config.forward_alias.1
-                            && (alias.eq(NO_ALIAS_SET) || alias.eq(NODE_GOSSIP_MISS))
-                        {
-                            forward.in_channel.to_string()
-                        } else {
-                            alias.clone()
+            let inchan = if config.forward_alias.1 {
+                match chanpeermap.get(&forward.in_channel.to_string()) {
+                    Some(peer) => match alias_map.get::<String>(peer) {
+                        Some(alias) => {
+                            if alias.eq(NO_ALIAS_SET) {
+                                forward.in_channel.to_string()
+                            } else {
+                                alias.clone()
+                            }
                         }
-                    }
+                        None => forward.in_channel.to_string(),
+                    },
                     None => forward.in_channel.to_string(),
-                },
-                None => forward.in_channel.to_string(),
+                }
+            } else {
+                forward.in_channel.to_string()
             };
-            let outchan = match chanpeermap.get(&forward.out_channel.unwrap().to_string()) {
-                Some(chan) => match alias_map.get::<String>(chan) {
-                    Some(alias) => {
-                        if config.forward_alias.1
-                            && (alias.eq(NO_ALIAS_SET) || alias.eq(NODE_GOSSIP_MISS))
-                        {
-                            forward.out_channel.unwrap().to_string()
-                        } else {
-                            alias.clone()
+            let fw_outchan = forward.out_channel.unwrap().to_string();
+            let outchan = if config.forward_alias.1 {
+                match chanpeermap.get(&fw_outchan) {
+                    Some(peer) => match alias_map.get::<String>(peer) {
+                        Some(alias) => {
+                            if alias.eq(NO_ALIAS_SET) {
+                                fw_outchan
+                            } else {
+                                alias.clone()
+                            }
                         }
-                    }
-                    None => forward.out_channel.unwrap().to_string(),
-                },
-                None => forward.out_channel.unwrap().to_string(),
+                        None => fw_outchan,
+                    },
+                    None => fw_outchan,
+                }
+            } else {
+                fw_outchan
             };
             table.push(Forwards {
                 received: (forward.received_time * 1000.0) as u64,
@@ -514,21 +519,16 @@ async fn get_alias(
     let alias;
     match alias_map_clone.get::<String>(&peer_id.to_string()) {
         Some(a) => alias = a.clone(),
-        None => {
-            match list_nodes(&rpc_path, &peer_id)
-                .await?
-                .nodes
-                .into_iter()
-                .nth(0)
-            {
-                Some(node) => match node.alias {
-                    Some(newalias) => alias = newalias,
+        None => match list_nodes(&rpc_path, &peer_id).await?.nodes.first() {
+            Some(node) => {
+                match &node.alias {
+                    Some(newalias) => alias = newalias.clone(),
                     None => alias = NO_ALIAS_SET.to_string(),
-                },
-                None => alias = NODE_GOSSIP_MISS.to_string(),
+                }
+                alias_map.lock().insert(peer_id.to_string(), alias.clone());
             }
-            alias_map.lock().insert(peer_id.to_string(), alias.clone());
-        }
+            None => alias = NODE_GOSSIP_MISS.to_string(),
+        },
     };
     Ok(alias)
 }

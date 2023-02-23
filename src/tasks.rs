@@ -17,20 +17,17 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
 
     for peer in list_peers(&rpc_path).await?.peers {
-        let alias = match list_nodes(&rpc_path, &peer.id)
-            .await?
-            .nodes
-            .into_iter()
-            .nth(0)
-        {
-            Some(node) => node.alias.unwrap_or(NO_ALIAS_SET.to_string()),
-            None => NODE_GOSSIP_MISS.to_string(),
+        let alias = match list_nodes(&rpc_path, &peer.id).await?.nodes.first() {
+            Some(node) => Some(node.alias.clone().unwrap_or(NO_ALIAS_SET.to_string())),
+            None => None,
         };
-        plugin
-            .state()
-            .alias_map
-            .lock()
-            .insert(peer.id.to_string(), alias);
+        if alias.is_some() {
+            plugin
+                .state()
+                .alias_map
+                .lock()
+                .insert(peer.id.to_string(), alias.unwrap());
+        }
     }
 
     info!(
