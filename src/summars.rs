@@ -30,6 +30,7 @@ use tabled::{
 use tokio::time::Instant;
 
 use crate::config::Config;
+use crate::list_pays;
 use crate::{
     config::validateargs, get_info, list_forwards, list_funds, list_nodes, list_peers,
     make_rpc_path, PluginState,
@@ -73,6 +74,16 @@ struct Forwards {
     in_sats: String,
     out_sats: String,
     fee_msats: String,
+}
+
+#[derive(Debug, Tabled)]
+struct Pays {
+    #[tabled(skip)]
+    completed_at: u64,
+    #[tabled(rename = "completed_at")]
+    completed_at_str: String,
+    payment_hash: String,
+    destination: String,
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray)]
@@ -152,7 +163,7 @@ pub async fn summars(
             num_gossipers += 1;
         }
         for chan in &peer.channels {
-            let alias = get_alias(&rpc_path, &p.state().alias_map, peer.id).await?;
+            let alias = get_alias(&rpc_path, p.state().alias_map.clone(), peer.id).await?;
             match chan.short_channel_id {
                 Some(i) => chanpeermap.insert(i.to_string(), peer.id.to_string()),
                 None => None,
@@ -323,14 +334,35 @@ pub async fn summars(
 
     let forwards;
     if config.forwards.1 > 0 {
-        forwards =
-            recent_forwards(&rpc_path, chanpeermap, &p.state().alias_map, config, now).await?;
+        forwards = Some(
+            recent_forwards(&rpc_path, &chanpeermap, &p.state().alias_map, &config, now).await?,
+        );
         debug!(
             "End of fw table. Total: {}ms",
             now.elapsed().as_millis().to_string()
         );
     } else {
-        forwards = String::new();
+        forwards = None;
+    }
+
+    let pays;
+    if config.pays.1 > 0 {
+        pays = Some(
+            recent_pays(
+                &rpc_path,
+                p.state().alias_map.clone(),
+                &config,
+                now,
+                getinfo.id,
+            )
+            .await?,
+        );
+        debug!(
+            "End of pays table. Total: {}ms",
+            now.elapsed().as_millis().to_string()
+        );
+    } else {
+        pays = None;
     }
 
     let mut address = None;
@@ -382,6 +414,14 @@ pub async fn summars(
         },
     };
 
+    let mut result = sumtable.to_string();
+    if let Some(fws) = forwards {
+        result += &("\n\n".to_owned() + &fws);
+    }
+    if let Some(p) = pays {
+        result += &("\n\n".to_owned() + &p);
+    }
+
     Ok(json!({"format-hint":"simple","result":format!(
         "address={}
 num_utxos={}
@@ -393,7 +433,6 @@ avail_out={:.8} BTC
 avail_in={:.8} BTC
 fees_collected={:.8} BTC
 channels_flags=P:private O:offline
-{}
 {}",
         addr_str,
         funds.outputs.len(),
@@ -404,16 +443,15 @@ channels_flags=P:private O:offline
         avail_out as f64 / 100_000_000_000.0,
         avail_in as f64 / 100_000_000_000.0,
         Amount::msat(&getinfo.fees_collected_msat) as f64 / 100_000_000_000.0,
-        sumtable.to_string(),
-        forwards,
+        result,
     )}))
 }
 
 async fn recent_forwards(
     rpc_path: &PathBuf,
-    chanpeermap: HashMap<String, String>,
+    chanpeermap: &HashMap<String, String>,
     alias_map: &Arc<Mutex<HashMap<String, String>>>,
-    config: Config,
+    config: &Config,
     now: Instant,
 ) -> Result<String, Error> {
     let forwards = list_forwards(rpc_path, Some(ListforwardsStatus::SETTLED), None, None)
@@ -510,9 +548,51 @@ async fn recent_forwards(
     Ok(fwtable.to_string())
 }
 
+async fn recent_pays(
+    rpc_path: &PathBuf,
+    alias_map: Arc<Mutex<HashMap<String, String>>>,
+    config: &Config,
+    now: Instant,
+    mypubkey: PublicKey,
+) -> Result<String, Error> {
+    let pays = list_pays(rpc_path, Some(ListpaysStatus::COMPLETE))
+        .await?
+        .pays;
+    debug!(
+        "List pays. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    let mut table = Vec::new();
+    for pay in pays {
+        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.1 * 60 * 60
+            && pay.destination.unwrap() != mypubkey
+        {
+            let d = UNIX_EPOCH + Duration::from_secs(pay.completed_at.unwrap());
+            let datetime = DateTime::<Local>::from(d);
+            let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+            let destination =
+                get_alias(rpc_path, alias_map.clone(), pay.destination.unwrap()).await?;
+            table.push(Pays {
+                completed_at: pay.completed_at.unwrap(),
+                completed_at_str: timestamp_str,
+                payment_hash: pay.payment_hash.to_string(),
+                destination,
+            })
+        }
+    }
+    debug!(
+        "Build pays table. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    table.sort_by_key(|x| x.completed_at);
+    let mut paystable = table.table();
+    paystable.with(Style::blank());
+    Ok(paystable.to_string())
+}
+
 async fn get_alias(
     rpc_path: &PathBuf,
-    alias_map: &Arc<Mutex<HashMap<String, String>>>,
+    alias_map: Arc<Mutex<HashMap<String, String>>>,
     peer_id: PublicKey,
 ) -> Result<String, Error> {
     let alias_map_clone = alias_map.lock().clone();

@@ -112,6 +112,25 @@ pub async fn list_forwards(
     }
 }
 
+pub async fn list_pays(
+    rpc_path: &PathBuf,
+    status: Option<ListpaysStatus>,
+) -> Result<ListpaysResponse, Error> {
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
+    let listpays_request = rpc
+        .call(Request::ListPays(ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status,
+        }))
+        .await
+        .map_err(|e| anyhow!("Error calling list_pays: {}", e.to_string()))?;
+    match listpays_request {
+        Response::ListPays(info) => Ok(info),
+        e => Err(anyhow!("Unexpected result in list_pays: {:?}", e)),
+    }
+}
+
 pub fn make_rpc_path(plugin: &Plugin<PluginState>) -> PathBuf {
     Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)
 }
