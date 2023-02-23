@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Error};
+use chrono::Utc;
 use cln_plugin::{options, ConfiguredPlugin};
 use log::warn;
 use std::path::Path;
@@ -15,6 +16,7 @@ pub struct Config {
     pub sort_by: (String, String),
     pub forwards: (String, u64),
     pub forward_alias: (String, bool),
+    pub pays: (String, u64),
     pub locale: (String, Locale),
     pub refresh_alias: (String, u64),
     pub max_alias_length: (String, usize),
@@ -30,6 +32,7 @@ impl Config {
             sort_by: (PLUGIN_NAME.to_string() + "-sort-by", "SCID".to_string()),
             forwards: (PLUGIN_NAME.to_string() + "-forwards", 0),
             forward_alias: (PLUGIN_NAME.to_string() + "-forward-alias", true),
+            pays: (PLUGIN_NAME.to_string() + "-pays", 0),
             locale: (PLUGIN_NAME.to_string() + "-locale", Locale::en),
             refresh_alias: (PLUGIN_NAME.to_string() + "-refresh-alias", 24),
             max_alias_length: (PLUGIN_NAME.to_string() + "-max-alias-length", 20),
@@ -92,6 +95,29 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                         _ => return Err(anyhow!(
                                 "Error: {} needs to be bool (true or false).",
                                 config.forward_alias.0
+                            )),
+                    },
+                    name if name.eq(&config.pays.0) => match value {
+                        serde_json::Value::Number(b) => {
+                            match b.as_u64() {
+                                Some(n) => 
+                                    if is_valid_pays(n){
+                                        config.pays.1 = n
+                                    }else{
+                                        return Err(anyhow!(
+                                            "Error: Number is too big for {}.",
+                                            config.pays.0
+                                        ))
+                                    },
+                                None => return Err(anyhow!(
+                                        "Error: Could not read a positive number for {}. Use 0 to disable pays.",
+                                        config.pays.0
+                                    )),
+                            };
+                        }
+                        _ => return Err(anyhow!(
+                                "Error: Not a positive number. {} must be a positive number. Use 0 to disable pays.",
+                                config.pays.0
                             )),
                     },
                     name if name.eq(&config.locale.0)=> match value{
@@ -289,6 +315,27 @@ pub async fn read_config(
                             ))
                         }
                     },
+                    opt if opt.eq(&config.pays.0) => match value.parse::<u64>() {
+                        Ok(n) => {
+                            if is_valid_pays(n) {
+                                config.pays.1 = n
+                            } else {
+                                return Err(anyhow!(
+                                    "Error: `{}` is too big for {}",
+                                    value,
+                                    config.pays.0,
+                                ));
+                            }
+                        }
+                        Err(e) => {
+                            return Err(anyhow!(
+                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                value,
+                                config.pays.0,
+                                e
+                            ))
+                        }
+                    },
                     opt if opt.eq(&config.locale.0) => match value.parse::<String>() {
                         Ok(s) => match Locale::from_name(s) {
                             Ok(l) => config.locale.1 = l,
@@ -459,6 +506,22 @@ pub fn get_startup_options(
             Some(_) => config.forward_alias.1,
             None => config.forward_alias.1,
         };
+        config.pays.1 = match plugin.option(&config.pays.0) {
+            Some(options::Value::Integer(i)) => {
+                if is_valid_pays(i as u64) {
+                    i as u64
+                } else {
+                    return Err(anyhow!(
+                        "Error: {} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable pays.",
+                        config.pays.0,
+                        (Utc::now().timestamp() as u64) / 60 / 60,
+                        i
+                    ));
+                }
+            }
+            Some(_) => config.pays.1,
+            None => config.pays.1,
+        };
         config.locale.1 = match plugin.option(&config.locale.0) {
             Some(options::Value::String(s)) => match Locale::from_str(&s) {
                 Ok(l) => l,
@@ -535,4 +598,12 @@ pub fn get_startup_options(
     }
     // log::info!("readconfig {:?}", config.show_pubkey.1);
     Ok(())
+}
+
+fn is_valid_pays(pays: u64) -> bool {
+    if Utc::now().timestamp() as u64 > pays * 60 * 60 {
+        true
+    } else {
+        false
+    }
 }

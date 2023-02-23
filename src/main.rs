@@ -61,6 +61,14 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         ))
         .option(options::ConfigOption::new(
+            &defaultconfig.pays.0,
+            options::Value::OptInteger,
+            &format!(
+                "Show last x hours of pays. Default is {}",
+                defaultconfig.pays.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
             &defaultconfig.locale.0,
             options::Value::OptString,
             &format!(
