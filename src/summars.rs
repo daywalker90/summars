@@ -603,7 +603,11 @@ async fn recent_pays(
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else {
-                    destination
+                    if config.utf8.1 {
+                        destination
+                    } else {
+                        destination.replace(|c: char| !c.is_ascii(), "?")
+                    }
                 },
             })
         }
