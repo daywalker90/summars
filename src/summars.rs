@@ -93,7 +93,7 @@ struct Invoices {
     #[tabled(rename = "invoices")]
     paid_at_str: String,
     label: String,
-    amount_received: String,
+    sats_received: String,
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray)]
@@ -600,7 +600,11 @@ async fn recent_pays(
                 completed_at: pay.completed_at.unwrap(),
                 completed_at_str: timestamp_str,
                 payment_hash: pay.payment_hash.to_string(),
-                destination,
+                destination: if destination == NODE_GOSSIP_MISS {
+                    pay.destination.unwrap().to_string()
+                } else {
+                    destination
+                },
             })
         }
     }
@@ -639,7 +643,8 @@ async fn recent_invoices(
                         paid_at: invoice.paid_at.unwrap(),
                         paid_at_str: timestamp_str,
                         label: invoice.label,
-                        amount_received: Amount::msat(&invoice.amount_received_msat.unwrap())
+                        sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap())
+                            / 1_000)
                             .to_formatted_string(&config.locale.1),
                     })
                 }
@@ -654,7 +659,7 @@ async fn recent_invoices(
     table.sort_by_key(|x| x.paid_at);
     let mut invoicestable = table.table();
     invoicestable.with(Style::blank());
-    invoicestable.with(Modify::new(ByColumnName::new("amount_received")).with(Alignment::right()));
+    invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
     Ok(invoicestable.to_string())
 }
 
