@@ -9,6 +9,9 @@ use cln_rpc::{
 use core::fmt;
 use log::debug;
 use parking_lot::Mutex;
+use tabled::settings::locator::ByColumnName;
+use tabled::settings::object::{Object, Rows};
+use tabled::settings::{Alignment, Disable, Format, Modify, Style, Width};
 
 use num_format::ToFormattedString;
 use serde::{Deserialize, Serialize};
@@ -21,12 +24,7 @@ use std::{
 };
 use std::{path::PathBuf, str::FromStr};
 use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::{
-    format::Format,
-    locator::ByColumnName,
-    object::{Object, Rows},
-    Alignment, Disable, Modify, Style, TableIteratorExt, Tabled, Width,
-};
+use tabled::{Table, Tabled};
 use tokio::time::Instant;
 
 use crate::config::Config;
@@ -99,16 +97,16 @@ struct Invoices {
 #[derive(Debug, Tabled, FieldNamesAsArray)]
 #[allow(non_snake_case)]
 pub struct Summary {
-    OUT_SATS: String,
-    IN_SATS: String,
+    OUT_SATS: u64,
+    IN_SATS: u64,
     #[tabled(skip)]
     #[field_names_as_array(skip)]
     SCID_RAW: ScidWrapper,
     SCID: String,
-    MAX_HTLC: String,
+    MAX_HTLC: u64,
     FLAG: String,
-    BASE: String,
-    PPM: String,
+    BASE: u64,
+    PPM: u32,
     ALIAS: String,
     PEER_ID: String,
     UPTIME: f64,
@@ -234,8 +232,8 @@ pub async fn summars(
                 None => avail = -1.0,
             };
             table.push(Summary {
-                OUT_SATS: (to_us_msat / 1_000).to_formatted_string(&config.locale.1),
-                IN_SATS: ((total_msat - to_us_msat) / 1_000).to_formatted_string(&config.locale.1),
+                OUT_SATS: to_us_msat / 1_000,
+                IN_SATS: (total_msat - to_us_msat) / 1_000,
                 SCID_RAW: ScidWrapper {
                     block: scid.block(),
                     txindex: scid.txindex(),
@@ -246,15 +244,10 @@ pub async fn summars(
                 } else {
                     scid.to_string()
                 },
-                MAX_HTLC: (Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000)
-                    .to_formatted_string(&config.locale.1),
+                MAX_HTLC: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
                 FLAG: make_channel_flags(chan.private, peer.connected),
-                BASE: (Amount::msat(&chan.fee_base_msat.unwrap()))
-                    .to_formatted_string(&config.locale.1),
-                PPM: chan
-                    .fee_proportional_millionths
-                    .unwrap()
-                    .to_formatted_string(&config.locale.1),
+                BASE: Amount::msat(&chan.fee_base_msat.unwrap()),
+                PPM: chan.fee_proportional_millionths.unwrap(),
                 ALIAS: if config.utf8.1 {
                     alias.to_string()
                 } else {
@@ -279,6 +272,7 @@ pub async fn summars(
         now.elapsed().as_millis().to_string()
     );
 
+    // TODO sort by data not formatted string
     match config.sort_by.1.clone() {
         col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.OUT_SATS.clone()),
         col if col.eq("IN_SATS") => table.sort_by_key(|x| x.IN_SATS.clone()),
@@ -288,7 +282,13 @@ pub async fn summars(
         col if col.eq("FLAG") => table.sort_by_key(|x| x.FLAG.clone()),
         col if col.eq("BASE") => table.sort_by_key(|x| x.BASE.clone()),
         col if col.eq("PPM") => table.sort_by_key(|x| x.PPM.clone()),
-        col if col.eq("ALIAS") => table.sort_by_key(|x| x.ALIAS.to_ascii_lowercase()),
+        col if col.eq("ALIAS") => table.sort_by_key(|x| {
+            x.ALIAS
+                .chars()
+                .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
+                .collect::<String>()
+                .to_ascii_lowercase()
+        }),
         col if col.eq("UPTIME") => {
             table.sort_by(|x, y| x.UPTIME.partial_cmp(&y.UPTIME).unwrap_or(Equal))
         }
@@ -302,7 +302,7 @@ pub async fn summars(
         now.elapsed().as_millis().to_string()
     );
 
-    let mut sumtable = table.table();
+    let mut sumtable = Table::new(table);
 
     sumtable.with(Style::modern());
     if !config.show_pubkey.1 {
@@ -326,13 +326,48 @@ pub async fn summars(
     sumtable.with(Modify::new(ByColumnName::new("STATE")).with(Alignment::center()));
 
     sumtable.with(
-        Modify::new(ByColumnName::new("UPTIME").not(Rows::first())).with(Format::new(|s| {
+        Modify::new(ByColumnName::new("UPTIME").not(Rows::first())).with(Format::content(|s| {
             let av = s.parse::<f64>().unwrap_or(-1.0);
             if av < 0.0 {
                 "N/A".to_string()
             } else {
                 format!("{}%", av.round())
             }
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("OUT_SATS").not(Rows::first())).with(Format::content(|s| {
+            s.parse::<u64>()
+                .unwrap()
+                .to_formatted_string(&config.locale.1)
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("IN_SATS").not(Rows::first())).with(Format::content(|s| {
+            s.parse::<u64>()
+                .unwrap()
+                .to_formatted_string(&config.locale.1)
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("MAX_HTLC").not(Rows::first())).with(Format::content(|s| {
+            s.parse::<u64>()
+                .unwrap()
+                .to_formatted_string(&config.locale.1)
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("BASE").not(Rows::first())).with(Format::content(|s| {
+            s.parse::<u64>()
+                .unwrap()
+                .to_formatted_string(&config.locale.1)
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("PPM").not(Rows::first())).with(Format::content(|s| {
+            s.parse::<u32>()
+                .unwrap()
+                .to_formatted_string(&config.locale.1)
         })),
     );
 
@@ -556,7 +591,7 @@ async fn recent_forwards(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.received.clone());
-    let mut fwtable = table.table();
+    let mut fwtable = Table::new(table);
     fwtable.with(Style::blank());
     fwtable.with(
         Modify::new(ByColumnName::new("in_channel"))
@@ -617,7 +652,7 @@ async fn recent_pays(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.completed_at);
-    let mut paystable = table.table();
+    let mut paystable = Table::new(table);
     paystable.with(Style::blank());
     Ok(paystable.to_string())
 }
@@ -661,7 +696,7 @@ async fn recent_invoices(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.paid_at);
-    let mut invoicestable = table.table();
+    let mut invoicestable = Table::new(table);
     invoicestable.with(Style::blank());
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
     Ok(invoicestable.to_string())
