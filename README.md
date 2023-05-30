@@ -11,6 +11,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 
 ### Installation
 For general plugin installation instructions see the plugins repo [README.md](https://github.com/lightningd/plugins/blob/master/README.md#Installation)
+
 Release binaries for amd64-linux, armv7-linux (Raspberry Pi 32bit) and aarch64-linux (Raspberry Pi 64bit) can be found on the [release](https://github.com/daywalker90/summars/releases) page.
 
 ### Building
@@ -92,9 +93,17 @@ channels_flags=P:private O:offline
 ### How to set options
 ``summars`` is a dynamic plugin, so you can start it after cln is already running. You have three different methods of setting the options:
 
-1. running the summars command. Example: ``lightning-cli summars summars-forwards=6``
-2. when starting the plugin dynamically. Example: ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
-3. in the cln config file. Example: ``summars-forwards=6``
+1. running the summars command. 
+
+* Example: ``lightning-cli summars summars-forwards=6``
+
+2. when starting the plugin dynamically. 
+
+* Example: ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
+
+3. in the cln config file. 
+
+* Example: ``summars-forwards=6``
 
 :warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` or cln will not start next time!
 
