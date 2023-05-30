@@ -1,17 +1,21 @@
 extern crate serde_json;
 
-use std::time::Duration;
-
+use crate::config::{get_startup_options, read_config};
 use anyhow::anyhow;
 use cln_plugin::{options, Builder};
 use log::{info, warn};
-use summars::{
-    config::*,
-    summars::summars,
-    tasks::{self, summars_refreshalias},
-    PluginState, PLUGIN_NAME,
-};
+use std::time::Duration;
+use structs::{Config, PluginState, PLUGIN_NAME};
+use tables::summary;
+
+use tasks::summars_refreshalias;
 use tokio::{self, time};
+mod config;
+mod rpc;
+mod structs;
+mod tables;
+mod tasks;
+mod util;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -127,7 +131,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .rpcmethod(
             PLUGIN_NAME,
             "Show summary of channels and optionally recent forwards",
-            summars,
+            summary,
         )
         .rpcmethod(
             &(PLUGIN_NAME.to_string() + "-refreshalias"),
@@ -151,8 +155,6 @@ async fn main() -> Result<(), anyhow::Error> {
             info!("read startup options done");
 
             confplugin = plugin;
-            // info!("plugin join");
-            // plugin.join().await
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
     };

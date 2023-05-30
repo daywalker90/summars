@@ -1,13 +1,19 @@
-use std::{collections::HashMap, path::Path, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
-use crate::{list_nodes, list_peers, make_rpc_path, summars::*, PluginState, PLUGIN_NAME};
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
-use log::{debug, info, warn};
+use cln_rpc::primitives::PublicKey;
+use log::{info, warn};
 use serde_json::json;
 use tokio::{
     fs::{self, File},
     time::{self, Instant},
+};
+
+use crate::{
+    rpc::{list_nodes, list_peer_channels, list_peers},
+    structs::{PeerAvailability, PluginState, NO_ALIAS_SET, PLUGIN_NAME},
+    util::{is_active_state, make_rpc_path},
 };
 
 pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
@@ -26,7 +32,7 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
                 .state()
                 .alias_map
                 .lock()
-                .insert(peer.id.to_string(), alias.unwrap());
+                .insert(peer.id, alias.unwrap());
         }
     }
 
@@ -51,10 +57,10 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     let summarsdir = Path::new(&plugin.configuration().lightning_dir).join(PLUGIN_NAME);
     let availdbfile = summarsdir.join("availdb.json");
     let availdbfilecontent = fs::read_to_string(availdbfile.clone()).await;
-    let mut persistpeers: HashMap<String, PeerAvailability>;
+    let mut persistpeers: BTreeMap<PublicKey, PeerAvailability>;
 
     match availdbfilecontent {
-        Ok(file) => persistpeers = serde_json::from_str(&file).unwrap_or(HashMap::new()),
+        Ok(file) => persistpeers = serde_json::from_str(&file).unwrap_or(BTreeMap::new()),
         Err(e) => {
             warn!("Could not open {}: {}. Maybe this is the first time using summars? Creating new file.", availdbfile.to_str().unwrap(),e);
             match fs::create_dir(summarsdir.clone()).await {
@@ -62,7 +68,7 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                 Err(e) => warn!("Warning: Could not create summars folder:{}", e),
             };
             File::create(availdbfile.clone()).await?;
-            persistpeers = HashMap::new();
+            persistpeers = BTreeMap::new();
         }
     };
 
@@ -84,14 +90,17 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     loop {
         time::sleep(Duration::from_secs(summary_availability_interval as u64)).await;
         {
-            let mut peers = list_peers(&rpc_path).await?.peers;
-            peers.retain(|peer| peer.channels.iter().any(|channel| is_active_state(channel)));
-            for peer in peers {
+            let mut channels = list_peer_channels(&rpc_path)
+                .await?
+                .channels
+                .ok_or(anyhow!("list_peer_channels returned with None!"))?;
+            channels.retain(|channel| is_active_state(channel));
+            for chan in channels {
                 let leadwin = f64::max(
                     f64::min(
                         avail_window,
                         persistpeers
-                            .get(&peer.id.to_string())
+                            .get(&chan.peer_id.unwrap())
                             .unwrap_or(&PeerAvailability {
                                 count: 0,
                                 connected: false,
@@ -105,20 +114,24 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                 let samples = leadwin / summary_availability_interval;
                 let alpha = 1.0 / samples;
                 let beta = 1.0 - alpha;
-                if let Some(data) = persistpeers.get_mut(&peer.id.to_string()) {
+                if let Some(data) = persistpeers.get_mut(&chan.peer_id.unwrap()) {
                     editpeer = data;
                 } else {
                     persistpeers.insert(
-                        peer.id.to_string(),
+                        chan.peer_id.unwrap(),
                         PeerAvailability {
                             count: 0,
-                            connected: peer.connected,
-                            avail: if peer.connected { 1.0 } else { 0.0 },
+                            connected: chan.peer_connected.unwrap(),
+                            avail: if chan.peer_connected.unwrap() {
+                                1.0
+                            } else {
+                                0.0
+                            },
                         },
                     );
-                    editpeer = persistpeers.get_mut(&peer.id.to_string()).unwrap();
+                    editpeer = persistpeers.get_mut(&chan.peer_id.unwrap()).unwrap();
                 };
-                if peer.connected {
+                if chan.peer_connected.unwrap() {
                     editpeer.connected = true;
                     editpeer.avail = 1.0 * alpha + editpeer.avail * beta;
                 } else {
@@ -129,7 +142,7 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
             }
             *plugin.state().avail.lock() = persistpeers.clone();
             fs::write(availdbfile.clone(), serde_json::to_string(&persistpeers)?).await?;
-            debug!("{:?}", persistpeers);
+            // debug!("{:?}", persistpeers);
         }
     }
 }

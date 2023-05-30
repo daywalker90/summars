@@ -1,44 +1,12 @@
-use std::{
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::path::PathBuf;
 
-use crate::summars::PeerAvailability;
 use anyhow::{anyhow, Error};
-use cln_plugin::Plugin;
+
 use cln_rpc::{
     model::*,
     primitives::{PublicKey, ShortChannelId},
     ClnRpc,
 };
-use parking_lot::Mutex;
-
-use crate::{config::Config, summars::Summary};
-pub mod config;
-pub mod summars;
-pub mod tasks;
-
-pub const PLUGIN_NAME: &str = "summars";
-
-#[cfg(test)]
-mod tests;
-
-#[derive(Clone)]
-pub struct PluginState {
-    pub alias_map: Arc<Mutex<HashMap<String, String>>>,
-    pub config: Arc<Mutex<Config>>,
-    pub avail: Arc<Mutex<HashMap<String, PeerAvailability>>>,
-}
-impl PluginState {
-    pub fn new() -> PluginState {
-        PluginState {
-            alias_map: Arc::new(Mutex::new(HashMap::new())),
-            config: Arc::new(Mutex::new(Config::new())),
-            avail: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-}
 
 pub async fn list_funds(rpc_path: &PathBuf) -> Result<ListfundsResponse, Error> {
     let mut rpc = ClnRpc::new(&rpc_path).await?;
@@ -64,6 +32,20 @@ pub async fn list_peers(rpc_path: &PathBuf) -> Result<ListpeersResponse, Error> 
     match listpeers_request {
         Response::ListPeers(info) => Ok(info),
         e => Err(anyhow!("Unexpected result in list_peers: {:?}", e)),
+    }
+}
+
+pub async fn list_peer_channels(rpc_path: &PathBuf) -> Result<ListpeerchannelsResponse, Error> {
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
+    let list_peer_channels = rpc
+        .call(Request::ListPeerChannels(ListpeerchannelsRequest {
+            id: None,
+        }))
+        .await
+        .map_err(|e| anyhow!("Error calling list_peer_channels: {}", e.to_string()))?;
+    match list_peer_channels {
+        Response::ListPeerChannels(info) => Ok(info),
+        e => Err(anyhow!("Unexpected result in list_peer_channels: {:?}", e)),
     }
 }
 
@@ -150,8 +132,4 @@ pub async fn list_invoices(
         Response::ListInvoices(info) => Ok(info),
         e => Err(anyhow!("Unexpected result in listinvoices: {:?}", e)),
     }
-}
-
-pub fn make_rpc_path(plugin: &Plugin<PluginState>) -> PathBuf {
-    Path::new(&plugin.configuration().lightning_dir).join(plugin.configuration().rpc_file)
 }
