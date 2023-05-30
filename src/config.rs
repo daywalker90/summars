@@ -6,245 +6,270 @@ use std::path::Path;
 use std::str::FromStr;
 use tokio::fs;
 
-use crate::{PluginState, Summary, PLUGIN_NAME};
+use crate::{
+    structs::{Config, Summary},
+    PluginState,
+};
 use num_format::Locale;
-
-#[derive(Clone, Debug)]
-pub struct Config {
-    pub show_pubkey: (String, bool),
-    pub show_maxhtlc: (String, bool),
-    pub sort_by: (String, String),
-    pub forwards: (String, u64),
-    pub forward_alias: (String, bool),
-    pub pays: (String, u64),
-    pub invoices: (String, u64),
-    pub locale: (String, Locale),
-    pub refresh_alias: (String, u64),
-    pub max_alias_length: (String, usize),
-    pub availability_interval: (String, u64),
-    pub availability_window: (String, u64),
-    pub utf8: (String, bool),
-}
-impl Config {
-    pub fn new() -> Config {
-        Config {
-            show_pubkey: (PLUGIN_NAME.to_string() + "-show-pubkey", true),
-            show_maxhtlc: (PLUGIN_NAME.to_string() + "-show-maxhtlc", true),
-            sort_by: (PLUGIN_NAME.to_string() + "-sort-by", "SCID".to_string()),
-            forwards: (PLUGIN_NAME.to_string() + "-forwards", 0),
-            forward_alias: (PLUGIN_NAME.to_string() + "-forward-alias", true),
-            pays: (PLUGIN_NAME.to_string() + "-pays", 0),
-            invoices: (PLUGIN_NAME.to_string() + "-invoices", 0),
-            locale: (PLUGIN_NAME.to_string() + "-locale", Locale::en),
-            refresh_alias: (PLUGIN_NAME.to_string() + "-refresh-alias", 24),
-            max_alias_length: (PLUGIN_NAME.to_string() + "-max-alias-length", 20),
-            availability_interval: (PLUGIN_NAME.to_string() + "-availability-interval", 300),
-            availability_window: (PLUGIN_NAME.to_string() + "-availability-window", 72),
-            utf8: (PLUGIN_NAME.to_string() + "-utf8", true),
-        }
-    }
-}
 
 pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Config, Error> {
     if let serde_json::Value::Object(i) = args {
         for (key, value) in i.iter() {
             match key {
-                    name if name.eq(&config.show_pubkey.0) => match value {
-                        serde_json::Value::Bool(b) => config.show_pubkey.1 = *b,
-                        _ => return Err(anyhow!(
-                                "Error: {} needs to be bool (true or false).",
-                                config.show_pubkey.0
-                            )),
-                    },
-                    name if name.eq(&config.show_maxhtlc.0) => match value {
-                        serde_json::Value::Bool(b) => config.show_maxhtlc.1 = *b,
-                        _ => return Err(anyhow!(
-                                "Error: {} needs to be bool (true or false).",
-                                config.show_maxhtlc.0
-                            )),
-                    },
-                    name if name.eq(&config.sort_by.0) => match value {
-                        serde_json::Value::String(b) => {
-                            if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.clone().as_str()) {
-                                config.sort_by.1 = b.to_string()
-                            } else {
+                name if name.eq(&config.show_pubkey.0) => match value {
+                    serde_json::Value::Bool(b) => config.show_pubkey.1 = *b,
+                    _ => {
+                        return Err(anyhow!(
+                            "{} needs to be bool (true or false).",
+                            config.show_pubkey.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.show_maxhtlc.0) => match value {
+                    serde_json::Value::Bool(b) => config.show_maxhtlc.1 = *b,
+                    _ => {
+                        return Err(anyhow!(
+                            "{} needs to be bool (true or false).",
+                            config.show_maxhtlc.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.sort_by.0) => match value {
+                    serde_json::Value::String(b) => {
+                        if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.clone().as_str()) {
+                            config.sort_by.1 = b.to_string()
+                        } else {
+                            return Err(anyhow!(
+                                "Not a valid column name: `{}`. Must be one of: {}",
+                                b,
+                                Summary::field_names_to_string()
+                            ));
+                        }
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "Not a string. {} must be one of: {}",
+                            config.sort_by.0,
+                            Summary::field_names_to_string()
+                        ))
+                    }
+                },
+                name if name.eq(&config.forwards.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => config.forwards.1 = n,
+                            None => {
                                 return Err(anyhow!(
-                                    "Error: Not a valid column name: `{}`. Must be one of: {}",
-                                    b,
-                                    Summary::field_names_to_string()
-                                ));
+                                    "Could not read a positive number for {}. Use 0 to disable.",
+                                    config.forwards.0
+                                ))
                             }
-                        }
-                        _ => return Err(anyhow!("Error: Not a string. {} must be one of: {}",config.sort_by.0, Summary::field_names_to_string()        )),
-                    },
-                    name if name.eq(&config.forwards.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => config.forwards.1 = n,
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}. Use 0 to disable forwards.",
-                                        config.forwards.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number. Use 0 to disable forwards.",
-                                config.forwards.0
-                            )),
-                    },
-                    name if name.eq(&config.forward_alias.0) => match value {
-                        serde_json::Value::Bool(b) => config.forward_alias.1 = *b,
-                        _ => return Err(anyhow!(
-                                "Error: {} needs to be bool (true or false).",
-                                config.forward_alias.0
-                            )),
-                    },
-                    name if name.eq(&config.pays.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => 
-                                    if is_valid_hour_timestamp(n){
-                                        config.pays.1 = n
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number is too big for {}.",
-                                            config.pays.0
-                                        ))
-                                    },
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}. Use 0 to disable pays.",
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number. Use 0 to disable.",
+                            config.forwards.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.forward_alias.0) => match value {
+                    serde_json::Value::Bool(b) => config.forward_alias.1 = *b,
+                    _ => {
+                        return Err(anyhow!(
+                            "{} needs to be bool (true or false).",
+                            config.forward_alias.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.pays.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if is_valid_hour_timestamp(n) {
+                                    config.pays.1 = n
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number is too big for {}.",
                                         config.pays.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number. Use 0 to disable pays.",
-                                config.pays.0
-                            )),
-                    },
-                    name if name.eq(&config.invoices.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => 
-                                    if is_valid_hour_timestamp(n){
-                                        config.invoices.1 = n
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number is too big for {}.",
-                                            config.invoices.0
-                                        ))
-                                    },
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}. Use 0 to disable invoices.",
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}. Use 0 to disable.",
+                                    config.pays.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number. Use 0 to disable.",
+                            config.pays.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.invoices.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if is_valid_hour_timestamp(n) {
+                                    config.invoices.1 = n
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number is too big for {}.",
                                         config.invoices.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number. Use 0 to disable invoices.",
-                                config.invoices.0
-                            )),
-                    },
-                    name if name.eq(&config.locale.0)=> match value{
-                        serde_json::Value::String(s)=> config.locale.1 = match Locale::from_str(s){
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}. Use 0 to disable.",
+                                    config.invoices.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number. Use 0 to disable.",
+                            config.invoices.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.locale.0) => match value {
+                    serde_json::Value::String(s) => {
+                        config.locale.1 = match Locale::from_str(s) {
                             Ok(l) => l,
-                            Err(e) => return Err(anyhow!("Error: Not a valid locale: {}. {}", s, e)),
-                        },
-                        _=> return Err(anyhow!("Error: Not a valid string for: {}", config.locale.0)),
-                    },
-                    name if name.eq(&config.refresh_alias.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => {
-                                    if n > 0 {
-                                        config.refresh_alias.1 = n
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number needs to be greater than 0 for {}.",config.refresh_alias.0
-                                ))}},
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}.",
+                            Err(e) => return Err(anyhow!("Not a valid locale: {}. {}", s, e)),
+                        }
+                    }
+                    _ => return Err(anyhow!("Not a valid string for: {}", config.locale.0)),
+                },
+                name if name.eq(&config.refresh_alias.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if n > 0 {
+                                    config.refresh_alias.1 = n
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number needs to be greater than 0 for {}.",
                                         config.refresh_alias.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number.",
-                                config.refresh_alias.0
-                            )),
-                    },
-                    name if name.eq(&config.max_alias_length.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => {
-                                    if n > 0 {
-                                        config.max_alias_length.1 = n as usize
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number needs to be greater than 0 for {}.",config.max_alias_length.0
-                                ))}},
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}.",
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}.",
+                                    config.refresh_alias.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number.",
+                            config.refresh_alias.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.max_alias_length.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if n > 0 {
+                                    config.max_alias_length.1 = n as usize
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number needs to be greater than 0 for {}.",
                                         config.max_alias_length.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number.",
-                                config.max_alias_length.0
-                            )),
-                    },
-                    name if name.eq(&config.availability_interval.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => {
-                                    if n > 0 {
-                                        config.availability_interval.1 = n
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number needs to be greater than 0 for {}.",config.availability_interval.0
-                                ))}},
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}.",
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}.",
+                                    config.max_alias_length.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number.",
+                            config.max_alias_length.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.availability_interval.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if n > 0 {
+                                    config.availability_interval.1 = n
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number needs to be greater than 0 for {}.",
                                         config.availability_interval.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number.",
-                                config.availability_interval.0
-                            )),
-                    },
-                    name if name.eq(&config.availability_window.0) => match value {
-                        serde_json::Value::Number(b) => {
-                            match b.as_u64() {
-                                Some(n) => {
-                                    if n > 0 {
-                                        config.availability_window.1 = n
-                                    }else{
-                                        return Err(anyhow!(
-                                            "Error: Number needs to be greater than 0 for {}.",config.availability_window.0
-                                ))}},
-                                None => return Err(anyhow!(
-                                        "Error: Could not read a positive number for {}.",
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}.",
+                                    config.availability_interval.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number.",
+                            config.availability_interval.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.availability_window.0) => match value {
+                    serde_json::Value::Number(b) => {
+                        match b.as_u64() {
+                            Some(n) => {
+                                if n > 0 {
+                                    config.availability_window.1 = n
+                                } else {
+                                    return Err(anyhow!(
+                                        "Number needs to be greater than 0 for {}.",
                                         config.availability_window.0
-                                    )),
-                            };
-                        }
-                        _ => return Err(anyhow!(
-                                "Error: Not a positive number. {} must be a positive number.",
-                                config.availability_window.0
-                            )),
-                    },
-                    name if name.eq(&config.utf8.0) => match value {
-                        serde_json::Value::Bool(b) => config.utf8.1 = *b,
-                        _ => return Err(anyhow!(
-                                "Error: {} needs to be bool (true or false).",
-                                config.utf8.0
-                            )),
-                    },
-                    other => return Err(anyhow!("option not found:{:?}", other)),
-                };
+                                    ));
+                                }
+                            }
+                            None => {
+                                return Err(anyhow!(
+                                    "Could not read a positive number for {}.",
+                                    config.availability_window.0
+                                ))
+                            }
+                        };
+                    }
+                    _ => {
+                        return Err(anyhow!(
+                            "{} must be a positive number.",
+                            config.availability_window.0
+                        ))
+                    }
+                },
+                name if name.eq(&config.utf8.0) => match value {
+                    serde_json::Value::Bool(b) => config.utf8.1 = *b,
+                    _ => {
+                        return Err(anyhow!(
+                            "{} needs to be bool (true or false).",
+                            config.utf8.0
+                        ))
+                    }
+                },
+                other => return Err(anyhow!("option not found:{:?}", other)),
+            };
         }
     };
     Ok(config)
@@ -278,7 +303,7 @@ pub async fn read_config(
                         Ok(b) => config.show_pubkey.1 = b,
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse bool from `{}` for {}: {}",
+                                "Could not parse bool from `{}` for {}: {}",
                                 value,
                                 config.show_pubkey.0,
                                 e
@@ -289,7 +314,7 @@ pub async fn read_config(
                         Ok(b) => config.show_maxhtlc.1 = b,
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse bool from `{}` for {}: {}",
+                                "Could not parse bool from `{}` for {}: {}",
                                 value,
                                 config.show_maxhtlc.0,
                                 e
@@ -302,7 +327,7 @@ pub async fn read_config(
                                 config.sort_by.1 = b;
                             } else {
                                 return Err(anyhow!(
-                                    "Error: Not a valid column name: `{}` for {}. Must be one of: {}",
+                                    "Not a valid column name: `{}` for {}. Must be one of: {}",
                                     b,
                                     config.sort_by.0,
                                     Summary::field_names_to_string()
@@ -311,7 +336,7 @@ pub async fn read_config(
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse column from `{}` for {}: {}",
+                                "Could not parse column from `{}` for {}: {}",
                                 value,
                                 config.sort_by.0,
                                 e
@@ -322,7 +347,7 @@ pub async fn read_config(
                         Ok(n) => config.forwards.1 = n,
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.forwards.0,
                                 e
@@ -333,7 +358,7 @@ pub async fn read_config(
                         Ok(b) => config.forward_alias.1 = b,
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse bool from `{}` for {}: {}",
+                                "Could not parse bool from `{}` for {}: {}",
                                 value,
                                 config.forward_alias.0,
                                 e
@@ -346,7 +371,7 @@ pub async fn read_config(
                                 config.pays.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: `{}` is too big for {}",
+                                    "`{}` is too big for {}",
                                     value,
                                     config.pays.0,
                                 ));
@@ -354,7 +379,7 @@ pub async fn read_config(
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.pays.0,
                                 e
@@ -367,7 +392,7 @@ pub async fn read_config(
                                 config.invoices.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: `{}` is too big for {}",
+                                    "`{}` is too big for {}",
                                     value,
                                     config.invoices.0,
                                 ));
@@ -375,7 +400,7 @@ pub async fn read_config(
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.invoices.0,
                                 e
@@ -386,12 +411,12 @@ pub async fn read_config(
                         Ok(s) => match Locale::from_name(s) {
                             Ok(l) => config.locale.1 = l,
                             Err(e) => {
-                                return Err(anyhow!("Error: Not a valid locale: {}", e));
+                                return Err(anyhow!("Not a valid locale: {}", e));
                             }
                         },
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse locale as string: {}. {}",
+                                "Could not parse locale as string: {}. {}",
                                 value,
                                 e
                             ));
@@ -403,14 +428,14 @@ pub async fn read_config(
                                 config.refresh_alias.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: Number needs to be greater than 0 for {}.",
+                                    "Number needs to be greater than 0 for {}.",
                                     config.refresh_alias.0
                                 ));
                             }
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.refresh_alias.0,
                                 e
@@ -423,14 +448,14 @@ pub async fn read_config(
                                 config.max_alias_length.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: Number needs to be greater than 0 for {}.",
+                                    "Number needs to be greater than 0 for {}.",
                                     config.max_alias_length.0
                                 ));
                             }
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.max_alias_length.0,
                                 e
@@ -443,14 +468,14 @@ pub async fn read_config(
                                 config.availability_interval.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: Number needs to be greater than 0 for {}.",
+                                    "Number needs to be greater than 0 for {}.",
                                     config.availability_interval.0
                                 ));
                             }
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.availability_interval.0,
                                 e
@@ -463,14 +488,14 @@ pub async fn read_config(
                                 config.availability_window.1 = n
                             } else {
                                 return Err(anyhow!(
-                                    "Error: Number needs to be greater than 0 for {}.",
+                                    "Number needs to be greater than 0 for {}.",
                                     config.availability_window.0
                                 ));
                             }
                         }
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse a positive number from `{}` for {}: {}",
+                                "Could not parse a positive number from `{}` for {}: {}",
                                 value,
                                 config.availability_window.0,
                                 e
@@ -481,7 +506,7 @@ pub async fn read_config(
                         Ok(b) => config.utf8.1 = b,
                         Err(e) => {
                             return Err(anyhow!(
-                                "Error: Could not parse bool from `{}` for {}: {}",
+                                "Could not parse bool from `{}` for {}: {}",
                                 value,
                                 config.utf8.0,
                                 e
@@ -538,7 +563,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be a positive number and not `{}`. Use 0 to disable forwards.",
+                        "{} needs to be a positive number and not `{}`. Use 0 to disable.",
                         config.forwards.0,
                         i
                     ));
@@ -558,7 +583,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable pays.",
+                        "{} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable.",
                         config.pays.0,
                         (Utc::now().timestamp() as u64) / 60 / 60,
                         i
@@ -574,7 +599,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable invoices.",
+                        "{} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable.",
                         config.invoices.0,
                         (Utc::now().timestamp() as u64) / 60 / 60,
                         i
@@ -587,7 +612,7 @@ pub fn get_startup_options(
         config.locale.1 = match plugin.option(&config.locale.0) {
             Some(options::Value::String(s)) => match Locale::from_str(&s) {
                 Ok(l) => l,
-                Err(e) => return Err(anyhow!("Error: `{}` is not a valid locale: {}", s, e)),
+                Err(e) => return Err(anyhow!("`{}` is not a valid locale: {}", s, e)),
             },
             Some(_) => config.locale.1,
             None => config.locale.1,
@@ -598,7 +623,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be greater than 0 and not `{}`.",
+                        "{} needs to be greater than 0 and not `{}`.",
                         config.refresh_alias.0,
                         i
                     ));
@@ -613,7 +638,7 @@ pub fn get_startup_options(
                     i as usize
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be greater than 0 and not `{}`.",
+                        "{} needs to be greater than 0 and not `{}`.",
                         config.max_alias_length.0,
                         i
                     ));
@@ -628,7 +653,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be greater than 0 and not `{}`.",
+                        "{} needs to be greater than 0 and not `{}`.",
                         config.availability_interval.0,
                         i
                     ));
@@ -643,7 +668,7 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "Error: {} needs to be greater than 0 and not `{}`.",
+                        "{} needs to be greater than 0 and not `{}`.",
                         config.availability_window.0,
                         i
                     ));
