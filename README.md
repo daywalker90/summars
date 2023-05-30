@@ -11,6 +11,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 
 ### Installation
 For general plugin installation instructions see the plugins repo [README.md](https://github.com/lightningd/plugins/blob/master/README.md#Installation)
+Release binaries for amd64-linux, armv7-linux (Raspberry Pi 32bit) and aarch64-linux (Raspberry Pi 64bit) can be found on the [release](https://github.com/daywalker90/summars/releases) page.
 
 ### Building
 You can build the plugin yourself instead of using the release binaries.
@@ -91,18 +92,13 @@ channels_flags=P:private O:offline
 ### How to set options
 ``summars`` is a dynamic plugin, so you can start it after cln is already running. You have three different methods of setting the options:
 
-1. running the summars command
-2. when starting the plugin via ``lightning-cli plugin -k subcommand=start plugin=/path/to/summars``
-3. the cln config file
+1. running the summars command. Example: ``lightning-cli summars summars-forwards=6``
+2. when starting the plugin dynamically. Example: ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
+3. in the cln config file. Example: ``summars-forwards=6``
 
-:warning:Warning: If you use the cln config file to set summars options make sure you include plugin=/path/to/summars or cln will not start next time!
+:warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` or cln will not start next time!
 
 You can mix theses methods but if you set the same option with multiple of these three methods the priority is 1. -> 2. -> 3.
-
-Examples:
-1. ``lightning-cli summars summars-forwards=6``
-2. ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
-3. just like other cln options in the config file: ``summars-forwards=6``
 
 ### Options
 * ``summars-show-pubkey`` Include pubkey in summary table. Default is ``true``
@@ -126,25 +122,3 @@ If you want to reset these stats stop the plugin and then remove the file.
 
 ## Thanks
 Thank you to [cdecker](https://github.com/cdecker) for helping me get into writing a plugin with cln-plugin, the people in https://t.me/lightningd and the authors of the original [summary](https://github.com/lightningd/plugins/tree/master/summary) plugin.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
