@@ -241,11 +241,14 @@ async fn recent_forwards(
         "List forwards. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
+
     let chanmap: BTreeMap<String, ListpeerchannelsChannels> = peer_channels
         .iter()
-        .map(|s| (s.short_channel_id.unwrap().to_string(), s.clone()))
+        .filter_map(|s| s.short_channel_id.map(|id| (id.to_string(), s.clone())))
         .collect();
+
     let alias_map = plugin.state().alias_map.lock();
+
     let mut table = Vec::new();
     for forward in forwards {
         if forward.received_time as u64
