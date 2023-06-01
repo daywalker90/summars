@@ -9,7 +9,6 @@ use cln_rpc::{
 };
 
 use log::debug;
-use parking_lot::Mutex;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use tabled::settings::locator::ByColumnName;
@@ -20,10 +19,7 @@ use num_format::ToFormattedString;
 
 use serde_json::json;
 use std::path::PathBuf;
-use std::{
-    sync::Arc,
-    time::{Duration, UNIX_EPOCH},
-};
+use std::time::{Duration, UNIX_EPOCH};
 
 use tabled::Table;
 use tokio::time::Instant;
@@ -97,12 +93,7 @@ pub async fn summary(
         .count();
 
     for chan in &peer_channels {
-        let alias = get_alias(
-            &rpc_path,
-            p.state().alias_map.clone(),
-            chan.peer_id.unwrap(),
-        )
-        .await?;
+        let alias = get_alias(&rpc_path, p.clone(), chan.peer_id.unwrap()).await?;
 
         let to_us_msat = Amount::msat(&chan.to_us_msat.ok_or(anyhow!(
             "Channel with {} has no msats to us!",
@@ -167,16 +158,7 @@ pub async fn summary(
 
     let forwards;
     if config.forwards.1 > 0 {
-        forwards = Some(
-            recent_forwards(
-                &rpc_path,
-                &peer_channels,
-                &p.state().alias_map,
-                &config,
-                now,
-            )
-            .await?,
-        );
+        forwards = Some(recent_forwards(&rpc_path, &peer_channels, p.clone(), &config, now).await?);
         debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -187,16 +169,7 @@ pub async fn summary(
 
     let pays;
     if config.pays.1 > 0 {
-        pays = Some(
-            recent_pays(
-                &rpc_path,
-                p.state().alias_map.clone(),
-                &config,
-                now,
-                getinfo.id,
-            )
-            .await?,
-        );
+        pays = Some(recent_pays(&rpc_path, p.clone(), &config, now, getinfo.id).await?);
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -257,7 +230,7 @@ channels_flags=P:private O:offline
 async fn recent_forwards(
     rpc_path: &PathBuf,
     peer_channels: &Vec<ListpeerchannelsChannels>,
-    alias_map: &Arc<Mutex<BTreeMap<PublicKey, String>>>,
+    plugin: Plugin<PluginState>,
     config: &Config,
     now: Instant,
 ) -> Result<String, Error> {
@@ -272,8 +245,8 @@ async fn recent_forwards(
         .iter()
         .map(|s| (s.short_channel_id.unwrap().to_string(), s.clone()))
         .collect();
+    let alias_map = plugin.state().alias_map.lock();
     let mut table = Vec::new();
-    let alias_map = alias_map.lock().clone();
     for forward in forwards {
         if forward.received_time as u64
             > Utc::now().timestamp() as u64 - config.forwards.1 * 60 * 60
@@ -361,7 +334,7 @@ async fn recent_forwards(
 
 async fn recent_pays(
     rpc_path: &PathBuf,
-    alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
+    plugin: Plugin<PluginState>,
     config: &Config,
     now: Instant,
     mypubkey: PublicKey,
@@ -381,8 +354,7 @@ async fn recent_pays(
             let d = UNIX_EPOCH + Duration::from_secs(pay.completed_at.unwrap());
             let datetime = DateTime::<Local>::from(d);
             let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-            let destination =
-                get_alias(rpc_path, alias_map.clone(), pay.destination.unwrap()).await?;
+            let destination = get_alias(rpc_path, plugin.clone(), pay.destination.unwrap()).await?;
             table.push(Pays {
                 completed_at: pay.completed_at.unwrap(),
                 completed_at_str: timestamp_str,
@@ -456,12 +428,12 @@ async fn recent_invoices(
 
 async fn get_alias(
     rpc_path: &PathBuf,
-    alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
+    p: Plugin<PluginState>,
     peer_id: PublicKey,
 ) -> Result<String, Error> {
-    let alias_map_clone = alias_map.lock().clone();
+    let alias_map = p.state().alias_map.lock().clone();
     let alias;
-    match alias_map_clone.get::<PublicKey>(&peer_id) {
+    match alias_map.get::<PublicKey>(&peer_id) {
         Some(a) => alias = a.clone(),
         None => match list_nodes(&rpc_path, &peer_id).await?.nodes.first() {
             Some(node) => {
@@ -469,7 +441,7 @@ async fn get_alias(
                     Some(newalias) => alias = newalias.clone(),
                     None => alias = NO_ALIAS_SET.to_string(),
                 }
-                alias_map.lock().insert(peer_id, alias.clone());
+                p.state().alias_map.lock().insert(peer_id, alias.clone());
             }
             None => alias = NODE_GOSSIP_MISS.to_string(),
         },
