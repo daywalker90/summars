@@ -363,6 +363,8 @@ async fn recent_pays(
                 completed_at: pay.completed_at.unwrap(),
                 completed_at_str: timestamp_str,
                 payment_hash: pay.payment_hash.to_string(),
+                sats_sent: (Amount::msat(&pay.amount_sent_msat.unwrap()) / 1_000)
+                    .to_formatted_string(&config.locale.1),
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else if config.utf8.1 {
@@ -380,6 +382,7 @@ async fn recent_pays(
     table.sort_by_key(|x| x.completed_at);
     let mut paystable = Table::new(table);
     paystable.with(Style::blank());
+    paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
     Ok(paystable.to_string())
 }
 
