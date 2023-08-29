@@ -134,6 +134,7 @@ pub struct Pays {
     #[tabled(rename = "pays")]
     pub completed_at_str: String,
     pub payment_hash: String,
+    pub sats_sent: String,
     pub destination: String,
 }
 
