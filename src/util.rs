@@ -6,12 +6,14 @@ use cln_rpc::model::responses::{ListpeerchannelsChannels, ListpeerchannelsChanne
 use crate::structs::PluginState;
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
+    #[allow(clippy::match_like_matches_macro)]
     match channel.state.unwrap() {
         ListpeerchannelsChannelsState::OPENINGD => true,
         ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN => true,
         ListpeerchannelsChannelsState::CHANNELD_NORMAL => true,
         ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => true,
         ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => true,
+        ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => true,
         _ => false,
     }
 }
@@ -21,19 +23,19 @@ pub fn make_channel_flags(private: Option<bool>, connected: bool) -> String {
     match private {
         Some(is_priv) => {
             if is_priv {
-                flags.push_str("P")
+                flags.push('P')
             } else {
-                flags.push_str("_")
+                flags.push('_')
             }
         }
-        None => flags.push_str("E"),
+        None => flags.push('E'),
     }
     if connected {
-        flags.push_str("_")
+        flags.push('_')
     } else {
-        flags.push_str("O")
+        flags.push('O')
     }
-    flags.push_str("]");
+    flags.push(']');
     flags
 }
 

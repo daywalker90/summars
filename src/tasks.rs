@@ -23,10 +23,11 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
 
     for peer in list_peers(&rpc_path).await?.peers {
-        let alias = match list_nodes(&rpc_path, &peer.id).await?.nodes.first() {
-            Some(node) => Some(node.alias.clone().unwrap_or(NO_ALIAS_SET.to_string())),
-            None => None,
-        };
+        let alias = list_nodes(&rpc_path, &peer.id)
+            .await?
+            .nodes
+            .first()
+            .map(|node| node.alias.clone().unwrap_or(NO_ALIAS_SET.to_string()));
         if alias.is_some() {
             plugin
                 .state()
@@ -94,7 +95,7 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                 .await?
                 .channels
                 .ok_or(anyhow!("list_peer_channels returned with None!"))?;
-            channels.retain(|channel| is_active_state(channel));
+            channels.retain(is_active_state);
             for chan in channels {
                 let leadwin = f64::max(
                     f64::min(

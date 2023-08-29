@@ -75,9 +75,8 @@ pub async fn summary(
 
     let mut utxo_amt: u64 = 0;
     for utxo in &funds.outputs {
-        match utxo.status {
-            ListfundsOutputsStatus::CONFIRMED => utxo_amt += Amount::msat(&utxo.amount_msat),
-            _ => (),
+        if let ListfundsOutputsStatus::CONFIRMED = utxo.status {
+            utxo_amt += Amount::msat(&utxo.amount_msat)
         }
     }
 
@@ -113,16 +112,17 @@ pub async fn summary(
             chan.peer_id.unwrap()
         ))?);
 
-        match chan.state.unwrap() {
-            ListpeerchannelsChannelsState::CHANNELD_NORMAL => {
-                if our_reserve < to_us_msat {
-                    avail_out += to_us_msat - our_reserve
-                }
-                if their_reserve < total_msat - to_us_msat {
-                    avail_in += total_msat - to_us_msat - their_reserve
-                }
+        if matches!(
+            chan.state.unwrap(),
+            ListpeerchannelsChannelsState::CHANNELD_NORMAL
+                | ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
+        ) {
+            if our_reserve < to_us_msat {
+                avail_out += to_us_msat - our_reserve
             }
-            _ => (),
+            if their_reserve < total_msat - to_us_msat {
+                avail_in += total_msat - to_us_msat - their_reserve
+            }
         }
 
         let avail = match p.state().avail.lock().get(&chan.peer_id.unwrap()) {
@@ -230,7 +230,7 @@ channels_flags=P:private O:offline
 
 async fn recent_forwards(
     rpc_path: &PathBuf,
-    peer_channels: &Vec<ListpeerchannelsChannels>,
+    peer_channels: &[ListpeerchannelsChannels],
     plugin: Plugin<PluginState>,
     config: &Config,
     now: Instant,
@@ -319,7 +319,7 @@ async fn recent_forwards(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
-    table.sort_by_key(|x| x.received.clone());
+    table.sort_by_key(|x| x.received);
     let mut fwtable = Table::new(table);
     fwtable.with(Style::blank());
     fwtable.with(
@@ -395,26 +395,22 @@ async fn recent_invoices(
     );
     let mut table = Vec::new();
     for invoice in invoices {
-        match invoice.status {
-            ListinvoicesInvoicesStatus::PAID => {
-                if invoice.paid_at.unwrap()
-                    > Utc::now().timestamp() as u64 - config.invoices.1 * 60 * 60
-                {
-                    let d = UNIX_EPOCH + Duration::from_secs(invoice.paid_at.unwrap());
-                    let datetime = DateTime::<Local>::from(d);
-                    let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+        if let ListinvoicesInvoicesStatus::PAID = invoice.status {
+            if invoice.paid_at.unwrap()
+                > Utc::now().timestamp() as u64 - config.invoices.1 * 60 * 60
+            {
+                let d = UNIX_EPOCH + Duration::from_secs(invoice.paid_at.unwrap());
+                let datetime = DateTime::<Local>::from(d);
+                let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
-                    table.push(Invoices {
-                        paid_at: invoice.paid_at.unwrap(),
-                        paid_at_str: timestamp_str,
-                        label: invoice.label,
-                        sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap())
-                            / 1_000)
-                            .to_formatted_string(&config.locale.1),
-                    })
-                }
+                table.push(Invoices {
+                    paid_at: invoice.paid_at.unwrap(),
+                    paid_at_str: timestamp_str,
+                    label: invoice.label,
+                    sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap()) / 1_000)
+                        .to_formatted_string(&config.locale.1),
+                })
             }
-            _ => (),
         }
     }
     debug!(
@@ -437,7 +433,7 @@ async fn get_alias(
     let alias;
     match alias_map.get::<PublicKey>(&peer_id) {
         Some(a) => alias = a.clone(),
-        None => match list_nodes(&rpc_path, &peer_id).await?.nodes.first() {
+        None => match list_nodes(rpc_path, &peer_id).await?.nodes.first() {
             Some(node) => {
                 match &node.alias {
                     Some(newalias) => alias = newalias.clone(),
@@ -509,16 +505,16 @@ fn chan_to_summary(
     })
 }
 
-fn sort_summary(config: &Config, table: &mut Vec<Summary>) {
+fn sort_summary(config: &Config, table: &mut [Summary]) {
     match config.sort_by.1.clone() {
-        col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.OUT_SATS.clone()),
-        col if col.eq("IN_SATS") => table.sort_by_key(|x| x.IN_SATS.clone()),
-        col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.SCID_RAW.clone()),
-        col if col.eq("SCID") => table.sort_by_key(|x| x.SCID_RAW.clone()),
-        col if col.eq("MAX_HTLC") => table.sort_by_key(|x| x.MAX_HTLC.clone()),
+        col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.OUT_SATS),
+        col if col.eq("IN_SATS") => table.sort_by_key(|x| x.IN_SATS),
+        col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.SCID_RAW),
+        col if col.eq("SCID") => table.sort_by_key(|x| x.SCID_RAW),
+        col if col.eq("MAX_HTLC") => table.sort_by_key(|x| x.MAX_HTLC),
         col if col.eq("FLAG") => table.sort_by_key(|x| x.FLAG.clone()),
-        col if col.eq("BASE") => table.sort_by_key(|x| x.BASE.clone()),
-        col if col.eq("PPM") => table.sort_by_key(|x| x.PPM.clone()),
+        col if col.eq("BASE") => table.sort_by_key(|x| x.BASE),
+        col if col.eq("PPM") => table.sort_by_key(|x| x.PPM),
         col if col.eq("ALIAS") => table.sort_by_key(|x| {
             x.ALIAS
                 .chars()
@@ -532,9 +528,9 @@ fn sort_summary(config: &Config, table: &mut Vec<Summary>) {
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
         col if col.eq("PEER_ID") => table.sort_by_key(|x| x.PEER_ID.clone()),
-        col if col.eq("HTLCS") => table.sort_by_key(|x| x.HTLCS.clone()),
+        col if col.eq("HTLCS") => table.sort_by_key(|x| x.HTLCS),
         col if col.eq("STATE") => table.sort_by_key(|x| x.STATE.clone()),
-        _ => table.sort_by_key(|x| x.SCID_RAW.clone()),
+        _ => table.sort_by_key(|x| x.SCID_RAW),
     }
 }
 

@@ -279,7 +279,6 @@ pub async fn read_config(
     plugin: &ConfiguredPlugin<PluginState, tokio::io::Stdin, tokio::io::Stdout>,
     state: PluginState,
 ) -> Result<(), Error> {
-    let mut config = state.config.lock();
     let mut configfile = String::new();
     let dir = plugin.configuration().clone().lightning_dir;
     match fs::read_to_string(Path::new(&dir).join("config")).await {
@@ -291,12 +290,13 @@ pub async fn read_config(
             }
         }
     }
+    let mut config = state.config.lock();
     for line in configfile.lines() {
         if line.contains('=') {
             let splitline = line.split('=').collect::<Vec<&str>>();
             if splitline.len() == 2 {
-                let name = splitline.clone().into_iter().nth(0).unwrap();
-                let value = splitline.into_iter().nth(1).unwrap();
+                let name = splitline.first().unwrap();
+                let value = splitline.get(1).unwrap();
 
                 match name {
                     opt if opt.eq(&config.show_pubkey.0) => match value.parse::<bool>() {
@@ -690,9 +690,5 @@ pub fn get_startup_options(
 }
 
 fn is_valid_hour_timestamp(pays: u64) -> bool {
-    if Utc::now().timestamp() as u64 > pays * 60 * 60 {
-        true
-    } else {
-        false
-    }
+    Utc::now().timestamp() as u64 > pays * 60 * 60
 }
