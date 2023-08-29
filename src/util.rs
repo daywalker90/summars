@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use cln_plugin::Plugin;
-use cln_rpc::model::{ListpeerchannelsChannels, ListpeerchannelsChannelsState};
+use cln_rpc::model::responses::{ListpeerchannelsChannels, ListpeerchannelsChannelsState};
 
 use crate::structs::PluginState;
 

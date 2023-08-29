@@ -583,7 +583,8 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "{} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable.",
+                        "{} needs to be a positive number and smaller than {}, \
+                        not `{}`. Use 0 to disable.",
                         config.pays.0,
                         (Utc::now().timestamp() as u64) / 60 / 60,
                         i
@@ -599,7 +600,8 @@ pub fn get_startup_options(
                     i as u64
                 } else {
                     return Err(anyhow!(
-                        "{} needs to be a positive number and smaller than {}, not `{}`. Use 0 to disable.",
+                        "{} needs to be a positive number and smaller than {}, not `{}`. \
+                        Use 0 to disable.",
                         config.invoices.0,
                         (Utc::now().timestamp() as u64) / 60 / 60,
                         i
