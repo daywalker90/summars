@@ -80,13 +80,7 @@ pub struct ScidWrapper {
 }
 impl fmt::Display for ScidWrapper {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}x{}x{}",
-            self.block.to_string(),
-            self.txindex.to_string(),
-            self.outnum.to_string()
-        )
+        write!(f, "{}x{}x{}", self.block, self.txindex, self.outnum)
     }
 }
 
