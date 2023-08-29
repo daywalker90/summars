@@ -3,9 +3,10 @@ use std::path::PathBuf;
 use anyhow::{anyhow, Error};
 
 use cln_rpc::{
-    model::*,
+    model::requests::*,
+    model::responses::*,
     primitives::{PublicKey, ShortChannelId},
-    ClnRpc,
+    ClnRpc, Request, Response,
 };
 
 pub async fn list_funds(rpc_path: &PathBuf) -> Result<ListfundsResponse, Error> {
@@ -125,6 +126,9 @@ pub async fn list_invoices(
             invstring: None,
             payment_hash,
             offer_id: None,
+            index: None,
+            start: None,
+            limit: None,
         }))
         .await
         .map_err(|e| anyhow!("Error calling listinvoices: {:?}", e))?;

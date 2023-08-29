@@ -4,7 +4,8 @@ use chrono::{Local, Utc};
 use cln_plugin::Plugin;
 use cln_rpc::primitives::ShortChannelId;
 use cln_rpc::{
-    model::*,
+    model::requests::*,
+    model::responses::*,
     primitives::{Amount, PublicKey},
 };
 
@@ -364,12 +365,10 @@ async fn recent_pays(
                 payment_hash: pay.payment_hash.to_string(),
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
+                } else if config.utf8.1 {
+                    destination
                 } else {
-                    if config.utf8.1 {
-                        destination
-                    } else {
-                        destination.replace(|c: char| !c.is_ascii(), "?")
-                    }
+                    destination.replace(|c: char| !c.is_ascii(), "?")
                 },
             })
         }
@@ -472,6 +471,7 @@ fn chan_to_summary(
         ListpeerchannelsChannelsState::ONCHAIN => "ONCHAIN",
         ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => "DUAL_OPEN",
         ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => "DUAL_AWAIT",
+        ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => "AWAIT_SPLICE",
     };
 
     let scidsortdummy = ShortChannelId::from_str("999999x9999x99").unwrap();
@@ -611,30 +611,27 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
 
 fn get_addrstr(getinfo: &GetinfoResponse) -> String {
     let mut address = None;
-    if getinfo.address.len() > 0 {
-        if getinfo.address.iter().any(|x| match x.item_type {
-            GetinfoAddressType::IPV4 => true,
-            _ => false,
-        }) {
-            address = Some(
-                getinfo
-                    .address
-                    .iter()
-                    .find(|x| match x.item_type {
-                        GetinfoAddressType::IPV4 => true,
-                        _ => false,
-                    })
-                    .unwrap()
-                    .clone(),
-            )
-        } else {
-            address = Some(getinfo.address.first().unwrap().clone())
+    if let Some(addr) = &getinfo.address {
+        if !addr.is_empty() {
+            if addr
+                .iter()
+                .any(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
+            {
+                address = Some(
+                    addr.iter()
+                        .find(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
+                        .unwrap()
+                        .clone(),
+                )
+            } else {
+                address = Some(addr.first().unwrap().clone())
+            }
         }
     }
     let mut bindaddr = None;
-    if let None = address {
+    if address.is_none() {
         if let Some(bind) = &getinfo.binding {
-            if bind.len() > 0 {
+            if !bind.is_empty() {
                 bindaddr = Some(bind.first().unwrap().clone())
             }
         }
