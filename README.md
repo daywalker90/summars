@@ -73,12 +73,12 @@ channels_flags=P:private O:offline
  2023-01-04 14:00:54   SLIMYGLEE    REDWALK        10,000     10,000         101
  2023-01-04 14:10:35   SLIMYGLEE    REDWALK        10,000     10,000         101
 
- pays                  payment_hash                                                       destination
- 2023-01-17 21:03:10   b4222a957dc058ec5a4613e4a34f5bea26f9b2e36561497894d838774bd42dff   RoboSats
- 2023-01-17 21:18:48   4a48c7690f4ac0a16c39ed7a71f232380fc6d3c9927a87d7c531da49204f86c7   STACKER.NEWS
- 2023-01-17 23:20:41   12b2c23562eb77b468f679d0aec0067f60d3e39edf3b33fb0e4d9ad51ef4e9c2   WalletOfSatoshi.com
- 2023-01-19 22:32:31   b924776ae274ddc39f41b9f170e18b67d648aa68d04dd682eef60fe8addc965d   Kraken
- 2023-01-19 22:49:30   812e80e8e82923b8ab937d72461784542da6b605c11fb2a5be2cf16c83761c97   Kraken
+ pays                  payment_hash                                                       sats_sent  destination
+ 2023-01-17 21:03:10   b4222a957dc058ec5a4613e4a34f5bea26f9b2e36561497894d838774bd42dff       8,015  RoboSats
+ 2023-01-17 21:18:48   4a48c7690f4ac0a16c39ed7a71f232380fc6d3c9927a87d7c531da49204f86c7      28,112  STACKER.NEWS
+ 2023-01-17 23:20:41   12b2c23562eb77b468f679d0aec0067f60d3e39edf3b33fb0e4d9ad51ef4e9c2       2,000  WalletOfSatoshi.com
+ 2023-01-19 22:32:31   b924776ae274ddc39f41b9f170e18b67d648aa68d04dd682eef60fe8addc965d       1,012  Kraken
+ 2023-01-19 22:49:30   812e80e8e82923b8ab937d72461784542da6b605c11fb2a5be2cf16c83761c97     128,015  Kraken
 
  invoices              label     sats_received
  2023-01-17 17:16:13   label1           15,000
