@@ -1,5 +1,5 @@
 # summars
-A core lightning plugin to show a summary of your channels and optionally recent forwards.
+A core lightning plugin to show a summary of your channels and optionally recent forwards, payments and/or paid invoices.
 
 * [Installation](#installation)
 * [Building](#building)
