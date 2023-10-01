@@ -12,7 +12,14 @@ A core lightning plugin to show a summary of your channels and optionally recent
 ### Installation
 For general plugin installation instructions see the plugins repo [README.md](https://github.com/lightningd/plugins/blob/master/README.md#Installation)
 
-Release binaries for amd64-linux, armv7-linux (Raspberry Pi 32bit) and aarch64-linux (Raspberry Pi 64bit) can be found on the [release](https://github.com/daywalker90/summars/releases) page.
+Release binaries for
+* x86_64-linux
+* armv7-linux (Raspberry Pi 32bit)
+* aarch64-linux (Raspberry Pi 64bit)
+
+can be found on the [release](https://github.com/daywalker90/summars/releases) page. If you are unsure about your architecture you can run ``uname -m``.
+
+They require ``glibc>=2.31``, which you can check with ``ldd --version``.
 
 ### Building
 You can build the plugin yourself instead of using the release binaries.
