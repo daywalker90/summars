@@ -1,7 +1,6 @@
-use core::fmt;
 use std::{collections::BTreeMap, sync::Arc};
 
-use cln_rpc::primitives::PublicKey;
+use cln_rpc::primitives::{PublicKey, ShortChannelId};
 use num_format::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -71,19 +70,6 @@ pub struct PeerAvailability {
     pub avail: f64,
 }
 
-// so we can sort by block -> txindex -> outnum
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ScidWrapper {
-    pub block: u32,
-    pub txindex: u32,
-    pub outnum: u16,
-}
-impl fmt::Display for ScidWrapper {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}x{}x{}", self.block, self.txindex, self.outnum)
-    }
-}
-
 #[derive(Debug, Tabled, FieldNamesAsArray)]
 #[field_names_as_array(visibility = "pub(crate)")]
 #[allow(non_snake_case)]
@@ -92,7 +78,7 @@ pub struct Summary {
     pub IN_SATS: u64,
     #[tabled(skip)]
     #[field_names_as_array(skip)]
-    pub SCID_RAW: ScidWrapper,
+    pub SCID_RAW: ShortChannelId,
     pub SCID: String,
     pub MAX_HTLC: u64,
     pub FLAG: String,
