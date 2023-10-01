@@ -31,8 +31,7 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    Config, Forwards, Invoices, Pays, PluginState, ScidWrapper, Summary, NODE_GOSSIP_MISS,
-    NO_ALIAS_SET,
+    Config, Forwards, Invoices, Pays, PluginState, Summary, NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{is_active_state, make_channel_flags, make_rpc_path};
 
@@ -473,7 +472,7 @@ fn chan_to_summary(
         ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => "AWAIT_SPLICE",
     };
 
-    let scidsortdummy = ShortChannelId::from_str("999999x9999x99").unwrap();
+    let scidsortdummy = ShortChannelId::from_str("999999999x9999x99").unwrap();
     let scid = match chan.short_channel_id {
         Some(scid) => scid,
         None => scidsortdummy,
@@ -482,11 +481,7 @@ fn chan_to_summary(
     Ok(Summary {
         OUT_SATS: to_us_msat / 1_000,
         IN_SATS: (total_msat - to_us_msat) / 1_000,
-        SCID_RAW: ScidWrapper {
-            block: scid.block(),
-            txindex: scid.txindex(),
-            outnum: scid.outnum(),
-        },
+        SCID_RAW: scid,
         SCID: if scidsortdummy.to_string() == scid.to_string() {
             "PENDING".to_string()
         } else {
