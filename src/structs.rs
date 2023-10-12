@@ -21,7 +21,7 @@ pub struct Config {
     pub invoices: (String, u64),
     pub locale: (String, Locale),
     pub refresh_alias: (String, u64),
-    pub max_alias_length: (String, usize),
+    pub max_alias_length: (String, u64),
     pub availability_interval: (String, u64),
     pub availability_window: (String, u64),
     pub utf8: (String, bool),

@@ -323,11 +323,11 @@ async fn recent_forwards(
     fwtable.with(Style::blank());
     fwtable.with(
         Modify::new(ByColumnName::new("in_channel"))
-            .with(Width::truncate(config.max_alias_length.1).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
     );
     fwtable.with(
         Modify::new(ByColumnName::new("out_channel"))
-            .with(Width::truncate(config.max_alias_length.1).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
     );
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
@@ -541,7 +541,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
     }
     sumtable.with(
         Modify::new(ByColumnName::new("ALIAS"))
-            .with(Width::truncate(config.max_alias_length.1).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
     );
     sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));
