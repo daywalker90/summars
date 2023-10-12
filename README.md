@@ -117,8 +117,7 @@ channels_flags=P:private O:offline
 You can mix theses methods but if you set the same option with multiple of these three methods the priority is 1. -> 2. -> 3.
 
 ### Options
-* ``summars-show-pubkey`` Include pubkey in summary table. Default is ``true``
-* ``summars-show-maxhtlc`` Include max_htlc in summary table. Default is ``true``
+* ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Default are all columns: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Default is ``SCID``
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forward-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
