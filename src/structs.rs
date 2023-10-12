@@ -4,7 +4,7 @@ use cln_rpc::primitives::{PublicKey, ShortChannelId};
 use num_format::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use struct_field_names_as_array::FieldNamesAsArray;
+use struct_field_names_as_array::FieldNamesAsSlice;
 use tabled::Tabled;
 
 pub const PLUGIN_NAME: &str = "summars";
@@ -70,33 +70,36 @@ pub struct PeerAvailability {
     pub avail: f64,
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray)]
-#[field_names_as_array(visibility = "pub(crate)")]
-#[allow(non_snake_case)]
+#[derive(Debug, Tabled, FieldNamesAsSlice)]
+#[field_names_as_slice(rename_all = "SCREAMING_SNAKE_CASE")]
+#[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
-    pub OUT_SATS: u64,
-    pub IN_SATS: u64,
+    pub out_sats: u64,
+    pub in_sats: u64,
     #[tabled(skip)]
-    #[field_names_as_array(skip)]
-    pub SCID_RAW: ShortChannelId,
-    pub SCID: String,
-    pub MAX_HTLC: u64,
-    pub FLAG: String,
-    pub BASE: u64,
-    pub PPM: u32,
-    pub ALIAS: String,
-    pub PEER_ID: String,
-    pub UPTIME: f64,
-    pub HTLCS: usize,
-    pub STATE: String,
+    #[field_names_as_slice(skip)]
+    pub scid_raw: ShortChannelId,
+    pub scid: String,
+    pub max_htlc: u64,
+    pub flag: String,
+    pub base: u64,
+    pub ppm: u32,
+    pub alias: String,
+    pub peer_id: String,
+    pub uptime: f64,
+    pub htlcs: usize,
+    pub state: String,
 }
 impl Summary {
     pub fn field_names_to_string() -> String {
-        Summary::FIELD_NAMES_AS_ARRAY
+        Summary::FIELD_NAMES_AS_SLICE
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
+    }
+    pub fn get_field_names_slice() -> &'static [&'static str] {
+        Summary::FIELD_NAMES_AS_SLICE
     }
 }
 

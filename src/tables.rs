@@ -479,56 +479,56 @@ fn chan_to_summary(
     };
 
     Ok(Summary {
-        OUT_SATS: to_us_msat / 1_000,
-        IN_SATS: (total_msat - to_us_msat) / 1_000,
-        SCID_RAW: scid,
-        SCID: if scidsortdummy.to_string() == scid.to_string() {
+        out_sats: to_us_msat / 1_000,
+        in_sats: (total_msat - to_us_msat) / 1_000,
+        scid_raw: scid,
+        scid: if scidsortdummy.to_string() == scid.to_string() {
             "PENDING".to_string()
         } else {
             scid.to_string()
         },
-        MAX_HTLC: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
-        FLAG: make_channel_flags(chan.private, chan.peer_connected.unwrap()),
-        BASE: Amount::msat(&chan.fee_base_msat.unwrap()),
-        PPM: chan.fee_proportional_millionths.unwrap(),
-        ALIAS: if config.utf8.1 {
+        max_htlc: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
+        flag: make_channel_flags(chan.private, chan.peer_connected.unwrap()),
+        base: Amount::msat(&chan.fee_base_msat.unwrap()),
+        ppm: chan.fee_proportional_millionths.unwrap(),
+        alias: if config.utf8.1 {
             alias.to_string()
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
         },
-        PEER_ID: chan.peer_id.unwrap().to_string(),
-        UPTIME: avail * 100.0,
-        HTLCS: chan.htlcs.clone().unwrap_or(Vec::new()).len(),
-        STATE: statestr.to_string(),
+        peer_id: chan.peer_id.unwrap().to_string(),
+        uptime: avail * 100.0,
+        htlcs: chan.htlcs.clone().unwrap_or(Vec::new()).len(),
+        state: statestr.to_string(),
     })
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
     match config.sort_by.1.clone() {
-        col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.OUT_SATS),
-        col if col.eq("IN_SATS") => table.sort_by_key(|x| x.IN_SATS),
-        col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.SCID_RAW),
-        col if col.eq("SCID") => table.sort_by_key(|x| x.SCID_RAW),
-        col if col.eq("MAX_HTLC") => table.sort_by_key(|x| x.MAX_HTLC),
-        col if col.eq("FLAG") => table.sort_by_key(|x| x.FLAG.clone()),
-        col if col.eq("BASE") => table.sort_by_key(|x| x.BASE),
-        col if col.eq("PPM") => table.sort_by_key(|x| x.PPM),
+        col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.out_sats),
+        col if col.eq("IN_SATS") => table.sort_by_key(|x| x.in_sats),
+        col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.scid_raw),
+        col if col.eq("SCID") => table.sort_by_key(|x| x.scid_raw),
+        col if col.eq("MAX_HTLC") => table.sort_by_key(|x| x.max_htlc),
+        col if col.eq("FLAG") => table.sort_by_key(|x| x.flag.clone()),
+        col if col.eq("BASE") => table.sort_by_key(|x| x.base),
+        col if col.eq("PPM") => table.sort_by_key(|x| x.ppm),
         col if col.eq("ALIAS") => table.sort_by_key(|x| {
-            x.ALIAS
+            x.alias
                 .chars()
                 .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
                 .collect::<String>()
                 .to_ascii_lowercase()
         }),
         col if col.eq("UPTIME") => table.sort_by(|x, y| {
-            x.UPTIME
-                .partial_cmp(&y.UPTIME)
+            x.uptime
+                .partial_cmp(&y.uptime)
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
-        col if col.eq("PEER_ID") => table.sort_by_key(|x| x.PEER_ID.clone()),
-        col if col.eq("HTLCS") => table.sort_by_key(|x| x.HTLCS),
-        col if col.eq("STATE") => table.sort_by_key(|x| x.STATE.clone()),
-        _ => table.sort_by_key(|x| x.SCID_RAW),
+        col if col.eq("PEER_ID") => table.sort_by_key(|x| x.peer_id.clone()),
+        col if col.eq("HTLCS") => table.sort_by_key(|x| x.htlcs),
+        col if col.eq("STATE") => table.sort_by_key(|x| x.state.clone()),
+        _ => table.sort_by_key(|x| x.scid_raw),
     }
 }
 

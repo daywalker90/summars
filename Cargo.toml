@@ -19,7 +19,7 @@ cln-plugin = "0.1.6"
 
 tabled = "0.14"
 num-format = "0.4"
-struct-field-names-as-array = "0.2"
+struct-field-names-as-array = "0.3"
 chrono = "0.4"
 parking_lot = "0.12"
 

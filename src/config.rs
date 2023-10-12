@@ -36,7 +36,7 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                 },
                 name if name.eq(&config.sort_by.0) => match value {
                     serde_json::Value::String(b) => {
-                        if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.clone().as_str()) {
+                        if Summary::get_field_names_slice().contains(&b.clone().as_str()) {
                             config.sort_by.1 = b.to_string()
                         } else {
                             return Err(anyhow!(
@@ -323,7 +323,7 @@ pub async fn read_config(
                     },
                     opt if opt.eq(&config.sort_by.0) => match value.parse::<String>() {
                         Ok(b) => {
-                            if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.clone().as_str()) {
+                            if Summary::get_field_names_slice().contains(&b.clone().as_str()) {
                                 config.sort_by.1 = b;
                             } else {
                                 return Err(anyhow!(
@@ -544,7 +544,7 @@ pub fn get_startup_options(
         };
         config.sort_by.1 = match plugin.option(&config.sort_by.0) {
             Some(options::Value::String(s)) => {
-                if Summary::FIELD_NAMES_AS_ARRAY.contains(&s.clone().as_str()) {
+                if Summary::get_field_names_slice().contains(&s.clone().as_str()) {
                     s
                 } else {
                     return Err(anyhow!(
