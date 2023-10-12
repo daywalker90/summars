@@ -12,31 +12,38 @@ use crate::{
 };
 use num_format::Locale;
 
+fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
+    let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
+    let split_input: Vec<&str> = cleaned_input.split(',').collect();
+
+    for i in &split_input {
+        if !Summary::get_field_names().contains(&i.to_string()) {
+            return Err(anyhow!("`{}` not found in valid column names!", i));
+        }
+    }
+
+    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
+    Ok(cleaned_strings)
+}
+
 pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Config, Error> {
     if let serde_json::Value::Object(i) = args {
         for (key, value) in i.iter() {
             match key {
-                name if name.eq(&config.show_pubkey.0) => match value {
-                    serde_json::Value::Bool(b) => config.show_pubkey.1 = *b,
-                    _ => {
-                        return Err(anyhow!(
-                            "{} needs to be bool (true or false).",
-                            config.show_pubkey.0
-                        ))
+                name if name.eq(&config.columns.0) => match value {
+                    serde_json::Value::String(b) => {
+                        config.columns.1 = validate_columns_input(b)?;
                     }
-                },
-                name if name.eq(&config.show_maxhtlc.0) => match value {
-                    serde_json::Value::Bool(b) => config.show_maxhtlc.1 = *b,
                     _ => {
                         return Err(anyhow!(
                             "{} needs to be bool (true or false).",
-                            config.show_maxhtlc.0
+                            config.columns.0
                         ))
                     }
                 },
                 name if name.eq(&config.sort_by.0) => match value {
                     serde_json::Value::String(b) => {
-                        if Summary::get_field_names_slice().contains(&b.clone().as_str()) {
+                        if Summary::get_field_names().contains(b) {
                             config.sort_by.1 = b.to_string()
                         } else {
                             return Err(anyhow!(
@@ -299,31 +306,12 @@ pub async fn read_config(
                 let value = splitline.get(1).unwrap();
 
                 match name {
-                    opt if opt.eq(&config.show_pubkey.0) => match value.parse::<bool>() {
-                        Ok(b) => config.show_pubkey.1 = b,
-                        Err(e) => {
-                            return Err(anyhow!(
-                                "Could not parse bool from `{}` for {}: {}",
-                                value,
-                                config.show_pubkey.0,
-                                e
-                            ))
-                        }
-                    },
-                    opt if opt.eq(&config.show_maxhtlc.0) => match value.parse::<bool>() {
-                        Ok(b) => config.show_maxhtlc.1 = b,
-                        Err(e) => {
-                            return Err(anyhow!(
-                                "Could not parse bool from `{}` for {}: {}",
-                                value,
-                                config.show_maxhtlc.0,
-                                e
-                            ))
-                        }
-                    },
+                    opt if opt.eq(&config.columns.0) => {
+                        config.columns.1 = validate_columns_input(value)?
+                    }
                     opt if opt.eq(&config.sort_by.0) => match value.parse::<String>() {
                         Ok(b) => {
-                            if Summary::get_field_names_slice().contains(&b.clone().as_str()) {
+                            if Summary::get_field_names().contains(&b) {
                                 config.sort_by.1 = b;
                             } else {
                                 return Err(anyhow!(
@@ -532,19 +520,12 @@ pub fn get_startup_options(
 ) -> Result<(), Error> {
     {
         let mut config = state.config.lock();
-        config.show_pubkey.1 = match plugin.option(&config.show_pubkey.0) {
-            Some(options::Value::Boolean(b)) => b,
-            Some(_) => config.show_pubkey.1,
-            None => config.show_pubkey.1,
-        };
-        config.show_maxhtlc.1 = match plugin.option(&config.show_maxhtlc.0) {
-            Some(options::Value::Boolean(b)) => b,
-            Some(_) => config.show_maxhtlc.1,
-            None => config.show_maxhtlc.1,
-        };
+        if let Some(options::Value::String(b)) = plugin.option(&config.columns.0) {
+            config.columns.1 = validate_columns_input(&b)?;
+        }
         config.sort_by.1 = match plugin.option(&config.sort_by.0) {
             Some(options::Value::String(s)) => {
-                if Summary::get_field_names_slice().contains(&s.clone().as_str()) {
+                if Summary::get_field_names().contains(&s) {
                     s
                 } else {
                     return Err(anyhow!(

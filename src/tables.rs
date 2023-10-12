@@ -534,11 +534,10 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 
 fn format_summary(config: &Config, sumtable: &mut Table) {
     sumtable.with(Style::modern());
-    if !config.show_pubkey.1 {
-        sumtable.with(Disable::column(ByColumnName::new("PEER_ID")));
-    }
-    if !config.show_maxhtlc.1 {
-        sumtable.with(Disable::column(ByColumnName::new("MAX_HTLC")));
+    for head in Summary::get_field_names() {
+        if !config.columns.1.contains(&head.to_string()) {
+            sumtable.with(Disable::column(ByColumnName::new(head)));
+        }
     }
     sumtable.with(
         Modify::new(ByColumnName::new("ALIAS"))

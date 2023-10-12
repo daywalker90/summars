@@ -4,7 +4,7 @@ use cln_rpc::primitives::{PublicKey, ShortChannelId};
 use num_format::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use struct_field_names_as_array::FieldNamesAsSlice;
+use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::Tabled;
 
 pub const PLUGIN_NAME: &str = "summars";
@@ -13,8 +13,7 @@ pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub show_pubkey: (String, bool),
-    pub show_maxhtlc: (String, bool),
+    pub columns: (String, Vec<String>),
     pub sort_by: (String, String),
     pub forwards: (String, u64),
     pub forward_alias: (String, bool),
@@ -30,8 +29,10 @@ pub struct Config {
 impl Config {
     pub fn new() -> Config {
         Config {
-            show_pubkey: (PLUGIN_NAME.to_string() + "-show-pubkey", true),
-            show_maxhtlc: (PLUGIN_NAME.to_string() + "-show-maxhtlc", true),
+            columns: (
+                PLUGIN_NAME.to_string() + "-columns",
+                Summary::get_field_names(),
+            ),
             sort_by: (PLUGIN_NAME.to_string() + "-sort-by", "SCID".to_string()),
             forwards: (PLUGIN_NAME.to_string() + "-forwards", 0),
             forward_alias: (PLUGIN_NAME.to_string() + "-forward-alias", true),
@@ -70,14 +71,14 @@ pub struct PeerAvailability {
     pub avail: f64,
 }
 
-#[derive(Debug, Tabled, FieldNamesAsSlice)]
-#[field_names_as_slice(rename_all = "SCREAMING_SNAKE_CASE")]
+#[derive(Debug, Tabled, FieldNamesAsArray)]
+#[field_names_as_array(rename_all = "SCREAMING_SNAKE_CASE")]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
     pub out_sats: u64,
     pub in_sats: u64,
     #[tabled(skip)]
-    #[field_names_as_slice(skip)]
+    #[field_names_as_array(skip)]
     pub scid_raw: ShortChannelId,
     pub scid: String,
     pub max_htlc: u64,
@@ -92,14 +93,17 @@ pub struct Summary {
 }
 impl Summary {
     pub fn field_names_to_string() -> String {
-        Summary::FIELD_NAMES_AS_SLICE
+        Summary::FIELD_NAMES_AS_ARRAY
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
     }
-    pub fn get_field_names_slice() -> &'static [&'static str] {
-        Summary::FIELD_NAMES_AS_SLICE
+    pub fn get_field_names() -> Vec<String> {
+        Summary::FIELD_NAMES_AS_ARRAY
+            .into_iter()
+            .map(String::from)
+            .collect()
     }
 }
 

@@ -25,19 +25,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let confplugin;
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(options::ConfigOption::new(
-            &defaultconfig.show_pubkey.0,
-            options::Value::OptBoolean,
+            &defaultconfig.columns.0,
+            options::Value::OptString,
             &format!(
-                "Include pubkey in summary table. Default is {}",
-                defaultconfig.show_pubkey.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.show_maxhtlc.0,
-            options::Value::OptBoolean,
-            &format!(
-                "Include max_htlc in summary table. Default is {}",
-                defaultconfig.show_maxhtlc.1
+                "Enabled columns in the channel table. Default is {}",
+                defaultconfig.columns.1.join(",")
             ),
         ))
         .option(options::ConfigOption::new(
