@@ -112,7 +112,7 @@ channels_flags=P:private O:offline
 
 * Example: ``summars-forwards=6``
 
-:warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` or cln will not start next time!
+:warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` (or have the plugin in the folder where cln automatically starts plugins from at startup) or cln will not start next time!
 
 :warning:Only config files in your lightning-dir or the network dir will be read if you start the plugin dynamically after cln is already running!
 
