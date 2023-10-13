@@ -114,6 +114,8 @@ channels_flags=P:private O:offline
 
 :warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` or cln will not start next time!
 
+:warning:Only config files in your lightning-dir or the network dir will be read if you start the plugin dynamically after cln is already running!
+
 You can mix theses methods but if you set the same option with multiple of these three methods the priority is 1. -> 2. -> 3.
 
 ### Options
