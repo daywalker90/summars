@@ -28,12 +28,8 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
             .nodes
             .first()
             .map(|node| node.alias.clone().unwrap_or(NO_ALIAS_SET.to_string()));
-        if alias.is_some() {
-            plugin
-                .state()
-                .alias_map
-                .lock()
-                .insert(peer.id, alias.unwrap());
+        if let Some(a) = alias {
+            plugin.state().alias_map.lock().insert(peer.id, a);
         }
     }
 
