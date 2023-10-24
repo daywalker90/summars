@@ -498,7 +498,7 @@ fn chan_to_summary(
         },
         peer_id: chan.peer_id.unwrap().to_string(),
         uptime: avail * 100.0,
-        htlcs: chan.htlcs.clone().unwrap_or(Vec::new()).len(),
+        htlcs: chan.htlcs.clone().unwrap_or_default().len(),
         state: statestr.to_string(),
     })
 }
