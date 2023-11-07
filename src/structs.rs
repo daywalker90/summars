@@ -53,7 +53,8 @@ pub struct PluginState {
     pub alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
     pub config: Arc<Mutex<Config>>,
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
-    pub fw_index: Arc<Mutex<ForwardsIndex>>,
+    pub fw_index: Arc<Mutex<PagingIndex>>,
+    pub inv_index: Arc<Mutex<PagingIndex>>,
 }
 impl PluginState {
     pub fn new() -> PluginState {
@@ -61,7 +62,8 @@ impl PluginState {
             alias_map: Arc::new(Mutex::new(BTreeMap::new())),
             config: Arc::new(Mutex::new(Config::new())),
             avail: Arc::new(Mutex::new(BTreeMap::new())),
-            fw_index: Arc::new(Mutex::new(ForwardsIndex::new())),
+            fw_index: Arc::new(Mutex::new(PagingIndex::new())),
+            inv_index: Arc::new(Mutex::new(PagingIndex::new())),
         }
     }
 }
@@ -123,13 +125,13 @@ pub struct Forwards {
 }
 
 #[derive(Debug, Clone)]
-pub struct ForwardsIndex {
+pub struct PagingIndex {
     pub timestamp: u64,
     pub start: u64,
 }
-impl ForwardsIndex {
-    pub fn new() -> ForwardsIndex {
-        ForwardsIndex {
+impl PagingIndex {
+    pub fn new() -> PagingIndex {
+        PagingIndex {
             timestamp: 0,
             start: 0,
         }
