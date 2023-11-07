@@ -234,9 +234,17 @@ async fn recent_forwards(
     config: &Config,
     now: Instant,
 ) -> Result<String, Error> {
-    let forwards = list_forwards(rpc_path, Some(ListforwardsStatus::SETTLED), None, None)
-        .await?
-        .forwards;
+    let forwards = list_forwards(
+        rpc_path,
+        Some(ListforwardsStatus::SETTLED),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await?
+    .forwards;
     debug!(
         "List forwards. Total: {}ms",
         now.elapsed().as_millis().to_string()
@@ -390,7 +398,9 @@ async fn recent_invoices(
     config: &Config,
     now: Instant,
 ) -> Result<String, Error> {
-    let invoices = list_invoices(rpc_path, None, None).await?.invoices;
+    let invoices = list_invoices(rpc_path, None, None, None, None, None)
+        .await?
+        .invoices;
     debug!(
         "List invoices. Total: {}ms",
         now.elapsed().as_millis().to_string()
@@ -468,6 +478,8 @@ fn chan_to_summary(
         ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN => "FUNDING_SPEND",
         ListpeerchannelsChannelsState::ONCHAIN => "ONCHAIN",
         ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => "DUAL_OPEN",
+        ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED => "DUAL_COMITTED",
+        ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY => "DUAL_COMMIT_RDY",
         ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => "DUAL_AWAIT",
         ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => "AWAIT_SPLICE",
     };
