@@ -79,6 +79,9 @@ pub async fn list_forwards(
     status: Option<ListforwardsStatus>,
     in_channel: Option<ShortChannelId>,
     out_channel: Option<ShortChannelId>,
+    index: Option<ListforwardsIndex>,
+    start: Option<u64>,
+    limit: Option<u32>,
 ) -> Result<ListforwardsResponse, Error> {
     let mut rpc = ClnRpc::new(&rpc_path).await?;
     let listforwards_request = rpc
@@ -86,6 +89,9 @@ pub async fn list_forwards(
             status,
             in_channel,
             out_channel,
+            index,
+            start,
+            limit,
         }))
         .await
         .map_err(|e| anyhow!("Error calling list_forwards: {}", e.to_string()))?;
@@ -118,6 +124,9 @@ pub async fn list_invoices(
     rpc_path: &PathBuf,
     label: Option<String>,
     payment_hash: Option<String>,
+    index: Option<ListinvoicesIndex>,
+    start: Option<u64>,
+    limit: Option<u32>,
 ) -> Result<ListinvoicesResponse, Error> {
     let mut rpc = ClnRpc::new(&rpc_path).await?;
     let invoice_request = rpc
@@ -126,9 +135,9 @@ pub async fn list_invoices(
             invstring: None,
             payment_hash,
             offer_id: None,
-            index: None,
-            start: None,
-            limit: None,
+            index,
+            start,
+            limit,
         }))
         .await
         .map_err(|e| anyhow!("Error calling listinvoices: {:?}", e))?;
