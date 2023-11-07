@@ -250,9 +250,9 @@ async fn recent_forwards(
         now.elapsed().as_millis().to_string()
     );
 
-    let chanmap: BTreeMap<String, ListpeerchannelsChannels> = peer_channels
+    let chanmap: BTreeMap<ShortChannelId, ListpeerchannelsChannels> = peer_channels
         .iter()
-        .filter_map(|s| s.short_channel_id.map(|id| (id.to_string(), s.clone())))
+        .filter_map(|s| s.short_channel_id.map(|id| (id, s.clone())))
         .collect();
 
     let alias_map = plugin.state().alias_map.lock();
@@ -266,7 +266,7 @@ async fn recent_forwards(
             let datetime = DateTime::<Local>::from(d);
             let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
             let inchan = if config.forward_alias.1 {
-                match chanmap.get(&forward.in_channel.to_string()) {
+                match chanmap.get(&forward.in_channel) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
                             if alias.eq(NO_ALIAS_SET) {
@@ -282,23 +282,23 @@ async fn recent_forwards(
             } else {
                 forward.in_channel.to_string()
             };
-            let fw_outchan = forward.out_channel.unwrap().to_string();
+            let fw_outchan = forward.out_channel.unwrap();
             let outchan = if config.forward_alias.1 {
                 match chanmap.get(&fw_outchan) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
                             if alias.eq(NO_ALIAS_SET) {
-                                fw_outchan
+                                fw_outchan.to_string()
                             } else {
                                 alias.clone()
                             }
                         }
-                        None => fw_outchan,
+                        None => fw_outchan.to_string(),
                     },
-                    None => fw_outchan,
+                    None => fw_outchan.to_string(),
                 }
             } else {
-                fw_outchan
+                fw_outchan.to_string()
             };
             table.push(Forwards {
                 received: (forward.received_time * 1000.0) as u64,
@@ -494,7 +494,7 @@ fn chan_to_summary(
         out_sats: to_us_msat / 1_000,
         in_sats: (total_msat - to_us_msat) / 1_000,
         scid_raw: scid,
-        scid: if scidsortdummy.to_string() == scid.to_string() {
+        scid: if scidsortdummy == scid {
             "PENDING".to_string()
         } else {
             scid.to_string()
@@ -508,7 +508,7 @@ fn chan_to_summary(
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
         },
-        peer_id: chan.peer_id.unwrap().to_string(),
+        peer_id: chan.peer_id.unwrap(),
         uptime: avail * 100.0,
         htlcs: chan.htlcs.clone().unwrap_or_default().len(),
         state: statestr.to_string(),
@@ -537,7 +537,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 .partial_cmp(&y.uptime)
                 .unwrap_or(std::cmp::Ordering::Equal)
         }),
-        col if col.eq("PEER_ID") => table.sort_by_key(|x| x.peer_id.clone()),
+        col if col.eq("PEER_ID") => table.sort_by_key(|x| x.peer_id),
         col if col.eq("HTLCS") => table.sort_by_key(|x| x.htlcs),
         col if col.eq("STATE") => table.sort_by_key(|x| x.state.clone()),
         _ => table.sort_by_key(|x| x.scid_raw),

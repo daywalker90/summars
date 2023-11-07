@@ -86,7 +86,7 @@ pub struct Summary {
     pub base: u64,
     pub ppm: u32,
     pub alias: String,
-    pub peer_id: String,
+    pub peer_id: PublicKey,
     pub uptime: f64,
     pub htlcs: usize,
     pub state: String,
