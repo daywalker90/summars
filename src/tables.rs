@@ -31,7 +31,8 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    Config, Forwards, Invoices, Pays, PluginState, Summary, NODE_GOSSIP_MISS, NO_ALIAS_SET,
+    Config, Forwards, ForwardsIndex, Invoices, Pays, PluginState, Summary, NODE_GOSSIP_MISS,
+    NO_ALIAS_SET,
 };
 use crate::util::{is_active_state, make_channel_flags, make_rpc_path};
 
@@ -234,19 +235,32 @@ async fn recent_forwards(
     config: &Config,
     now: Instant,
 ) -> Result<String, Error> {
+    let now_utc = Utc::now().timestamp() as u64;
+    {
+        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards.1 * 60 * 60 {
+            *plugin.state().fw_index.lock() = ForwardsIndex::new();
+            debug!("fw_index: forwards-age increased, resetting index");
+        }
+    }
+    let fw_index = plugin.state().fw_index.lock().clone();
+    debug!(
+        "fw_index: start:{} timestamp:{}",
+        fw_index.start, fw_index.timestamp
+    );
     let forwards = list_forwards(
         rpc_path,
         Some(ListforwardsStatus::SETTLED),
         None,
         None,
-        None,
-        None,
+        Some(ListforwardsIndex::CREATED),
+        Some(fw_index.start),
         None,
     )
     .await?
     .forwards;
     debug!(
-        "List forwards. Total: {}ms",
+        "List {} forwards. Total: {}ms",
+        forwards.len(),
         now.elapsed().as_millis().to_string()
     );
 
@@ -258,10 +272,12 @@ async fn recent_forwards(
     let alias_map = plugin.state().alias_map.lock();
 
     let mut table = Vec::new();
+    let mut new_fw_index = ForwardsIndex {
+        start: u64::MAX,
+        timestamp: now_utc - config.forwards.1 * 60 * 60,
+    };
     for forward in forwards {
-        if forward.received_time as u64
-            > Utc::now().timestamp() as u64 - config.forwards.1 * 60 * 60
-        {
+        if forward.received_time as u64 > now_utc - config.forwards.1 * 60 * 60 {
             let d = UNIX_EPOCH + Duration::from_millis((forward.received_time * 1000.0) as u64);
             let datetime = DateTime::<Local>::from(d);
             let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -319,8 +335,16 @@ async fn recent_forwards(
                     .to_formatted_string(&config.locale.1),
                 fee_msats: Amount::msat(&forward.fee_msat.unwrap())
                     .to_formatted_string(&config.locale.1),
-            })
+            });
+            if let Some(c_index) = forward.created_index {
+                if c_index < new_fw_index.start {
+                    new_fw_index.start = c_index;
+                }
+            }
         }
+    }
+    if new_fw_index.start < u64::MAX {
+        *plugin.state().fw_index.lock() = new_fw_index;
     }
     debug!(
         "Build forwards table. Total: {}ms",

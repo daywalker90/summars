@@ -53,6 +53,7 @@ pub struct PluginState {
     pub alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
     pub config: Arc<Mutex<Config>>,
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
+    pub fw_index: Arc<Mutex<ForwardsIndex>>,
 }
 impl PluginState {
     pub fn new() -> PluginState {
@@ -60,6 +61,7 @@ impl PluginState {
             alias_map: Arc::new(Mutex::new(BTreeMap::new())),
             config: Arc::new(Mutex::new(Config::new())),
             avail: Arc::new(Mutex::new(BTreeMap::new())),
+            fw_index: Arc::new(Mutex::new(ForwardsIndex::new())),
         }
     }
 }
@@ -118,6 +120,20 @@ pub struct Forwards {
     pub in_sats: String,
     pub out_sats: String,
     pub fee_msats: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ForwardsIndex {
+    pub timestamp: u64,
+    pub start: u64,
+}
+impl ForwardsIndex {
+    pub fn new() -> ForwardsIndex {
+        ForwardsIndex {
+            timestamp: 0,
+            start: 0,
+        }
+    }
 }
 
 #[derive(Debug, Tabled)]
