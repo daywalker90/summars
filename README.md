@@ -122,9 +122,12 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Default are all columns: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Default is ``SCID``
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
+* ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forward-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
 * ``summars-locale`` Set locale to change the thousand delimiter. Default is ``en``
 * ``summars-refresh-alias`` How many hours between refreshing the node aliases in memory. Default is ``24`` hours
 * ``summars-max-alias-length`` How long aliases are allowed to be before they get cut off. Default is ``20`` chars

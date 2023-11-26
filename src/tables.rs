@@ -272,6 +272,9 @@ async fn recent_forwards(
     let alias_map = plugin.state().alias_map.lock();
 
     let mut table = Vec::new();
+    let mut filter_amt_sum_msat = 0;
+    let mut filter_fee_sum_msat = 0;
+    let mut filter_count = 0;
     let mut new_fw_index = PagingIndex {
         start: u64::MAX,
         timestamp: now_utc - config.forwards.1 * 60 * 60,
@@ -316,26 +319,42 @@ async fn recent_forwards(
             } else {
                 fw_outchan.to_string()
             };
-            table.push(Forwards {
-                received: (forward.received_time * 1000.0) as u64,
-                received_str: timestamp_str,
-                in_channel: if config.utf8.1 {
-                    inchan
-                } else {
-                    inchan.replace(|c: char| !c.is_ascii(), "?")
-                },
-                out_channel: if config.utf8.1 {
-                    outchan
-                } else {
-                    outchan.replace(|c: char| !c.is_ascii(), "?")
-                },
-                in_sats: (Amount::msat(&forward.in_msat) / 1000)
-                    .to_formatted_string(&config.locale.1),
-                out_sats: (Amount::msat(&forward.out_msat.unwrap()) / 1000)
-                    .to_formatted_string(&config.locale.1),
-                fee_msats: Amount::msat(&forward.fee_msat.unwrap())
-                    .to_formatted_string(&config.locale.1),
-            });
+
+            let mut should_filter = false;
+            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat.1 {
+                should_filter = true;
+            }
+            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat.1 {
+                should_filter = true;
+            }
+
+            if should_filter {
+                filter_amt_sum_msat += forward.in_msat.msat();
+                filter_fee_sum_msat += forward.fee_msat.unwrap().msat();
+                filter_count += 1;
+            } else {
+                table.push(Forwards {
+                    received: (forward.received_time * 1000.0) as u64,
+                    received_str: timestamp_str,
+                    in_channel: if config.utf8.1 {
+                        inchan
+                    } else {
+                        inchan.replace(|c: char| !c.is_ascii(), "?")
+                    },
+                    out_channel: if config.utf8.1 {
+                        outchan
+                    } else {
+                        outchan.replace(|c: char| !c.is_ascii(), "?")
+                    },
+                    in_sats: (Amount::msat(&forward.in_msat) / 1000)
+                        .to_formatted_string(&config.locale.1),
+                    out_sats: (Amount::msat(&forward.out_msat.unwrap()) / 1000)
+                        .to_formatted_string(&config.locale.1),
+                    fee_msats: Amount::msat(&forward.fee_msat.unwrap())
+                        .to_formatted_string(&config.locale.1),
+                })
+            }
+
             if let Some(c_index) = forward.created_index {
                 if c_index < new_fw_index.start {
                     new_fw_index.start = c_index;
@@ -364,7 +383,18 @@ async fn recent_forwards(
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
     fwtable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
-    Ok(fwtable.to_string())
+
+    if filter_count > 0 {
+        let filter_sum_result = format!(
+            "\nFiltered: {} forwards with {} sats routed and {} msat fees.",
+            filter_count,
+            filter_amt_sum_msat / 1000,
+            filter_fee_sum_msat
+        );
+        Ok(fwtable.to_string() + &filter_sum_result)
+    } else {
+        Ok(fwtable.to_string())
+    }
 }
 
 async fn recent_pays(
@@ -451,6 +481,8 @@ async fn recent_invoices(
         now.elapsed().as_millis().to_string()
     );
     let mut table = Vec::new();
+    let mut filter_count = 0;
+    let mut filter_amt_sum_msat = 0;
     let mut new_inv_index = PagingIndex {
         start: u64::MAX,
         timestamp: now_utc - config.invoices.1 * 60 * 60,
@@ -467,13 +499,21 @@ async fn recent_invoices(
                 let datetime = DateTime::<Local>::from(d);
                 let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
-                table.push(Invoices {
-                    paid_at: invoice.paid_at.unwrap(),
-                    paid_at_str: timestamp_str,
-                    label: invoice.label,
-                    sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap()) / 1_000)
-                        .to_formatted_string(&config.locale.1),
-                });
+                if invoice.amount_received_msat.unwrap().msat() as i64
+                    <= config.invoices_filter_amt_msat.1
+                {
+                    filter_count += 1;
+                    filter_amt_sum_msat += invoice.amount_received_msat.unwrap().msat();
+                } else {
+                    table.push(Invoices {
+                        paid_at: invoice.paid_at.unwrap(),
+                        paid_at_str: timestamp_str,
+                        label: invoice.label,
+                        sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap())
+                            / 1_000)
+                            .to_formatted_string(&config.locale.1),
+                    });
+                }
                 if let Some(c_index) = invoice.created_index {
                     if c_index < new_inv_index.start {
                         new_inv_index.start = c_index;
@@ -493,7 +533,17 @@ async fn recent_invoices(
     let mut invoicestable = Table::new(table);
     invoicestable.with(Style::blank());
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
-    Ok(invoicestable.to_string())
+
+    if filter_count > 0 {
+        let filter_sum_result = format!(
+            "\nFiltered: {} invoices with {} sats total.",
+            filter_count,
+            filter_amt_sum_msat / 1000
+        );
+        Ok(invoicestable.to_string() + &filter_sum_result)
+    } else {
+        Ok(invoicestable.to_string())
+    }
 }
 
 async fn get_alias(

@@ -49,6 +49,22 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         ))
         .option(options::ConfigOption::new(
+            &defaultconfig.forwards_filter_amt_msat.0,
+            options::Value::OptInteger,
+            &format!(
+                "Filter forwards smaller than or equal to x msats. Default is {}",
+                defaultconfig.forwards_filter_amt_msat.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
+            &defaultconfig.forwards_filter_fee_msat.0,
+            options::Value::OptInteger,
+            &format!(
+                "Filter forwards with less than or equal to x msats in fees. Default is {}",
+                defaultconfig.forwards_filter_fee_msat.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
             &defaultconfig.forward_alias.0,
             options::Value::OptBoolean,
             &format!(
@@ -70,6 +86,14 @@ async fn main() -> Result<(), anyhow::Error> {
             &format!(
                 "Show last x hours of invoices. Default is {}",
                 defaultconfig.invoices.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
+            &defaultconfig.invoices_filter_amt_msat.0,
+            options::Value::OptInteger,
+            &format!(
+                "Filter invoices smaller than or equal to x msats. Default is {}",
+                defaultconfig.invoices_filter_amt_msat.1
             ),
         ))
         .option(options::ConfigOption::new(
