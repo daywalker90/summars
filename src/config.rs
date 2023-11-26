@@ -33,7 +33,11 @@ fn validate_u64_input(
     check_valid_time: bool,
 ) -> Result<u64, Error> {
     if n < gteq {
-        return Err(anyhow!("Must be greater than or equal to {}", gteq));
+        return Err(anyhow!(
+            "{} must be greater than or equal to {}",
+            var_name,
+            gteq
+        ));
     }
 
     if check_valid_time && !is_valid_hour_timestamp(n) {
@@ -43,6 +47,18 @@ fn validate_u64_input(
             var_name,
             (Utc::now().timestamp() as u64) / 60 / 60,
             n
+        ));
+    }
+
+    Ok(n)
+}
+
+fn validate_i64_input(n: i64, var_name: &String, gteq: i64) -> Result<i64, Error> {
+    if n < gteq {
+        return Err(anyhow!(
+            "{} must be greater than or equal to {}",
+            var_name,
+            gteq
         ));
     }
 
@@ -72,6 +88,18 @@ fn options_value_to_u64(
     }
 }
 
+fn options_value_to_i64(
+    config_var: &(String, i64),
+    value: Option<options::Value>,
+    gteq: i64,
+) -> Result<i64, Error> {
+    match value {
+        Some(options::Value::Integer(i)) => validate_i64_input(i, &config_var.0, gteq),
+        Some(_) => Ok(config_var.1),
+        None => Ok(config_var.1),
+    }
+}
+
 fn value_to_u64(
     var_name: &String,
     value: &serde_json::Value,
@@ -90,6 +118,16 @@ fn value_to_u64(
     }
 }
 
+fn value_to_i64(var_name: &String, value: &serde_json::Value, gteq: i64) -> Result<i64, Error> {
+    match value {
+        serde_json::Value::Number(b) => match b.as_i64() {
+            Some(n) => validate_i64_input(n, var_name, gteq),
+            None => Err(anyhow!("Could not read a number for {}.", var_name)),
+        },
+        _ => Err(anyhow!("{} must be a number.", var_name)),
+    }
+}
+
 fn str_to_u64(
     var_name: &String,
     value: &str,
@@ -100,6 +138,18 @@ fn str_to_u64(
         Ok(n) => validate_u64_input(n, var_name, gteq, check_valid_time),
         Err(e) => Err(anyhow!(
             "Could not parse a positive number from `{}` for {}: {}",
+            value,
+            var_name,
+            e
+        )),
+    }
+}
+
+fn str_to_i64(var_name: &String, value: &str, gteq: i64) -> Result<i64, Error> {
+    match value.parse::<i64>() {
+        Ok(n) => validate_i64_input(n, var_name, gteq),
+        Err(e) => Err(anyhow!(
+            "Could not parse a number from `{}` for {}: {}",
             value,
             var_name,
             e
@@ -145,6 +195,14 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                 name if name.eq(&config.forwards.0) => {
                     config.forwards.1 = value_to_u64(&config.forwards.0, value, 0, true)?
                 }
+                name if name.eq(&config.forwards_filter_amt_msat.0) => {
+                    config.forwards_filter_amt_msat.1 =
+                        value_to_i64(&config.forwards_filter_amt_msat.0, value, -1)?
+                }
+                name if name.eq(&config.forwards_filter_fee_msat.0) => {
+                    config.forwards_filter_fee_msat.1 =
+                        value_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
+                }
                 name if name.eq(&config.forward_alias.0) => match value {
                     serde_json::Value::Bool(b) => config.forward_alias.1 = *b,
                     _ => {
@@ -159,6 +217,10 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                 }
                 name if name.eq(&config.invoices.0) => {
                     config.invoices.1 = value_to_u64(&config.invoices.0, value, 0, true)?
+                }
+                name if name.eq(&config.invoices_filter_amt_msat.0) => {
+                    config.invoices_filter_amt_msat.1 =
+                        value_to_i64(&config.invoices_filter_amt_msat.0, value, -1)?
                 }
                 name if name.eq(&config.locale.0) => match value {
                     serde_json::Value::String(s) => {
@@ -242,6 +304,14 @@ pub async fn read_config(
                     opt if opt.eq(&config.forwards.0) => {
                         config.forwards.1 = str_to_u64(&config.forwards.0, value, 0, true)?
                     }
+                    opt if opt.eq(&config.forwards_filter_amt_msat.0) => {
+                        config.forwards_filter_amt_msat.1 =
+                            str_to_i64(&config.forwards_filter_amt_msat.0, value, -1)?
+                    }
+                    opt if opt.eq(&config.forwards_filter_fee_msat.0) => {
+                        config.forwards_filter_fee_msat.1 =
+                            str_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
+                    }
                     opt if opt.eq(&config.forward_alias.0) => match value.parse::<bool>() {
                         Ok(b) => config.forward_alias.1 = b,
                         Err(e) => {
@@ -258,6 +328,10 @@ pub async fn read_config(
                     }
                     opt if opt.eq(&config.invoices.0) => {
                         config.invoices.1 = str_to_u64(&config.invoices.0, value, 0, true)?
+                    }
+                    opt if opt.eq(&config.invoices_filter_amt_msat.0) => {
+                        config.invoices_filter_amt_msat.1 =
+                            str_to_i64(&config.invoices_filter_amt_msat.0, value, -1)?
                     }
                     opt if opt.eq(&config.locale.0) => match value.parse::<String>() {
                         Ok(s) => match Locale::from_name(s) {
@@ -335,6 +409,16 @@ pub fn get_startup_options(
         };
         config.forwards.1 =
             options_value_to_u64(&config.forwards, plugin.option(&config.forwards.0), 0, true)?;
+        config.forwards_filter_amt_msat.1 = options_value_to_i64(
+            &config.forwards_filter_amt_msat,
+            plugin.option(&config.forwards_filter_amt_msat.0),
+            -1,
+        )?;
+        config.forwards_filter_fee_msat.1 = options_value_to_i64(
+            &config.forwards_filter_fee_msat,
+            plugin.option(&config.forwards_filter_fee_msat.0),
+            -1,
+        )?;
         config.forward_alias.1 = match plugin.option(&config.forward_alias.0) {
             Some(options::Value::Boolean(b)) => b,
             Some(_) => config.forward_alias.1,
@@ -343,6 +427,11 @@ pub fn get_startup_options(
         config.pays.1 = options_value_to_u64(&config.pays, plugin.option(&config.pays.0), 0, true)?;
         config.invoices.1 =
             options_value_to_u64(&config.invoices, plugin.option(&config.invoices.0), 0, true)?;
+        config.invoices_filter_amt_msat.1 = options_value_to_i64(
+            &config.invoices_filter_amt_msat,
+            plugin.option(&config.invoices_filter_amt_msat.0),
+            -1,
+        )?;
         config.locale.1 = match plugin.option(&config.locale.0) {
             Some(options::Value::String(s)) => match Locale::from_str(&s) {
                 Ok(l) => l,
