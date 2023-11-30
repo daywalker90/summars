@@ -136,7 +136,7 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-utf8`` Switch on/off special characters in node aliases. Off replaces special characters with a ``?``. Default is ``true`` (on)
 
 ### Availability Database
-The availability is persistent thorugh plugin restarts.
+The availability is persistent through plugin restarts.
 The db is located in your lightning folder in the summars folder (e.g. ``.lightning/bitcoin/summars/availdb.json``).
 If you want to reset these stats stop the plugin and then remove the file.
 
