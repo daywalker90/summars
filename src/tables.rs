@@ -12,7 +12,7 @@ use cln_rpc::{
 use log::debug;
 use std::collections::BTreeMap;
 use std::str::FromStr;
-use tabled::settings::locator::ByColumnName;
+use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Style, Width};
 
