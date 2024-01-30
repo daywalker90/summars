@@ -1,11 +1,13 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 
+use anyhow::anyhow;
+use cln_plugin::Error;
 use cln_rpc::primitives::{PublicKey, ShortChannelId};
 use num_format::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::Tabled;
+use tabled::{settings::Style, Table, Tabled};
 
 pub const PLUGIN_NAME: &str = "summars";
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
@@ -28,6 +30,8 @@ pub struct Config {
     pub availability_interval: (String, u64),
     pub availability_window: (String, u64),
     pub utf8: (String, bool),
+    pub style: (String, Styles),
+    pub flow_style: (String, Styles),
 }
 impl Config {
     pub fn new() -> Config {
@@ -56,6 +60,8 @@ impl Config {
             availability_interval: (PLUGIN_NAME.to_string() + "-availability-interval", 300),
             availability_window: (PLUGIN_NAME.to_string() + "-availability-window", 72),
             utf8: (PLUGIN_NAME.to_string() + "-utf8", true),
+            style: (PLUGIN_NAME.to_string() + "-style", Styles::Modern),
+            flow_style: (PLUGIN_NAME.to_string() + "-flow-style", Styles::Blank),
         }
     }
 }
@@ -169,4 +175,58 @@ pub struct Invoices {
     pub paid_at_str: String,
     pub label: String,
     pub sats_received: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Styles {
+    Ascii,
+    Modern,
+    Sharp,
+    Rounded,
+    Extended,
+    Psql,
+    Markdown,
+    ReStructuredText,
+    Dots,
+    AsciiRounded,
+    Blank,
+    Empty,
+}
+impl Styles {
+    pub fn apply<'a>(&'a self, table: &'a mut Table) -> &mut Table {
+        match self {
+            Styles::Ascii => table.with(Style::ascii()),
+            Styles::Modern => table.with(Style::modern()),
+            Styles::Sharp => table.with(Style::sharp()),
+            Styles::Rounded => table.with(Style::rounded()),
+            Styles::Extended => table.with(Style::extended()),
+            Styles::Psql => table.with(Style::psql()),
+            Styles::Markdown => table.with(Style::markdown()),
+            Styles::ReStructuredText => table.with(Style::re_structured_text()),
+            Styles::Dots => table.with(Style::dots()),
+            Styles::AsciiRounded => table.with(Style::ascii_rounded()),
+            Styles::Blank => table.with(Style::blank()),
+            Styles::Empty => table.with(Style::empty()),
+        }
+    }
+}
+impl FromStr for Styles {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "ascii" => Ok(Styles::Ascii),
+            "modern" => Ok(Styles::Modern),
+            "sharp" => Ok(Styles::Sharp),
+            "rounded" => Ok(Styles::Rounded),
+            "extended" => Ok(Styles::Extended),
+            "psql" => Ok(Styles::Psql),
+            "markdown" => Ok(Styles::Markdown),
+            "re_structured_text" => Ok(Styles::ReStructuredText),
+            "dots" => Ok(Styles::Dots),
+            "ascii_rounded" => Ok(Styles::AsciiRounded),
+            "blank" => Ok(Styles::Blank),
+            "empty" => Ok(Styles::Empty),
+            _ => Err(anyhow!("could not parse Style from {}", s)),
+        }
+    }
 }
