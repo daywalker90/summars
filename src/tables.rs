@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Style, Width};
+use tabled::settings::{Alignment, Disable, Format, Modify, Width};
 
 use num_format::ToFormattedString;
 
@@ -371,7 +371,7 @@ async fn recent_forwards(
     );
     table.sort_by_key(|x| x.received);
     let mut fwtable = Table::new(table);
-    fwtable.with(Style::blank());
+    config.flow_style.1.apply(&mut fwtable);
     fwtable.with(
         Modify::new(ByColumnName::new("in_channel"))
             .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
@@ -442,7 +442,7 @@ async fn recent_pays(
     );
     table.sort_by_key(|x| x.completed_at);
     let mut paystable = Table::new(table);
-    paystable.with(Style::blank());
+    config.flow_style.1.apply(&mut paystable);
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
     Ok(paystable.to_string())
 }
@@ -531,7 +531,7 @@ async fn recent_invoices(
     );
     table.sort_by_key(|x| x.paid_at);
     let mut invoicestable = Table::new(table);
-    invoicestable.with(Style::blank());
+    config.flow_style.1.apply(&mut invoicestable);
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
 
     if filter_count > 0 {
@@ -655,7 +655,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 }
 
 fn format_summary(config: &Config, sumtable: &mut Table) {
-    sumtable.with(Style::modern());
+    config.style.1.apply(sumtable);
     for head in Summary::get_field_names() {
         if !config.columns.1.contains(&head.to_string()) {
             sumtable.with(Disable::column(ByColumnName::new(head)));

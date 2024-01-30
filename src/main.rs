@@ -144,6 +144,22 @@ async fn main() -> Result<(), anyhow::Error> {
                 defaultconfig.utf8.1
             ),
         ))
+        .option(options::ConfigOption::new(
+            &defaultconfig.style.0,
+            options::Value::OptString,
+            &format!(
+                "Set style for the summary table. Default is {:#?}",
+                defaultconfig.style.1
+            ),
+        ))
+        .option(options::ConfigOption::new(
+            &defaultconfig.flow_style.0,
+            options::Value::OptString,
+            &format!(
+                "Set style for the flow tables (forwards, pays, invoices). Default is {:#?}",
+                defaultconfig.flow_style.1
+            ),
+        ))
         .rpcmethod(
             PLUGIN_NAME,
             "Show summary of channels and optionally recent forwards",

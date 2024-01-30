@@ -134,6 +134,8 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-availability-interval`` How often the availability should be calculated. Default is ``300`` seconds
 * ``summars-availability-window`` How many hours the availability should be averaged over. Default is ``72`` hours
 * ``summars-utf8`` Switch on/off special characters in node aliases. Off replaces special characters with a ``?``. Default is ``true`` (on)
+* ``summars-style`` Set the table style for the summary table. Valid values are: ``ascii, modern, sharp, rounded, extended, psql, markdown, re_structured_text, dots, ascii_rounded, blank, empty``. You can see previews here: [tabled-styles](https://github.com/zhiburt/tabled/?tab=readme-ov-file#styles). Default is ``modern``
+* ``summars-flow-style`` Same as ``summars-style`` but for the "flow" tables (forwards/pays/invoices). Default is ``blank``
 
 ### Availability Database
 The availability is persistent through plugin restarts.

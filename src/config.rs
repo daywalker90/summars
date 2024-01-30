@@ -7,7 +7,7 @@ use std::str::FromStr;
 use tokio::fs;
 
 use crate::{
-    structs::{Config, Summary},
+    structs::{Config, Styles, Summary},
     PluginState,
 };
 use num_format::Locale;
@@ -255,6 +255,18 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                         ))
                     }
                 },
+                name if name.eq(&config.style.0) => match value {
+                    serde_json::Value::String(s) => {
+                        config.style.1 = Styles::from_str(s)?;
+                    }
+                    _ => return Err(anyhow!("Not a valid string for: {}", config.style.0)),
+                },
+                name if name.eq(&config.flow_style.0) => match value {
+                    serde_json::Value::String(s) => {
+                        config.flow_style.1 = Styles::from_str(s)?;
+                    }
+                    _ => return Err(anyhow!("Not a valid string for: {}", config.flow_style.0)),
+                },
                 other => return Err(anyhow!("option not found:{:?}", other)),
             };
         }
@@ -375,6 +387,10 @@ pub async fn read_config(
                             ))
                         }
                     },
+                    opt if opt.eq(&config.style.0) => config.style.1 = Styles::from_str(value)?,
+                    opt if opt.eq(&config.flow_style.0) => {
+                        config.flow_style.1 = Styles::from_str(value)?
+                    }
                     _ => (),
                 }
             }
@@ -468,6 +484,16 @@ pub fn get_startup_options(
             Some(options::Value::Boolean(b)) => b,
             Some(_) => config.utf8.1,
             None => config.utf8.1,
+        };
+        config.style.1 = match plugin.option(&config.style.0) {
+            Some(options::Value::String(s)) => Styles::from_str(&s)?,
+            Some(_) => config.style.1.clone(),
+            None => config.style.1.clone(),
+        };
+        config.flow_style.1 = match plugin.option(&config.flow_style.0) {
+            Some(options::Value::String(s)) => Styles::from_str(&s)?,
+            Some(_) => config.flow_style.1.clone(),
+            None => config.flow_style.1.clone(),
         };
     }
     Ok(())
