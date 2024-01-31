@@ -36,10 +36,11 @@ pub struct Config {
 impl Config {
     pub fn new() -> Config {
         Config {
-            columns: (
-                PLUGIN_NAME.to_string() + "-columns",
-                Summary::get_field_names(),
-            ),
+            columns: (PLUGIN_NAME.to_string() + "-columns", {
+                let mut cols = Summary::get_field_names();
+                cols.retain(|c| c != &"GRAPH_SATS".to_string());
+                cols
+            }),
             sort_by: (PLUGIN_NAME.to_string() + "-sort-by", "SCID".to_string()),
             forwards: (PLUGIN_NAME.to_string() + "-forwards", 0),
             forwards_filter_amt_msat: (
@@ -97,6 +98,7 @@ pub struct PeerAvailability {
 #[field_names_as_array(rename_all = "SCREAMING_SNAKE_CASE")]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
+    pub graph_sats: String,
     pub out_sats: u64,
     pub in_sats: u64,
     #[tabled(skip)]
