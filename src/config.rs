@@ -167,8 +167,9 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                     }
                     _ => {
                         return Err(anyhow!(
-                            "{} needs to be bool (true or false).",
-                            config.columns.0
+                            "Not a string. {} must be a comma separated string of: {}",
+                            config.columns.0,
+                            Summary::field_names_to_string()
                         ))
                     }
                 },
