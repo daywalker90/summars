@@ -40,7 +40,7 @@ There are currently two commands:
 * ``summars-refreshalias`` to manually refresh the alias cache
 
 ```
-lightning-cli summars summars-forwards=168 summars-pays=168 summars-invoices=168
+lightning-cli summars summars-style=modern summars-forwards=168 summars-pays=168 summars-invoices=168
 address=03b2687cb99a272ab73796071ef5c545c33087f0ae39ec3bf4fb91551ac959c453@127.0.0.1:7272
 num_utxos=4
 utxo_amount=1.95473201 BTC
