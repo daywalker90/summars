@@ -61,7 +61,7 @@ impl Config {
             availability_interval: (PLUGIN_NAME.to_string() + "-availability-interval", 300),
             availability_window: (PLUGIN_NAME.to_string() + "-availability-window", 72),
             utf8: (PLUGIN_NAME.to_string() + "-utf8", true),
-            style: (PLUGIN_NAME.to_string() + "-style", Styles::Modern),
+            style: (PLUGIN_NAME.to_string() + "-style", Styles::Psql),
             flow_style: (PLUGIN_NAME.to_string() + "-flow-style", Styles::Blank),
         }
     }
