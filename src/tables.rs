@@ -34,7 +34,7 @@ use crate::structs::{
     Config, Forwards, Invoices, PagingIndex, Pays, PluginState, Summary, NODE_GOSSIP_MISS,
     NO_ALIAS_SET,
 };
-use crate::util::{is_active_state, make_channel_flags, make_rpc_path};
+use crate::util::{draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path};
 
 pub async fn summary(
     p: Plugin<PluginState>,
@@ -79,6 +79,23 @@ pub async fn summary(
             utxo_amt += Amount::msat(&utxo.amount_msat)
         }
     }
+
+    let max_chan_sides: Vec<u64> = peer_channels
+        .iter()
+        .flat_map(|channel| {
+            vec![
+                Amount::msat(&channel.to_us_msat.unwrap_or(Amount::from_msat(0))),
+                Amount::msat(&channel.total_msat.unwrap_or(Amount::from_msat(0))).saturating_sub(
+                    Amount::msat(&channel.to_us_msat.unwrap_or(Amount::from_msat(0))),
+                ),
+            ]
+        })
+        .collect();
+    let graph_max_chan_side_msat = max_chan_sides
+        .iter()
+        .copied()
+        .max()
+        .unwrap_or(u64::default());
 
     let mut channel_count = 0;
     let mut num_connected = 0;
@@ -129,7 +146,15 @@ pub async fn summary(
             Some(a) => a.avail,
             None => -1.0,
         };
-        let summary = chan_to_summary(&config, chan, alias, avail, to_us_msat, total_msat)?;
+        let summary = chan_to_summary(
+            &config,
+            chan,
+            alias,
+            avail,
+            to_us_msat,
+            total_msat,
+            graph_max_chan_side_msat,
+        )?;
         table.push(summary);
 
         if is_active_state(chan) {
@@ -576,6 +601,7 @@ fn chan_to_summary(
     avail: f64,
     to_us_msat: u64,
     total_msat: u64,
+    graph_max_chan_side_msat: u64,
 ) -> Result<Summary, Error> {
     let statestr = match chan.state.unwrap() {
         ListpeerchannelsChannelsState::OPENINGD => "OPENING",
@@ -601,6 +627,7 @@ fn chan_to_summary(
     };
 
     Ok(Summary {
+        graph_sats: draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat),
         out_sats: to_us_msat / 1_000,
         in_sats: (total_msat - to_us_msat) / 1_000,
         scid_raw: scid,

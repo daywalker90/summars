@@ -9,7 +9,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 * [Availability Database](#availability-database)
 * [Thanks](#thanks)
 
-### Installation
+## Installation
 For general plugin installation instructions see the plugins repo [README.md](https://github.com/lightningd/plugins/blob/master/README.md#Installation)
 
 Release binaries for
@@ -21,7 +21,7 @@ can be found on the [release](https://github.com/daywalker90/summars/releases) p
 
 They require ``glibc>=2.31``, which you can check with ``ldd --version``.
 
-### Building
+## Building
 You can build the plugin yourself instead of using the release binaries.
 First clone the repo:
 
@@ -33,14 +33,14 @@ Install a recent rust version ([rustup](https://rustup.rs/) is recommended) and 
 
 After that the binary will be here: ``target/release/summars``
 
-### Example Usage
+## Example Usage
 
 There are currently two commands:
 * ``summars`` the main command
 * ``summars-refreshalias`` to manually refresh the alias cache
 
 ```
-lightning-cli summars
+lightning-cli summars summars-forwards=168 summars-pays=168 summars-invoices=168
 address=03b2687cb99a272ab73796071ef5c545c33087f0ae39ec3bf4fb91551ac959c453@127.0.0.1:7272
 num_utxos=4
 utxo_amount=1.95473201 BTC
@@ -97,7 +97,31 @@ channels_flags=P:private O:offline
  2023-01-20 13:24:18   label7               10
 ```
 
-### How to set options
+
+```
+lightning-cli summars summars-columns=GRAPH_SATS,SCID summars-style=empty summars-sort-by=IN_SATS
+address=03da2efc78ba5420088e636e542e3b484d3e514e2fca7672c0450215f7a9f2fd3e@89.58.53.211:9435
+num_utxos=9
+utxo_amount=0.10786713 BTC
+num_channels=50
+num_connected=39
+num_gossipers=3
+avail_out=0.39643534 BTC
+avail_in=0.76310729 BTC
+fees_collected=0.00002650 BTC
+channels_flags=P:private O:offline
+                   GRAPH_SATS                         SCID
+                        ╟┤                        2471860x21x0
+                    ├───┼───┤                     2532712x19x0
+                        ╟─────┤                   2543282x66x1
+           ├────────────┼───────────┤             2530335x6x0
+             ├──────────┼─────────────┤           2530331x11x0
+                  ├─────┼──────────────────┤      2530339x5x0
+                        ╟────────────────────┤    2539317x16x0
+                      ├─┼──────────────────────┤  2505706x9x0
+```
+
+## How to set options
 ``summars`` is a dynamic plugin, so you can start it after cln is already running. You have three different methods of setting the options:
 
 1. running the summars command. 
@@ -118,8 +142,8 @@ channels_flags=P:private O:offline
 
 You can mix theses methods but if you set the same option with multiple of these three methods the priority is 1. -> 2. -> 3.
 
-### Options
-* ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Default are all columns: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
+## Options
+* ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Default is ``SCID``
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
@@ -137,7 +161,7 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-style`` Set the table style for the summary table. Valid values are: ``ascii, modern, sharp, rounded, extended, psql, markdown, re_structured_text, dots, ascii_rounded, blank, empty``. You can see previews here: [tabled-styles](https://github.com/zhiburt/tabled/?tab=readme-ov-file#styles). Default is ``modern``
 * ``summars-flow-style`` Same as ``summars-style`` but for the "flow" tables (forwards/pays/invoices). Default is ``blank``
 
-### Availability Database
+## Availability Database
 The availability is persistent through plugin restarts.
 The db is located in your lightning folder in the summars folder (e.g. ``.lightning/bitcoin/summars/availdb.json``).
 If you want to reset these stats stop the plugin and then remove the file.
