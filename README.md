@@ -148,7 +148,7 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
-* ``summars-forward-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
+* ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
