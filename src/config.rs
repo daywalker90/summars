@@ -204,12 +204,12 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                     config.forwards_filter_fee_msat.1 =
                         value_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
                 }
-                name if name.eq(&config.forward_alias.0) => match value {
-                    serde_json::Value::Bool(b) => config.forward_alias.1 = *b,
+                name if name.eq(&config.forwards_alias.0) => match value {
+                    serde_json::Value::Bool(b) => config.forwards_alias.1 = *b,
                     _ => {
                         return Err(anyhow!(
                             "{} needs to be bool (true or false).",
-                            config.forward_alias.0
+                            config.forwards_alias.0
                         ))
                     }
                 },
@@ -325,13 +325,13 @@ pub async fn read_config(
                         config.forwards_filter_fee_msat.1 =
                             str_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
                     }
-                    opt if opt.eq(&config.forward_alias.0) => match value.parse::<bool>() {
-                        Ok(b) => config.forward_alias.1 = b,
+                    opt if opt.eq(&config.forwards_alias.0) => match value.parse::<bool>() {
+                        Ok(b) => config.forwards_alias.1 = b,
                         Err(e) => {
                             return Err(anyhow!(
                                 "Could not parse bool from `{}` for {}: {}",
                                 value,
-                                config.forward_alias.0,
+                                config.forwards_alias.0,
                                 e
                             ))
                         }
@@ -436,10 +436,10 @@ pub fn get_startup_options(
             plugin.option(&config.forwards_filter_fee_msat.0),
             -1,
         )?;
-        config.forward_alias.1 = match plugin.option(&config.forward_alias.0) {
+        config.forwards_alias.1 = match plugin.option(&config.forwards_alias.0) {
             Some(options::Value::Boolean(b)) => b,
-            Some(_) => config.forward_alias.1,
-            None => config.forward_alias.1,
+            Some(_) => config.forwards_alias.1,
+            None => config.forwards_alias.1,
         };
         config.pays.1 = options_value_to_u64(&config.pays, plugin.option(&config.pays.0), 0, true)?;
         config.invoices.1 =
