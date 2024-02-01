@@ -65,11 +65,11 @@ async fn main() -> Result<(), anyhow::Error> {
             ),
         ))
         .option(options::ConfigOption::new(
-            &defaultconfig.forward_alias.0,
+            &defaultconfig.forwards_alias.0,
             options::Value::OptBoolean,
             &format!(
                 "Show peer alias for forward channels instead of scid's. Default is {}",
-                defaultconfig.forward_alias.1
+                defaultconfig.forwards_alias.1
             ),
         ))
         .option(options::ConfigOption::new(

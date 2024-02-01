@@ -20,7 +20,7 @@ pub struct Config {
     pub forwards: (String, u64),
     pub forwards_filter_amt_msat: (String, i64),
     pub forwards_filter_fee_msat: (String, i64),
-    pub forward_alias: (String, bool),
+    pub forwards_alias: (String, bool),
     pub pays: (String, u64),
     pub invoices: (String, u64),
     pub invoices_filter_amt_msat: (String, i64),
@@ -48,7 +48,7 @@ impl Config {
                 -1,
             ),
             forwards_filter_fee_msat: (PLUGIN_NAME.to_string() + "-forwards-filter-fee-msat", -1),
-            forward_alias: (PLUGIN_NAME.to_string() + "-forward-alias", true),
+            forwards_alias: (PLUGIN_NAME.to_string() + "-forwards-alias", true),
             pays: (PLUGIN_NAME.to_string() + "-pays", 0),
             invoices: (PLUGIN_NAME.to_string() + "-invoices", 0),
             invoices_filter_amt_msat: (

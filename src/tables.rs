@@ -309,7 +309,7 @@ async fn recent_forwards(
             let d = UNIX_EPOCH + Duration::from_millis((forward.received_time * 1000.0) as u64);
             let datetime = DateTime::<Local>::from(d);
             let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-            let inchan = if config.forward_alias.1 {
+            let inchan = if config.forwards_alias.1 {
                 match chanmap.get(&forward.in_channel) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
@@ -327,7 +327,7 @@ async fn recent_forwards(
                 forward.in_channel.to_string()
             };
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = if config.forward_alias.1 {
+            let outchan = if config.forwards_alias.1 {
                 match chanmap.get(&fw_outchan) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
