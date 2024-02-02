@@ -5,18 +5,16 @@ from pyln.testing.utils import sync_blockheight
 from pyln.client import RpcError
 import os
 import pytest
-from util import PLUGIN_PATH
+from util import get_plugin
 
 columns = ["GRAPH_SATS", "OUT_SATS", "IN_SATS", "SCID", "MAX_HTLC", "FLAG",
            "BASE", "PPM", "ALIAS", "PEER_ID", "UPTIME", "HTLCS", "STATE"]
 
 
-def test_basic(node_factory):
+def test_basic(node_factory, get_plugin):
     node = node_factory.get_node(
         options={
-            'plugin': os.path.join(
-                os.getcwd(), PLUGIN_PATH
-            )
+            'plugin': get_plugin
         }
     )
     result = node.rpc.call("summars")
@@ -67,12 +65,10 @@ def test_basic(node_factory):
     assert "invoices" in result["result"]
 
 
-def test_options(node_factory):
+def test_options(node_factory, get_plugin):
     node = node_factory.get_node(
         options={
-            'plugin': os.path.join(
-                os.getcwd(), PLUGIN_PATH
-            )
+            'plugin': get_plugin
         }
     )
 
@@ -169,12 +165,10 @@ def test_options(node_factory):
     assert "result" in result
 
 
-def test_option_errors(node_factory):
+def test_option_errors(node_factory, get_plugin):
     node = node_factory.get_node(
         options={
-            'plugin': os.path.join(
-                os.getcwd(), PLUGIN_PATH
-            )
+            'plugin': get_plugin
         }
     )
     with pytest.raises(RpcError, match="Not a string"):
@@ -326,11 +320,11 @@ def test_option_errors(node_factory):
         )
 
 
-def test_chanstates(node_factory, bitcoind):
+def test_chanstates(node_factory, bitcoind, get_plugin):
     l1, l2, l3 = node_factory.get_nodes(3,
                                         opts={
-                                            'plugin': os.path.join(
-                                                os.getcwd(), PLUGIN_PATH)}
+                                            'plugin': get_plugin
+                                        }
                                         )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
@@ -364,11 +358,11 @@ def test_chanstates(node_factory, bitcoind):
     assert "OK" in result["result"]
 
 
-def test_flowtables(node_factory, bitcoind):
+def test_flowtables(node_factory, bitcoind, get_plugin):
     l1, l2, l3 = node_factory.get_nodes(3,
                                         opts={
-                                            'plugin': os.path.join(
-                                                os.getcwd(), PLUGIN_PATH)}
+                                            'plugin': get_plugin
+                                        }
                                         )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
