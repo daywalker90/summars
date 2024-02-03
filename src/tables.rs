@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Error};
-use chrono::prelude::DateTime;
-use chrono::{Local, Utc};
+use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::primitives::ShortChannelId;
 use cln_rpc::{
@@ -16,11 +15,8 @@ use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Width};
 
-use num_format::ToFormattedString;
-
 use serde_json::json;
 use std::path::PathBuf;
-use std::time::{Duration, UNIX_EPOCH};
 
 use tabled::Table;
 use tokio::time::Instant;
@@ -34,7 +30,10 @@ use crate::structs::{
     Config, Forwards, Invoices, PagingIndex, Pays, PluginState, Summary, NODE_GOSSIP_MISS,
     NO_ALIAS_SET,
 };
-use crate::util::{draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path};
+use crate::util::{
+    draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path,
+    timestamp_to_localized_datetime_string, u64_to_btc_string, u64_to_sat_string,
+};
 
 pub async fn summary(
     p: Plugin<PluginState>,
@@ -231,24 +230,24 @@ pub async fn summary(
     Ok(json!({"format-hint":"simple","result":format!(
         "address={}
 num_utxos={}
-utxo_amount={:.8} BTC
+utxo_amount={} BTC
 num_channels={}
 num_connected={}
 num_gossipers={}
-avail_out={:.8} BTC
-avail_in={:.8} BTC
-fees_collected={:.8} BTC
+avail_out={} BTC
+avail_in={} BTC
+fees_collected={} BTC
 channels_flags=P:private O:offline
 {}",
         addr_str,
         funds.outputs.len(),
-        utxo_amt as f64 / 100_000_000_000.0,
+        u64_to_btc_string(&config, utxo_amt)?,
         channel_count,
         num_connected,
         num_gossipers,
-        avail_out as f64 / 100_000_000_000.0,
-        avail_in as f64 / 100_000_000_000.0,
-        Amount::msat(&getinfo.fees_collected_msat) as f64 / 100_000_000_000.0,
+        u64_to_btc_string(&config, avail_out)?,
+        u64_to_btc_string(&config, avail_in)?,
+        u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?,
         result,
     )}))
 }
@@ -306,9 +305,6 @@ async fn recent_forwards(
     };
     for forward in forwards {
         if forward.received_time as u64 > now_utc - config.forwards.1 * 60 * 60 {
-            let d = UNIX_EPOCH + Duration::from_millis((forward.received_time * 1000.0) as u64);
-            let datetime = DateTime::<Local>::from(d);
-            let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
             let inchan = if config.forwards_alias.1 {
                 match chanmap.get(&forward.in_channel) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
@@ -360,7 +356,10 @@ async fn recent_forwards(
             } else {
                 table.push(Forwards {
                     received: (forward.received_time * 1000.0) as u64,
-                    received_str: timestamp_str,
+                    received_str: timestamp_to_localized_datetime_string(
+                        config,
+                        forward.received_time as u64,
+                    )?,
                     in_channel: if config.utf8.1 {
                         inchan
                     } else {
@@ -371,12 +370,12 @@ async fn recent_forwards(
                     } else {
                         outchan.replace(|c: char| !c.is_ascii(), "?")
                     },
-                    in_sats: (Amount::msat(&forward.in_msat) / 1000)
-                        .to_formatted_string(&config.locale.1),
-                    out_sats: (Amount::msat(&forward.out_msat.unwrap()) / 1000)
-                        .to_formatted_string(&config.locale.1),
-                    fee_msats: Amount::msat(&forward.fee_msat.unwrap())
-                        .to_formatted_string(&config.locale.1),
+                    in_sats: u64_to_sat_string(config, Amount::msat(&forward.in_msat) / 1000)?,
+                    out_sats: u64_to_sat_string(
+                        config,
+                        Amount::msat(&forward.out_msat.unwrap()) / 1000,
+                    )?,
+                    fee_msats: u64_to_sat_string(config, Amount::msat(&forward.fee_msat.unwrap()))?,
                 })
             }
 
@@ -441,16 +440,18 @@ async fn recent_pays(
         if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.1 * 60 * 60
             && pay.destination.unwrap() != mypubkey
         {
-            let d = UNIX_EPOCH + Duration::from_secs(pay.completed_at.unwrap());
-            let datetime = DateTime::<Local>::from(d);
-            let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
             let destination = get_alias(rpc_path, plugin.clone(), pay.destination.unwrap()).await?;
             table.push(Pays {
                 completed_at: pay.completed_at.unwrap(),
-                completed_at_str: timestamp_str,
+                completed_at_str: timestamp_to_localized_datetime_string(
+                    config,
+                    pay.completed_at.unwrap(),
+                )?,
                 payment_hash: pay.payment_hash.to_string(),
-                sats_sent: (Amount::msat(&pay.amount_sent_msat.unwrap()) / 1_000)
-                    .to_formatted_string(&config.locale.1),
+                sats_sent: u64_to_sat_string(
+                    config,
+                    Amount::msat(&pay.amount_sent_msat.unwrap()) / 1_000,
+                )?,
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else if config.utf8.1 {
@@ -520,10 +521,6 @@ async fn recent_invoices(
                 continue;
             };
             if inv_paid_at > now_utc - config.invoices.1 * 60 * 60 {
-                let d = UNIX_EPOCH + Duration::from_secs(invoice.paid_at.unwrap());
-                let datetime = DateTime::<Local>::from(d);
-                let timestamp_str = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-
                 if invoice.amount_received_msat.unwrap().msat() as i64
                     <= config.invoices_filter_amt_msat.1
                 {
@@ -532,11 +529,15 @@ async fn recent_invoices(
                 } else {
                     table.push(Invoices {
                         paid_at: invoice.paid_at.unwrap(),
-                        paid_at_str: timestamp_str,
+                        paid_at_str: timestamp_to_localized_datetime_string(
+                            config,
+                            invoice.paid_at.unwrap(),
+                        )?,
                         label: invoice.label,
-                        sats_received: (Amount::msat(&invoice.amount_received_msat.unwrap())
-                            / 1_000)
-                            .to_formatted_string(&config.locale.1),
+                        sats_received: u64_to_sat_string(
+                            config,
+                            Amount::msat(&invoice.amount_received_msat.unwrap()) / 1_000,
+                        )?,
                     });
                 }
                 if let Some(c_index) = invoice.created_index {
@@ -714,37 +715,27 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
     );
     sumtable.with(
         Modify::new(ByColumnName::new("OUT_SATS").not(Rows::first())).with(Format::content(|s| {
-            s.parse::<u64>()
-                .unwrap()
-                .to_formatted_string(&config.locale.1)
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("IN_SATS").not(Rows::first())).with(Format::content(|s| {
-            s.parse::<u64>()
-                .unwrap()
-                .to_formatted_string(&config.locale.1)
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("MAX_HTLC").not(Rows::first())).with(Format::content(|s| {
-            s.parse::<u64>()
-                .unwrap()
-                .to_formatted_string(&config.locale.1)
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("BASE").not(Rows::first())).with(Format::content(|s| {
-            s.parse::<u64>()
-                .unwrap()
-                .to_formatted_string(&config.locale.1)
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("PPM").not(Rows::first())).with(Format::content(|s| {
-            s.parse::<u32>()
-                .unwrap()
-                .to_formatted_string(&config.locale.1)
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
 

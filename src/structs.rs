@@ -3,10 +3,11 @@ use std::{collections::BTreeMap, str::FromStr, sync::Arc};
 use anyhow::anyhow;
 use cln_plugin::Error;
 use cln_rpc::primitives::{PublicKey, ShortChannelId};
-use num_format::Locale;
+use icu_locid::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use struct_field_names_as_array::FieldNamesAsArray;
+use sys_locale::get_locale;
 use tabled::{settings::Style, Table, Tabled};
 
 pub const PLUGIN_NAME: &str = "summars";
@@ -55,7 +56,22 @@ impl Config {
                 PLUGIN_NAME.to_string() + "-invoices-filter-amount-msat",
                 -1,
             ),
-            locale: (PLUGIN_NAME.to_string() + "-locale", Locale::en),
+            locale: (
+                PLUGIN_NAME.to_string() + "-locale",
+                match get_locale() {
+                    Some(l) => {
+                        if l.eq(&'C'.to_string()) {
+                            Locale::from_str("en-US").unwrap()
+                        } else {
+                            match Locale::from_str(&l) {
+                                Ok(sl) => sl,
+                                Err(_) => Locale::from_str("en-US").unwrap(),
+                            }
+                        }
+                    }
+                    None => Locale::from_str("en-US").unwrap(),
+                },
+            ),
             refresh_alias: (PLUGIN_NAME.to_string() + "-refresh-alias", 24),
             max_alias_length: (PLUGIN_NAME.to_string() + "-max-alias-length", 20),
             availability_interval: (PLUGIN_NAME.to_string() + "-availability-interval", 300),
