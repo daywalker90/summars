@@ -1,7 +1,15 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, UNIX_EPOCH},
+};
 
-use cln_plugin::Plugin;
+use anyhow::anyhow;
+use chrono::{Datelike, Local, Timelike};
+use cln_plugin::{Error, Plugin};
 use cln_rpc::model::responses::{ListpeerchannelsChannels, ListpeerchannelsChannelsState};
+use fixed_decimal::{FixedDecimal, FixedInteger};
+use icu_datetime::{options::length, DateTimeFormatter};
+use icu_decimal::FixedDecimalFormatter;
 
 use crate::structs::{Config, PluginState};
 
@@ -110,6 +118,75 @@ pub fn draw_chans_graph(
     }
 
     format!("{}{}{}", left, mid, right)
+}
+
+pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
+    let fixed_decimal_formatter =
+        match FixedDecimalFormatter::try_new(&config.locale.1.clone().into(), Default::default()) {
+            Ok(fmt) => fmt,
+            Err(e) => {
+                return Err(anyhow!(
+                    "Could not create DecimalFormatter: locale invalid? {e}"
+                ))
+            }
+        };
+    let fixed_decimal = FixedDecimal::from(value)
+        .multiplied_pow10(-11)
+        .trunced(-8)
+        .padded_end(-8);
+    Ok(format!(
+        "{}",
+        fixed_decimal_formatter.format(&fixed_decimal)
+    ))
+}
+
+pub fn u64_to_sat_string(config: &Config, value: u64) -> Result<String, Error> {
+    let fixed_decimal_formatter =
+        match FixedDecimalFormatter::try_new(&config.locale.1.clone().into(), Default::default()) {
+            Ok(fmt) => fmt,
+            Err(e) => {
+                return Err(anyhow!(
+                    "Could not create DecimalFormatter: locale invalid? {e}"
+                ))
+            }
+        };
+    let fixed_decimal = FixedInteger::from(value);
+    Ok(format!(
+        "{}",
+        fixed_decimal_formatter.format(&fixed_decimal.into())
+    ))
+}
+
+pub fn timestamp_to_localized_datetime_string(
+    config: &Config,
+    timestamp: u64,
+) -> Result<String, Error> {
+    let d = UNIX_EPOCH + Duration::from_secs(timestamp);
+    let datetime = chrono::DateTime::<Local>::from(d);
+    let datetime_options =
+        length::Bag::from_date_time_style(length::Date::Short, length::Time::Medium);
+    let date_time_formatter = match DateTimeFormatter::try_new(
+        &config.locale.1.clone().into(),
+        datetime_options.into(),
+    ) {
+        Ok(d) => d,
+        Err(e) => return Err(anyhow!("Could not create DateTimeFormatter: {}", e)),
+    };
+    let datetime_iso = match icu_calendar::DateTime::try_new_iso_datetime(
+        datetime.year(),
+        datetime.month() as u8,
+        datetime.day() as u8,
+        datetime.hour() as u8,
+        datetime.minute() as u8,
+        datetime.second() as u8,
+    ) {
+        Ok(diso) => diso,
+        Err(e) => return Err(anyhow!("Could not build ISO datetime: {}", e)),
+    };
+    match date_time_formatter.format_to_string(&datetime_iso.to_any()) {
+        Ok(fstr) => Ok(fstr),
+        Err(e) => Err(anyhow!("Could not format datetime string :{}", e)),
+    }
 }
 
 #[test]

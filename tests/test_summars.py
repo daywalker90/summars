@@ -17,7 +17,7 @@ def test_basic(node_factory, get_plugin):
             'plugin': get_plugin
         }
     )
-    result = node.rpc.call("summars")
+    result = node.rpc.call("summars", {"summars-locale": "en_US"})
     assert result is not None
     assert isinstance(result, dict) is True
     assert "result" in result
@@ -25,6 +25,10 @@ def test_basic(node_factory, get_plugin):
     assert "forwards" not in result["result"]
     assert "pays" not in result["result"]
     assert "invoices" not in result["result"]
+
+    assert "utxo_amount=0.00000000 BTC" in result["result"]
+    assert "avail_out=0.00000000 BTC" in result["result"]
+    assert "avail_in=0.00000000 BTC" in result["result"]
 
     expected_columns = [x for x in columns if x != "GRAPH_SATS"]
     for column in expected_columns:
@@ -63,6 +67,11 @@ def test_basic(node_factory, get_plugin):
 
     result = node.rpc.call("summars", {"summars-invoices": 1})
     assert "invoices" in result["result"]
+
+    result = node.rpc.call("summars", {"summars-locale": "de"})
+    assert "utxo_amount=0,00000000 BTC" in result["result"]
+    assert "avail_out=0,00000000 BTC" in result["result"]
+    assert "avail_in=0,00000000 BTC" in result["result"]
 
 
 def test_options(node_factory, get_plugin):
@@ -237,7 +246,7 @@ def test_option_errors(node_factory, get_plugin):
         )
     with pytest.raises(RpcError, match="Not a valid locale"):
         node.rpc.call("summars", {
-            "summars-locale": "xx"}
+            "summars-locale": "xxxx"}
         )
 
     with pytest.raises(RpcError, match="must be a positive number"):

@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::{options, ConfiguredPlugin};
+use icu_locid::Locale;
 use log::warn;
 use std::path::Path;
 use std::str::FromStr;
@@ -10,7 +11,6 @@ use crate::{
     structs::{Config, Styles, Summary},
     PluginState,
 };
-use num_format::Locale;
 
 fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
     let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
@@ -347,7 +347,7 @@ pub async fn read_config(
                             str_to_i64(&config.invoices_filter_amt_msat.0, value, -1)?
                     }
                     opt if opt.eq(&config.locale.0) => match value.parse::<String>() {
-                        Ok(s) => match Locale::from_name(s) {
+                        Ok(s) => match Locale::from_str(&s) {
                             Ok(l) => config.locale.1 = l,
                             Err(e) => {
                                 return Err(anyhow!("Not a valid locale: {}", e));
@@ -454,8 +454,8 @@ pub fn get_startup_options(
                 Ok(l) => l,
                 Err(e) => return Err(anyhow!("`{}` is not a valid locale: {}", s, e)),
             },
-            Some(_) => config.locale.1,
-            None => config.locale.1,
+            Some(_) => config.locale.1.clone(),
+            None => config.locale.1.clone(),
         };
         config.refresh_alias.1 = options_value_to_u64(
             &config.refresh_alias,
