@@ -8,7 +8,7 @@ import requests
 import tarfile
 import platform
 
-VERSION = "v2.1.0"
+VERSION = "v3.0.0"
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
 COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / \
     "summars"
