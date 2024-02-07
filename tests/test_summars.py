@@ -3,7 +3,6 @@
 from pyln.testing.fixtures import *
 from pyln.testing.utils import sync_blockheight
 from pyln.client import RpcError
-import os
 import pytest
 from util import get_plugin
 
