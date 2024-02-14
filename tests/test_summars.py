@@ -346,7 +346,7 @@ def test_chanstates(node_factory, bitcoind, get_plugin):
     assert l3.info['id'] in result["result"]
     assert "AWAIT_LOCK" in result["result"]
 
-    bitcoind.generate_block(1)
+    bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
 
     cl1 = l2.rpc.listpeerchannels(l1.info['id'])[
@@ -380,7 +380,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):
     l1.rpc.fundchannel(l2.info['id'],  1_000_000, mindepth=1)
     l2.rpc.fundchannel(l3.info['id'],  1_000_000, mindepth=1)
 
-    bitcoind.generate_block(1)
+    bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
 
     cl1 = l2.rpc.listpeerchannels(l1.info['id'])[
