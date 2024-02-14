@@ -10,55 +10,84 @@ use struct_field_names_as_array::FieldNamesAsArray;
 use sys_locale::get_locale;
 use tabled::{settings::Style, Table, Tabled};
 
-pub const PLUGIN_NAME: &str = "summars";
+use crate::{
+    OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_FLOW_STYLE, OPT_FORWARDS,
+    OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES,
+    OPT_INVOICES_FILTER_AMT, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS,
+    OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+};
+
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub columns: (String, Vec<String>),
-    pub sort_by: (String, String),
-    pub forwards: (String, u64),
-    pub forwards_filter_amt_msat: (String, i64),
-    pub forwards_filter_fee_msat: (String, i64),
-    pub forwards_alias: (String, bool),
-    pub pays: (String, u64),
-    pub invoices: (String, u64),
-    pub invoices_filter_amt_msat: (String, i64),
-    pub locale: (String, Locale),
-    pub refresh_alias: (String, u64),
-    pub max_alias_length: (String, u64),
-    pub availability_interval: (String, u64),
-    pub availability_window: (String, u64),
-    pub utf8: (String, bool),
-    pub style: (String, Styles),
-    pub flow_style: (String, Styles),
+    pub columns: DynamicConfigOption<Vec<String>>,
+    pub sort_by: DynamicConfigOption<String>,
+    pub forwards: DynamicConfigOption<u64>,
+    pub forwards_filter_amt_msat: DynamicConfigOption<i64>,
+    pub forwards_filter_fee_msat: DynamicConfigOption<i64>,
+    pub forwards_alias: DynamicConfigOption<bool>,
+    pub pays: DynamicConfigOption<u64>,
+    pub invoices: DynamicConfigOption<u64>,
+    pub invoices_filter_amt_msat: DynamicConfigOption<i64>,
+    pub locale: DynamicConfigOption<Locale>,
+    pub refresh_alias: DynamicConfigOption<u64>,
+    pub max_alias_length: DynamicConfigOption<u64>,
+    pub availability_interval: DynamicConfigOption<u64>,
+    pub availability_window: DynamicConfigOption<u64>,
+    pub utf8: DynamicConfigOption<bool>,
+    pub style: DynamicConfigOption<Styles>,
+    pub flow_style: DynamicConfigOption<Styles>,
 }
 impl Config {
     pub fn new() -> Config {
         Config {
-            columns: (PLUGIN_NAME.to_string() + "-columns", {
-                let mut cols = Summary::get_field_names();
-                cols.retain(|c| c != &"GRAPH_SATS".to_string());
-                cols
-            }),
-            sort_by: (PLUGIN_NAME.to_string() + "-sort-by", "SCID".to_string()),
-            forwards: (PLUGIN_NAME.to_string() + "-forwards", 0),
-            forwards_filter_amt_msat: (
-                PLUGIN_NAME.to_string() + "-forwards-filter-amount-msat",
-                -1,
-            ),
-            forwards_filter_fee_msat: (PLUGIN_NAME.to_string() + "-forwards-filter-fee-msat", -1),
-            forwards_alias: (PLUGIN_NAME.to_string() + "-forwards-alias", true),
-            pays: (PLUGIN_NAME.to_string() + "-pays", 0),
-            invoices: (PLUGIN_NAME.to_string() + "-invoices", 0),
-            invoices_filter_amt_msat: (
-                PLUGIN_NAME.to_string() + "-invoices-filter-amount-msat",
-                -1,
-            ),
-            locale: (
-                PLUGIN_NAME.to_string() + "-locale",
-                match get_locale() {
+            columns: DynamicConfigOption {
+                name: OPT_COLUMNS.name,
+                value: {
+                    Summary::FIELD_NAMES_AS_ARRAY
+                        .into_iter()
+                        .filter(|t| t != &"GRAPH_SATS")
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                },
+            },
+            sort_by: DynamicConfigOption {
+                name: OPT_SORT_BY.name,
+                value: "SCID".to_string(),
+            },
+            forwards: DynamicConfigOption {
+                name: OPT_FORWARDS.name,
+                value: 0,
+            },
+            forwards_filter_amt_msat: DynamicConfigOption {
+                name: OPT_FORWARDS_FILTER_AMT.name,
+                value: -1,
+            },
+            forwards_filter_fee_msat: DynamicConfigOption {
+                name: OPT_FORWARDS_FILTER_FEE.name,
+                value: -1,
+            },
+            forwards_alias: DynamicConfigOption {
+                name: OPT_FORWARDS_ALIAS.name,
+                value: true,
+            },
+            pays: DynamicConfigOption {
+                name: OPT_PAYS.name,
+                value: 0,
+            },
+            invoices: DynamicConfigOption {
+                name: OPT_INVOICES.name,
+                value: 0,
+            },
+            invoices_filter_amt_msat: DynamicConfigOption {
+                name: OPT_INVOICES_FILTER_AMT.name,
+                value: -1,
+            },
+            locale: DynamicConfigOption {
+                name: OPT_LOCALE.name,
+                value: match get_locale() {
                     Some(l) => {
                         if l.eq(&'C'.to_string()) {
                             Locale::from_str("en-US").unwrap()
@@ -71,16 +100,43 @@ impl Config {
                     }
                     None => Locale::from_str("en-US").unwrap(),
                 },
-            ),
-            refresh_alias: (PLUGIN_NAME.to_string() + "-refresh-alias", 24),
-            max_alias_length: (PLUGIN_NAME.to_string() + "-max-alias-length", 20),
-            availability_interval: (PLUGIN_NAME.to_string() + "-availability-interval", 300),
-            availability_window: (PLUGIN_NAME.to_string() + "-availability-window", 72),
-            utf8: (PLUGIN_NAME.to_string() + "-utf8", true),
-            style: (PLUGIN_NAME.to_string() + "-style", Styles::Psql),
-            flow_style: (PLUGIN_NAME.to_string() + "-flow-style", Styles::Blank),
+            },
+            refresh_alias: DynamicConfigOption {
+                name: OPT_REFRESH_ALIAS.name,
+                value: 24,
+            },
+            max_alias_length: DynamicConfigOption {
+                name: OPT_MAX_ALIAS_LENGTH.name,
+                value: 20,
+            },
+            availability_interval: DynamicConfigOption {
+                name: OPT_AVAILABILITY_INTERVAL.name,
+                value: 300,
+            },
+            availability_window: DynamicConfigOption {
+                name: OPT_AVAILABILITY_WINDOW.name,
+                value: 72,
+            },
+            utf8: DynamicConfigOption {
+                name: OPT_UTF8.name,
+                value: true,
+            },
+            style: DynamicConfigOption {
+                name: OPT_STYLE.name,
+                value: Styles::Psql,
+            },
+            flow_style: DynamicConfigOption {
+                name: OPT_FLOW_STYLE.name,
+                value: Styles::Blank,
+            },
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct DynamicConfigOption<T> {
+    pub name: &'static str,
+    pub value: T,
 }
 
 #[derive(Clone)]
@@ -138,12 +194,6 @@ impl Summary {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
-    }
-    pub fn get_field_names() -> Vec<String> {
-        Summary::FIELD_NAMES_AS_ARRAY
-            .into_iter()
-            .map(String::from)
-            .collect()
     }
 }
 
