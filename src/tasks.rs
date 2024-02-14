@@ -12,7 +12,7 @@ use tokio::{
 
 use crate::{
     rpc::{list_nodes, list_peer_channels, list_peers},
-    structs::{PeerAvailability, PluginState, NO_ALIAS_SET, PLUGIN_NAME},
+    structs::{PeerAvailability, PluginState, NO_ALIAS_SET},
     util::{is_active_state, make_rpc_path},
 };
 
@@ -51,7 +51,7 @@ pub async fn summars_refreshalias(
 
 pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
-    let summarsdir = Path::new(&plugin.configuration().lightning_dir).join(PLUGIN_NAME);
+    let summarsdir = Path::new(&plugin.configuration().lightning_dir).join("summars");
     let availdbfile = summarsdir.join("availdb.json");
     let availdbfilecontent = fs::read_to_string(availdbfile.clone()).await;
     let mut persistpeers: BTreeMap<PublicKey, PeerAvailability>;
@@ -73,8 +73,8 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     let summary_availability_interval: f64;
     {
         let config = plugin.state().config.lock();
-        summary_availability_window = config.availability_window.1 as f64;
-        summary_availability_interval = config.availability_interval.1 as f64;
+        summary_availability_window = config.availability_window.value as f64;
+        summary_availability_interval = config.availability_interval.value as f64;
     }
 
     let avail_window = 60.0 * 60.0 * summary_availability_window;
