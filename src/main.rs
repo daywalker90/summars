@@ -2,10 +2,13 @@ extern crate serde_json;
 
 use crate::config::{get_startup_options, read_config};
 use anyhow::anyhow;
-use cln_plugin::{options, Builder};
+use cln_plugin::{
+    options::{BooleanConfigOption, ConfigOption, IntegerConfigOption, StringConfigOption},
+    Builder,
+};
 use log::{info, warn};
 use std::time::Duration;
-use structs::{Config, PluginState, PLUGIN_NAME};
+use structs::PluginState;
 use tables::summary;
 
 use tasks::summars_refreshalias;
@@ -17,156 +20,104 @@ mod tables;
 mod tasks;
 mod util;
 
+const OPT_COLUMNS: StringConfigOption = ConfigOption::new_str_no_default(
+    "summars-columns",
+    "Enabled columns in the channel table. Allowed columns are: \
+    `GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE` \
+    Default is `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
+);
+const OPT_SORT_BY: StringConfigOption =
+    ConfigOption::new_str_no_default("summars-sort-by", "Sort by column name. Default is `SCID`");
+const OPT_FORWARDS: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-forwards",
+    "Show last x hours of forwards. Default is `0`",
+);
+const OPT_FORWARDS_FILTER_AMT: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-forwards-filter-amount-msat",
+    "Filter forwards smaller than or equal to x msats. Default is `-1`",
+);
+const OPT_FORWARDS_FILTER_FEE: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-forwards-filter-fee-msat",
+    "Filter forwards with less than or equal to x msats in fees. Default is `-1`",
+);
+const OPT_FORWARDS_ALIAS: BooleanConfigOption = ConfigOption::new_bool_no_default(
+    "summars-forwards-alias",
+    "Show peer alias for forward channels instead of scid's. Default is `true`",
+);
+const OPT_PAYS: IntegerConfigOption =
+    ConfigOption::new_i64_no_default("summars-pays", "Show last x hours of pays. Default is `0`");
+const OPT_INVOICES: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-invoices",
+    "Show last x hours of invoices. Default is `0`",
+);
+const OPT_INVOICES_FILTER_AMT: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-invoices-filter-amount-msat",
+    "Filter invoices smaller than or equal to x msats. Default is `-1`",
+);
+const OPT_LOCALE: StringConfigOption = ConfigOption::new_str_no_default(
+    "summars-locale",
+    "Set locale used for thousand delimiter etc.. Default is the system's \
+        locale and as fallback `en-US` if none is found.",
+);
+const OPT_REFRESH_ALIAS: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-refresh-alias",
+    "Set frequency of alias cache refresh in hours. Default is `24`",
+);
+const OPT_MAX_ALIAS_LENGTH: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-max-alias-length",
+    "Max string length of alias. Default is `20`",
+);
+const OPT_AVAILABILITY_INTERVAL: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-availability-interval",
+    "How often in seconds the availability should be calculated. Default is `300`",
+);
+const OPT_AVAILABILITY_WINDOW: IntegerConfigOption = ConfigOption::new_i64_no_default(
+    "summars-availability-window",
+    "How many hours the availability should be averaged over. Default is `72`",
+);
+const OPT_UTF8: BooleanConfigOption = ConfigOption::new_bool_no_default(
+    "summars-utf8",
+    "Switch on/off special characters in node alias. Default is `true`",
+);
+const OPT_STYLE: StringConfigOption = ConfigOption::new_str_no_default(
+    "summars-style",
+    "Set style for the summary table. Default is `psql`",
+);
+const OPT_FLOW_STYLE: StringConfigOption = ConfigOption::new_str_no_default(
+    "summars-flow-style",
+    "Set style for the flow tables (forwards, pays, invoices). Default is `blank`",
+);
+
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,debug");
     let state = PluginState::new();
-    let defaultconfig = Config::new();
     let confplugin;
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
-        .option(options::ConfigOption::new(
-            &defaultconfig.columns.0,
-            options::Value::OptString,
-            &format!(
-                "Enabled columns in the channel table. Default is {}",
-                defaultconfig.columns.1.join(",")
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.sort_by.0,
-            options::Value::OptString,
-            &format!(
-                "Sort by column name. Default is {}",
-                defaultconfig.sort_by.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.forwards.0,
-            options::Value::OptInteger,
-            &format!(
-                "Show last x hours of forwards. Default is {}",
-                defaultconfig.forwards.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.forwards_filter_amt_msat.0,
-            options::Value::OptInteger,
-            &format!(
-                "Filter forwards smaller than or equal to x msats. Default is {}",
-                defaultconfig.forwards_filter_amt_msat.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.forwards_filter_fee_msat.0,
-            options::Value::OptInteger,
-            &format!(
-                "Filter forwards with less than or equal to x msats in fees. Default is {}",
-                defaultconfig.forwards_filter_fee_msat.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.forwards_alias.0,
-            options::Value::OptBoolean,
-            &format!(
-                "Show peer alias for forward channels instead of scid's. Default is {}",
-                defaultconfig.forwards_alias.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.pays.0,
-            options::Value::OptInteger,
-            &format!(
-                "Show last x hours of pays. Default is {}",
-                defaultconfig.pays.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.invoices.0,
-            options::Value::OptInteger,
-            &format!(
-                "Show last x hours of invoices. Default is {}",
-                defaultconfig.invoices.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.invoices_filter_amt_msat.0,
-            options::Value::OptInteger,
-            &format!(
-                "Filter invoices smaller than or equal to x msats. Default is {}",
-                defaultconfig.invoices_filter_amt_msat.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.locale.0,
-            options::Value::OptString,
-            &format!(
-                "Set locale used for thousand delimiter etc.. Default is {:#?}",
-                defaultconfig.locale.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.refresh_alias.0,
-            options::Value::OptInteger,
-            &format!(
-                "Set frequency of alias cache refresh in hours. Default is {}",
-                defaultconfig.refresh_alias.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.max_alias_length.0,
-            options::Value::OptInteger,
-            &format!(
-                "Max string length of alias. Default is {}",
-                defaultconfig.max_alias_length.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.availability_interval.0,
-            options::Value::OptInteger,
-            &format!(
-                "How often in seconds the availability should be calculated. Default is {}",
-                defaultconfig.availability_interval.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.availability_window.0,
-            options::Value::OptInteger,
-            &format!(
-                "How many hours the availability should be averaged over. Default is {}",
-                defaultconfig.availability_window.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.utf8.0,
-            options::Value::OptBoolean,
-            &format!(
-                "Switch on/off special characters in node alias. Default is {}",
-                defaultconfig.utf8.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.style.0,
-            options::Value::OptString,
-            &format!(
-                "Set style for the summary table. Default is {:#?}",
-                defaultconfig.style.1
-            ),
-        ))
-        .option(options::ConfigOption::new(
-            &defaultconfig.flow_style.0,
-            options::Value::OptString,
-            &format!(
-                "Set style for the flow tables (forwards, pays, invoices). Default is {:#?}",
-                defaultconfig.flow_style.1
-            ),
-        ))
+        .option(OPT_COLUMNS)
+        .option(OPT_SORT_BY)
+        .option(OPT_FORWARDS)
+        .option(OPT_FORWARDS_FILTER_AMT)
+        .option(OPT_FORWARDS_FILTER_FEE)
+        .option(OPT_FORWARDS_ALIAS)
+        .option(OPT_PAYS)
+        .option(OPT_INVOICES)
+        .option(OPT_INVOICES_FILTER_AMT)
+        .option(OPT_LOCALE)
+        .option(OPT_REFRESH_ALIAS)
+        .option(OPT_MAX_ALIAS_LENGTH)
+        .option(OPT_AVAILABILITY_INTERVAL)
+        .option(OPT_AVAILABILITY_WINDOW)
+        .option(OPT_UTF8)
+        .option(OPT_STYLE)
+        .option(OPT_FLOW_STYLE)
         .rpcmethod(
-            PLUGIN_NAME,
+            "summars",
             "Show summary of channels and optionally recent forwards",
             summary,
         )
         .rpcmethod(
-            &(PLUGIN_NAME.to_string() + "-refreshalias"),
+            "summars-refreshalias",
             "Show summary of channels and optionally recent forwards",
             summars_refreshalias,
         )
@@ -202,7 +153,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
         info!("starting refresh alias task");
         let aliasclone = plugin.clone();
-        let alias_refresh_freq = plugin.state().config.lock().refresh_alias.1;
+        let alias_refresh_freq = plugin.state().config.lock().refresh_alias.value;
         tokio::spawn(async move {
             loop {
                 match tasks::refresh_alias(aliasclone.clone()).await {

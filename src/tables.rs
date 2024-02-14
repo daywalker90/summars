@@ -11,6 +11,7 @@ use cln_rpc::{
 use log::debug;
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Width};
@@ -44,7 +45,7 @@ pub async fn summary(
     let rpc_path = make_rpc_path(&p);
 
     let mut config = p.state().config.lock().clone();
-    config = validateargs(v, config)?;
+    validateargs(v, &mut config)?;
 
     let getinfo = get_info(&rpc_path).await?;
     debug!(
@@ -182,7 +183,7 @@ pub async fn summary(
     );
 
     let forwards;
-    if config.forwards.1 > 0 {
+    if config.forwards.value > 0 {
         forwards = Some(recent_forwards(&rpc_path, &peer_channels, p.clone(), &config, now).await?);
         debug!(
             "End of forwards table. Total: {}ms",
@@ -193,7 +194,7 @@ pub async fn summary(
     }
 
     let pays;
-    if config.pays.1 > 0 {
+    if config.pays.value > 0 {
         pays = Some(recent_pays(&rpc_path, p.clone(), &config, now, getinfo.id).await?);
         debug!(
             "End of pays table. Total: {}ms",
@@ -204,7 +205,7 @@ pub async fn summary(
     }
 
     let invoices;
-    if config.invoices.1 > 0 {
+    if config.invoices.value > 0 {
         invoices = Some(recent_invoices(p.clone(), &rpc_path, &config, now).await?);
         debug!(
             "End of invoices table. Total: {}ms",
@@ -261,7 +262,7 @@ async fn recent_forwards(
 ) -> Result<String, Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
-        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards.1 * 60 * 60 {
+        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards.value * 60 * 60 {
             *plugin.state().fw_index.lock() = PagingIndex::new();
             debug!("fw_index: forwards-age increased, resetting index");
         }
@@ -301,11 +302,11 @@ async fn recent_forwards(
     let mut filter_count = 0;
     let mut new_fw_index = PagingIndex {
         start: u64::MAX,
-        timestamp: now_utc - config.forwards.1 * 60 * 60,
+        timestamp: now_utc - config.forwards.value * 60 * 60,
     };
     for forward in forwards {
-        if forward.received_time as u64 > now_utc - config.forwards.1 * 60 * 60 {
-            let inchan = if config.forwards_alias.1 {
+        if forward.received_time as u64 > now_utc - config.forwards.value * 60 * 60 {
+            let inchan = if config.forwards_alias.value {
                 match chanmap.get(&forward.in_channel) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
@@ -323,7 +324,7 @@ async fn recent_forwards(
                 forward.in_channel.to_string()
             };
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = if config.forwards_alias.1 {
+            let outchan = if config.forwards_alias.value {
                 match chanmap.get(&fw_outchan) {
                     Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
                         Some(alias) => {
@@ -342,10 +343,10 @@ async fn recent_forwards(
             };
 
             let mut should_filter = false;
-            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat.1 {
+            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat.value {
                 should_filter = true;
             }
-            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat.1 {
+            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat.value {
                 should_filter = true;
             }
 
@@ -360,12 +361,12 @@ async fn recent_forwards(
                         config,
                         forward.received_time as u64,
                     )?,
-                    in_channel: if config.utf8.1 {
+                    in_channel: if config.utf8.value {
                         inchan
                     } else {
                         inchan.replace(|c: char| !c.is_ascii(), "?")
                     },
-                    out_channel: if config.utf8.1 {
+                    out_channel: if config.utf8.value {
                         outchan
                     } else {
                         outchan.replace(|c: char| !c.is_ascii(), "?")
@@ -395,14 +396,14 @@ async fn recent_forwards(
     );
     table.sort_by_key(|x| x.received);
     let mut fwtable = Table::new(table);
-    config.flow_style.1.apply(&mut fwtable);
+    config.flow_style.value.apply(&mut fwtable);
     fwtable.with(
         Modify::new(ByColumnName::new("in_channel"))
-            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
     );
     fwtable.with(
         Modify::new(ByColumnName::new("out_channel"))
-            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
     );
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
@@ -437,7 +438,7 @@ async fn recent_pays(
     );
     let mut table = Vec::new();
     for pay in pays {
-        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.1 * 60 * 60
+        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.value * 60 * 60
             && pay.destination.unwrap() != mypubkey
         {
             let destination = get_alias(rpc_path, plugin.clone(), pay.destination.unwrap()).await?;
@@ -454,7 +455,7 @@ async fn recent_pays(
                 )?,
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
-                } else if config.utf8.1 {
+                } else if config.utf8.value {
                     destination
                 } else {
                     destination.replace(|c: char| !c.is_ascii(), "?")
@@ -468,7 +469,7 @@ async fn recent_pays(
     );
     table.sort_by_key(|x| x.completed_at);
     let mut paystable = Table::new(table);
-    config.flow_style.1.apply(&mut paystable);
+    config.flow_style.value.apply(&mut paystable);
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
     Ok(paystable.to_string())
 }
@@ -481,7 +482,7 @@ async fn recent_invoices(
 ) -> Result<String, Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
-        if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices.1 * 60 * 60 {
+        if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices.value * 60 * 60 {
             *plugin.state().inv_index.lock() = PagingIndex::new();
             debug!("inv_index: invoices-age increased, resetting index");
         }
@@ -511,7 +512,7 @@ async fn recent_invoices(
     let mut filter_amt_sum_msat = 0;
     let mut new_inv_index = PagingIndex {
         start: u64::MAX,
-        timestamp: now_utc - config.invoices.1 * 60 * 60,
+        timestamp: now_utc - config.invoices.value * 60 * 60,
     };
     for invoice in invoices {
         if let ListinvoicesInvoicesStatus::PAID = invoice.status {
@@ -520,9 +521,9 @@ async fn recent_invoices(
             } else {
                 continue;
             };
-            if inv_paid_at > now_utc - config.invoices.1 * 60 * 60 {
+            if inv_paid_at > now_utc - config.invoices.value * 60 * 60 {
                 if invoice.amount_received_msat.unwrap().msat() as i64
-                    <= config.invoices_filter_amt_msat.1
+                    <= config.invoices_filter_amt_msat.value
                 {
                     filter_count += 1;
                     filter_amt_sum_msat += invoice.amount_received_msat.unwrap().msat();
@@ -557,7 +558,7 @@ async fn recent_invoices(
     );
     table.sort_by_key(|x| x.paid_at);
     let mut invoicestable = Table::new(table);
-    config.flow_style.1.apply(&mut invoicestable);
+    config.flow_style.value.apply(&mut invoicestable);
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
 
     if filter_count > 0 {
@@ -641,7 +642,7 @@ fn chan_to_summary(
         flag: make_channel_flags(chan.private, chan.peer_connected.unwrap()),
         base: Amount::msat(&chan.fee_base_msat.unwrap()),
         ppm: chan.fee_proportional_millionths.unwrap(),
-        alias: if config.utf8.1 {
+        alias: if config.utf8.value {
             alias.to_string()
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
@@ -654,7 +655,7 @@ fn chan_to_summary(
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
-    match config.sort_by.1.clone() {
+    match config.sort_by.value.clone() {
         col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.out_sats),
         col if col.eq("IN_SATS") => table.sort_by_key(|x| x.in_sats),
         col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.scid_raw),
@@ -683,15 +684,15 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 }
 
 fn format_summary(config: &Config, sumtable: &mut Table) {
-    config.style.1.apply(sumtable);
-    for head in Summary::get_field_names() {
-        if !config.columns.1.contains(&head.to_string()) {
+    config.style.value.apply(sumtable);
+    for head in Summary::FIELD_NAMES_AS_ARRAY {
+        if !config.columns.value.contains(&head.to_string()) {
             sumtable.with(Disable::column(ByColumnName::new(head)));
         }
     }
     sumtable.with(
         Modify::new(ByColumnName::new("ALIAS"))
-            .with(Width::truncate(config.max_alias_length.1 as usize).suffix("[..]")),
+            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
     );
     sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));

@@ -1,15 +1,22 @@
 use anyhow::{anyhow, Error};
 use chrono::Utc;
-use cln_plugin::{options, ConfiguredPlugin};
+use cln_plugin::{
+    options::{config_type::Integer, ConfigOption},
+    ConfiguredPlugin,
+};
 use icu_locid::Locale;
 use log::warn;
 use std::path::Path;
 use std::str::FromStr;
+use struct_field_names_as_array::FieldNamesAsArray;
 use tokio::fs;
 
 use crate::{
     structs::{Config, Styles, Summary},
-    PluginState,
+    PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_FLOW_STYLE,
+    OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE,
+    OPT_INVOICES, OPT_INVOICES_FILTER_AMT, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS,
+    OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
@@ -17,7 +24,7 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
 
     for i in &split_input {
-        if !Summary::get_field_names().contains(&i.to_string()) {
+        if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
         }
     }
@@ -28,7 +35,7 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
 
 fn validate_u64_input(
     n: u64,
-    var_name: &String,
+    var_name: &str,
     gteq: u64,
     check_valid_time: bool,
 ) -> Result<u64, Error> {
@@ -53,7 +60,7 @@ fn validate_u64_input(
     Ok(n)
 }
 
-fn validate_i64_input(n: i64, var_name: &String, gteq: i64) -> Result<i64, Error> {
+fn validate_i64_input(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
     if n < gteq {
         return Err(anyhow!(
             "{} must be greater than or equal to {}",
@@ -66,42 +73,24 @@ fn validate_i64_input(n: i64, var_name: &String, gteq: i64) -> Result<i64, Error
 }
 
 fn options_value_to_u64(
-    config_var: &(String, u64),
-    value: Option<options::Value>,
+    opt: &ConfigOption<Integer>,
+    value: i64,
     gteq: u64,
     check_valid_time: bool,
 ) -> Result<u64, Error> {
-    match value {
-        Some(options::Value::Integer(i)) => {
-            if i >= 0 {
-                validate_u64_input(i as u64, &config_var.0, gteq, check_valid_time)
-            } else {
-                Err(anyhow!(
-                    "{} needs to be a positive number and not `{}`.",
-                    config_var.0,
-                    i
-                ))
-            }
-        }
-        Some(_) => Ok(config_var.1),
-        None => Ok(config_var.1),
-    }
-}
-
-fn options_value_to_i64(
-    config_var: &(String, i64),
-    value: Option<options::Value>,
-    gteq: i64,
-) -> Result<i64, Error> {
-    match value {
-        Some(options::Value::Integer(i)) => validate_i64_input(i, &config_var.0, gteq),
-        Some(_) => Ok(config_var.1),
-        None => Ok(config_var.1),
+    if value >= 0 {
+        validate_u64_input(value as u64, opt.name, gteq, check_valid_time)
+    } else {
+        Err(anyhow!(
+            "{} needs to be a positive number and not `{}`.",
+            opt.name,
+            value
+        ))
     }
 }
 
 fn value_to_u64(
-    var_name: &String,
+    var_name: &str,
     value: &serde_json::Value,
     gteq: u64,
     check_valid_time: bool,
@@ -118,7 +107,7 @@ fn value_to_u64(
     }
 }
 
-fn value_to_i64(var_name: &String, value: &serde_json::Value, gteq: i64) -> Result<i64, Error> {
+fn value_to_i64(var_name: &str, value: &serde_json::Value, gteq: i64) -> Result<i64, Error> {
     match value {
         serde_json::Value::Number(b) => match b.as_i64() {
             Some(n) => validate_i64_input(n, var_name, gteq),
@@ -129,7 +118,7 @@ fn value_to_i64(var_name: &String, value: &serde_json::Value, gteq: i64) -> Resu
 }
 
 fn str_to_u64(
-    var_name: &String,
+    var_name: &str,
     value: &str,
     gteq: u64,
     check_valid_time: bool,
@@ -145,7 +134,7 @@ fn str_to_u64(
     }
 }
 
-fn str_to_i64(var_name: &String, value: &str, gteq: i64) -> Result<i64, Error> {
+fn str_to_i64(var_name: &str, value: &str, gteq: i64) -> Result<i64, Error> {
     match value.parse::<i64>() {
         Ok(n) => validate_i64_input(n, var_name, gteq),
         Err(e) => Err(anyhow!(
@@ -157,26 +146,26 @@ fn str_to_i64(var_name: &String, value: &str, gteq: i64) -> Result<i64, Error> {
     }
 }
 
-pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Config, Error> {
+pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), Error> {
     if let serde_json::Value::Object(i) = args {
         for (key, value) in i.iter() {
             match key {
-                name if name.eq(&config.columns.0) => match value {
+                name if name.eq(&config.columns.name) => match value {
                     serde_json::Value::String(b) => {
-                        config.columns.1 = validate_columns_input(b)?;
+                        config.columns.value = validate_columns_input(b)?;
                     }
                     _ => {
                         return Err(anyhow!(
                             "Not a string. {} must be a comma separated string of: {}",
-                            config.columns.0,
+                            config.columns.name,
                             Summary::field_names_to_string()
                         ))
                     }
                 },
-                name if name.eq(&config.sort_by.0) => match value {
+                name if name.eq(&config.sort_by.name) => match value {
                     serde_json::Value::String(b) => {
-                        if Summary::get_field_names().contains(b) {
-                            config.sort_by.1 = b.to_string()
+                        if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.as_str()) {
+                            config.sort_by.value = b.to_string()
                         } else {
                             return Err(anyhow!(
                                 "Not a valid column name: `{}`. Must be one of: {}",
@@ -188,108 +177,116 @@ pub fn validateargs(args: serde_json::Value, mut config: Config) -> Result<Confi
                     _ => {
                         return Err(anyhow!(
                             "Not a string. {} must be one of: {}",
-                            config.sort_by.0,
+                            config.sort_by.name,
                             Summary::field_names_to_string()
                         ))
                     }
                 },
-                name if name.eq(&config.forwards.0) => {
-                    config.forwards.1 = value_to_u64(&config.forwards.0, value, 0, true)?
+                name if name.eq(&config.forwards.name) => {
+                    config.forwards.value = value_to_u64(config.forwards.name, value, 0, true)?
                 }
-                name if name.eq(&config.forwards_filter_amt_msat.0) => {
-                    config.forwards_filter_amt_msat.1 =
-                        value_to_i64(&config.forwards_filter_amt_msat.0, value, -1)?
+                name if name.eq(&config.forwards_filter_amt_msat.name) => {
+                    config.forwards_filter_amt_msat.value =
+                        value_to_i64(config.forwards_filter_amt_msat.name, value, -1)?
                 }
-                name if name.eq(&config.forwards_filter_fee_msat.0) => {
-                    config.forwards_filter_fee_msat.1 =
-                        value_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
+                name if name.eq(&config.forwards_filter_fee_msat.name) => {
+                    config.forwards_filter_fee_msat.value =
+                        value_to_i64(config.forwards_filter_fee_msat.name, value, -1)?
                 }
-                name if name.eq(&config.forwards_alias.0) => match value {
-                    serde_json::Value::Bool(b) => config.forwards_alias.1 = *b,
+                name if name.eq(&config.forwards_alias.name) => match value {
+                    serde_json::Value::Bool(b) => config.forwards_alias.value = *b,
                     _ => {
                         return Err(anyhow!(
                             "{} needs to be bool (true or false).",
-                            config.forwards_alias.0
+                            config.forwards_alias.name
                         ))
                     }
                 },
-                name if name.eq(&config.pays.0) => {
-                    config.pays.1 = value_to_u64(&config.pays.0, value, 0, true)?
+                name if name.eq(&config.pays.name) => {
+                    config.pays.value = value_to_u64(config.pays.name, value, 0, true)?
                 }
-                name if name.eq(&config.invoices.0) => {
-                    config.invoices.1 = value_to_u64(&config.invoices.0, value, 0, true)?
+                name if name.eq(&config.invoices.name) => {
+                    config.invoices.value = value_to_u64(config.invoices.name, value, 0, true)?
                 }
-                name if name.eq(&config.invoices_filter_amt_msat.0) => {
-                    config.invoices_filter_amt_msat.1 =
-                        value_to_i64(&config.invoices_filter_amt_msat.0, value, -1)?
+                name if name.eq(&config.invoices_filter_amt_msat.name) => {
+                    config.invoices_filter_amt_msat.value =
+                        value_to_i64(config.invoices_filter_amt_msat.name, value, -1)?
                 }
-                name if name.eq(&config.locale.0) => match value {
+                name if name.eq(&config.locale.name) => match value {
                     serde_json::Value::String(s) => {
-                        config.locale.1 = match Locale::from_str(s) {
+                        config.locale.value = match Locale::from_str(s) {
                             Ok(l) => l,
                             Err(e) => return Err(anyhow!("Not a valid locale: {}. {}", s, e)),
                         }
                     }
-                    _ => return Err(anyhow!("Not a valid string for: {}", config.locale.0)),
+                    _ => return Err(anyhow!("Not a valid string for: {}", config.locale.name)),
                 },
-                name if name.eq(&config.refresh_alias.0) => {
-                    config.refresh_alias.1 = value_to_u64(&config.refresh_alias.0, value, 1, false)?
+                name if name.eq(&config.refresh_alias.name) => {
+                    config.refresh_alias.value =
+                        value_to_u64(config.refresh_alias.name, value, 1, false)?
                 }
-                name if name.eq(&config.max_alias_length.0) => {
-                    config.max_alias_length.1 =
-                        value_to_u64(&config.max_alias_length.0, value, 5, false)?
+                name if name.eq(&config.max_alias_length.name) => {
+                    config.max_alias_length.value =
+                        value_to_u64(config.max_alias_length.name, value, 5, false)?
                 }
-                name if name.eq(&config.availability_interval.0) => {
-                    config.availability_interval.1 =
-                        value_to_u64(&config.availability_interval.0, value, 1, false)?
+                name if name.eq(&config.availability_interval.name) => {
+                    config.availability_interval.value =
+                        value_to_u64(config.availability_interval.name, value, 1, false)?
                 }
-                name if name.eq(&config.availability_window.0) => {
-                    config.availability_window.1 =
-                        value_to_u64(&config.availability_window.0, value, 1, false)?
+                name if name.eq(&config.availability_window.name) => {
+                    config.availability_window.value =
+                        value_to_u64(config.availability_window.name, value, 1, false)?
                 }
-                name if name.eq(&config.utf8.0) => match value {
-                    serde_json::Value::Bool(b) => config.utf8.1 = *b,
+                name if name.eq(&config.utf8.name) => match value {
+                    serde_json::Value::Bool(b) => config.utf8.value = *b,
                     _ => {
                         return Err(anyhow!(
                             "{} needs to be bool (true or false).",
-                            config.utf8.0
+                            config.utf8.name
                         ))
                     }
                 },
-                name if name.eq(&config.style.0) => match value {
+                name if name.eq(&config.style.name) => match value {
                     serde_json::Value::String(s) => {
-                        config.style.1 = Styles::from_str(s)?;
+                        config.style.value = Styles::from_str(s)?;
                     }
-                    _ => return Err(anyhow!("Not a valid string for: {}", config.style.0)),
+                    _ => return Err(anyhow!("Not a valid string for: {}", config.style.name)),
                 },
-                name if name.eq(&config.flow_style.0) => match value {
+                name if name.eq(&config.flow_style.name) => match value {
                     serde_json::Value::String(s) => {
-                        config.flow_style.1 = Styles::from_str(s)?;
+                        config.flow_style.value = Styles::from_str(s)?;
                     }
-                    _ => return Err(anyhow!("Not a valid string for: {}", config.flow_style.0)),
+                    _ => {
+                        return Err(anyhow!(
+                            "Not a valid string for: {}",
+                            config.flow_style.name
+                        ))
+                    }
                 },
                 other => return Err(anyhow!("option not found:{:?}", other)),
             };
         }
     };
-    Ok(config)
+    Ok(())
 }
 
 pub async fn read_config(
     plugin: &ConfiguredPlugin<PluginState, tokio::io::Stdin, tokio::io::Stdout>,
     state: PluginState,
 ) -> Result<(), Error> {
-    let mut configfile = String::new();
     let dir = plugin.configuration().clone().lightning_dir;
-    match fs::read_to_string(Path::new(&dir).join("config")).await {
-        Ok(file) => configfile = file,
+    let configfile = match fs::read_to_string(Path::new(&dir).join("config")).await {
+        Ok(file) => file,
         Err(_) => {
             match fs::read_to_string(Path::new(&dir).parent().unwrap().join("config")).await {
-                Ok(file2) => configfile = file2,
-                Err(_) => warn!("No config file found!"),
+                Ok(file2) => file2,
+                Err(_) => {
+                    warn!("No config file found!");
+                    String::new()
+                }
             }
         }
-    }
+    };
     let mut config = state.config.lock();
     for line in configfile.lines() {
         if line.contains('=') {
@@ -299,56 +296,56 @@ pub async fn read_config(
                 let value = splitline.get(1).unwrap();
 
                 match name {
-                    opt if opt.eq(&config.columns.0) => {
-                        config.columns.1 = validate_columns_input(value)?
+                    opt if opt.eq(&config.columns.name) => {
+                        config.columns.value = validate_columns_input(value)?
                     }
-                    opt if opt.eq(&config.sort_by.0) => {
-                        if Summary::get_field_names().contains(&value.to_string()) {
-                            config.sort_by.1 = value.to_string();
+                    opt if opt.eq(&config.sort_by.name) => {
+                        if Summary::FIELD_NAMES_AS_ARRAY.contains(value) {
+                            config.sort_by.value = value.to_string();
                         } else {
                             return Err(anyhow!(
                                 "Not a valid column name: `{}` for {}. Must be one of: {}",
                                 value,
-                                config.sort_by.0,
+                                config.sort_by.name,
                                 Summary::field_names_to_string()
                             ));
                         }
                     }
-                    opt if opt.eq(&config.forwards.0) => {
-                        config.forwards.1 = str_to_u64(&config.forwards.0, value, 0, true)?
+                    opt if opt.eq(&config.forwards.name) => {
+                        config.forwards.value = str_to_u64(config.forwards.name, value, 0, true)?
                     }
-                    opt if opt.eq(&config.forwards_filter_amt_msat.0) => {
-                        config.forwards_filter_amt_msat.1 =
-                            str_to_i64(&config.forwards_filter_amt_msat.0, value, -1)?
+                    opt if opt.eq(&config.forwards_filter_amt_msat.name) => {
+                        config.forwards_filter_amt_msat.value =
+                            str_to_i64(config.forwards_filter_amt_msat.name, value, -1)?
                     }
-                    opt if opt.eq(&config.forwards_filter_fee_msat.0) => {
-                        config.forwards_filter_fee_msat.1 =
-                            str_to_i64(&config.forwards_filter_fee_msat.0, value, -1)?
+                    opt if opt.eq(&config.forwards_filter_fee_msat.name) => {
+                        config.forwards_filter_fee_msat.value =
+                            str_to_i64(config.forwards_filter_fee_msat.name, value, -1)?
                     }
-                    opt if opt.eq(&config.forwards_alias.0) => match value.parse::<bool>() {
-                        Ok(b) => config.forwards_alias.1 = b,
+                    opt if opt.eq(&config.forwards_alias.name) => match value.parse::<bool>() {
+                        Ok(b) => config.forwards_alias.value = b,
                         Err(e) => {
                             return Err(anyhow!(
                                 "Could not parse bool from `{}` for {}: {}",
                                 value,
-                                config.forwards_alias.0,
+                                config.forwards_alias.name,
                                 e
                             ))
                         }
                     },
-                    opt if opt.eq(&config.pays.0) => {
-                        config.pays.1 = str_to_u64(&config.pays.0, value, 0, true)?
+                    opt if opt.eq(&config.pays.name) => {
+                        config.pays.value = str_to_u64(config.pays.name, value, 0, true)?
                     }
-                    opt if opt.eq(&config.invoices.0) => {
-                        config.invoices.1 = str_to_u64(&config.invoices.0, value, 0, true)?
+                    opt if opt.eq(&config.invoices.name) => {
+                        config.invoices.value = str_to_u64(config.invoices.name, value, 0, true)?
                     }
-                    opt if opt.eq(&config.invoices_filter_amt_msat.0) => {
-                        config.invoices_filter_amt_msat.1 =
-                            str_to_i64(&config.invoices_filter_amt_msat.0, value, -1)?
+                    opt if opt.eq(&config.invoices_filter_amt_msat.name) => {
+                        config.invoices_filter_amt_msat.value =
+                            str_to_i64(config.invoices_filter_amt_msat.name, value, -1)?
                     }
-                    opt if opt.eq(&config.locale.0) => match value.parse::<String>() {
+                    opt if opt.eq(&config.locale.name) => match value.parse::<String>() {
                         Ok(s) => match Locale::from_str(&s) {
-                            Ok(l) => config.locale.1 = l,
+                            Ok(l) => config.locale.value = l,
                             Err(e) => {
                                 return Err(anyhow!("Not a valid locale: {}", e));
                             }
@@ -361,36 +358,38 @@ pub async fn read_config(
                             ));
                         }
                     },
-                    opt if opt.eq(&config.refresh_alias.0) => {
-                        config.refresh_alias.1 =
-                            str_to_u64(&config.refresh_alias.0, value, 1, false)?
+                    opt if opt.eq(&config.refresh_alias.name) => {
+                        config.refresh_alias.value =
+                            str_to_u64(config.refresh_alias.name, value, 1, false)?
                     }
-                    opt if opt.eq(&config.max_alias_length.0) => {
-                        config.max_alias_length.1 =
-                            str_to_u64(&config.max_alias_length.0, value, 5, false)?
+                    opt if opt.eq(&config.max_alias_length.name) => {
+                        config.max_alias_length.value =
+                            str_to_u64(config.max_alias_length.name, value, 5, false)?
                     }
-                    opt if opt.eq(&config.availability_interval.0) => {
-                        config.availability_interval.1 =
-                            str_to_u64(&config.availability_interval.0, value, 1, false)?
+                    opt if opt.eq(&config.availability_interval.name) => {
+                        config.availability_interval.value =
+                            str_to_u64(config.availability_interval.name, value, 1, false)?
                     }
-                    opt if opt.eq(&config.availability_window.0) => {
-                        config.availability_window.1 =
-                            str_to_u64(&config.availability_window.0, value, 1, false)?
+                    opt if opt.eq(&config.availability_window.name) => {
+                        config.availability_window.value =
+                            str_to_u64(config.availability_window.name, value, 1, false)?
                     }
-                    opt if opt.eq(&config.utf8.0) => match value.parse::<bool>() {
-                        Ok(b) => config.utf8.1 = b,
+                    opt if opt.eq(&config.utf8.name) => match value.parse::<bool>() {
+                        Ok(b) => config.utf8.value = b,
                         Err(e) => {
                             return Err(anyhow!(
                                 "Could not parse bool from `{}` for {}: {}",
                                 value,
-                                config.utf8.0,
+                                config.utf8.name,
                                 e
                             ))
                         }
                     },
-                    opt if opt.eq(&config.style.0) => config.style.1 = Styles::from_str(value)?,
-                    opt if opt.eq(&config.flow_style.0) => {
-                        config.flow_style.1 = Styles::from_str(value)?
+                    opt if opt.eq(&config.style.name) => {
+                        config.style.value = Styles::from_str(value)?
+                    }
+                    opt if opt.eq(&config.flow_style.name) => {
+                        config.flow_style.value = Styles::from_str(value)?
                     }
                     _ => (),
                 }
@@ -406,95 +405,77 @@ pub fn get_startup_options(
 ) -> Result<(), Error> {
     {
         let mut config = state.config.lock();
-        if let Some(options::Value::String(b)) = plugin.option(&config.columns.0) {
-            config.columns.1 = validate_columns_input(&b)?;
-        }
-        config.sort_by.1 = match plugin.option(&config.sort_by.0) {
-            Some(options::Value::String(s)) => {
-                if Summary::get_field_names().contains(&s) {
-                    s
+
+        if let Some(cols) = plugin.option(&OPT_COLUMNS)? {
+            config.columns.value = validate_columns_input(&cols)?
+        };
+
+        if let Some(sort_by) = plugin.option(&OPT_SORT_BY)? {
+            config.sort_by.value = {
+                if Summary::FIELD_NAMES_AS_ARRAY.contains(&sort_by.as_str()) {
+                    sort_by
                 } else {
                     return Err(anyhow!(
                         "Not a valid column name: `{}`. Must be one of {}",
-                        s,
+                        sort_by,
                         Summary::field_names_to_string()
                     ));
                 }
             }
-            Some(_) => config.sort_by.1.clone(),
-            None => config.sort_by.1.clone(),
         };
-        config.forwards.1 =
-            options_value_to_u64(&config.forwards, plugin.option(&config.forwards.0), 0, true)?;
-        config.forwards_filter_amt_msat.1 = options_value_to_i64(
-            &config.forwards_filter_amt_msat,
-            plugin.option(&config.forwards_filter_amt_msat.0),
-            -1,
-        )?;
-        config.forwards_filter_fee_msat.1 = options_value_to_i64(
-            &config.forwards_filter_fee_msat,
-            plugin.option(&config.forwards_filter_fee_msat.0),
-            -1,
-        )?;
-        config.forwards_alias.1 = match plugin.option(&config.forwards_alias.0) {
-            Some(options::Value::Boolean(b)) => b,
-            Some(_) => config.forwards_alias.1,
-            None => config.forwards_alias.1,
+        if let Some(fws) = plugin.option(&OPT_FORWARDS)? {
+            config.forwards.value = options_value_to_u64(&OPT_FORWARDS, fws, 0, true)?
         };
-        config.pays.1 = options_value_to_u64(&config.pays, plugin.option(&config.pays.0), 0, true)?;
-        config.invoices.1 =
-            options_value_to_u64(&config.invoices, plugin.option(&config.invoices.0), 0, true)?;
-        config.invoices_filter_amt_msat.1 = options_value_to_i64(
-            &config.invoices_filter_amt_msat,
-            plugin.option(&config.invoices_filter_amt_msat.0),
-            -1,
-        )?;
-        config.locale.1 = match plugin.option(&config.locale.0) {
-            Some(options::Value::String(s)) => match Locale::from_str(&s) {
+        if let Some(ffa) = plugin.option(&OPT_FORWARDS_FILTER_AMT)? {
+            config.forwards_filter_amt_msat.value =
+                validate_i64_input(ffa, OPT_FORWARDS_FILTER_AMT.name, -1)?
+        };
+        if let Some(fff) = plugin.option(&OPT_FORWARDS_FILTER_FEE)? {
+            config.forwards_filter_fee_msat.value =
+                validate_i64_input(fff, OPT_FORWARDS_FILTER_FEE.name, -1)?
+        };
+        if let Some(fa) = plugin.option(&OPT_FORWARDS_ALIAS)? {
+            config.forwards_alias.value = fa
+        };
+        if let Some(pays) = plugin.option(&OPT_PAYS)? {
+            config.pays.value = options_value_to_u64(&OPT_PAYS, pays, 0, true)?
+        };
+        if let Some(invs) = plugin.option(&OPT_INVOICES)? {
+            config.invoices.value = options_value_to_u64(&OPT_INVOICES, invs, 0, true)?
+        };
+        if let Some(invfa) = plugin.option(&OPT_INVOICES_FILTER_AMT)? {
+            config.invoices_filter_amt_msat.value =
+                validate_i64_input(invfa, OPT_INVOICES_FILTER_AMT.name, -1)?
+        };
+        if let Some(loc) = plugin.option(&OPT_LOCALE)? {
+            config.locale.value = match Locale::from_str(&loc) {
                 Ok(l) => l,
-                Err(e) => return Err(anyhow!("`{}` is not a valid locale: {}", s, e)),
-            },
-            Some(_) => config.locale.1.clone(),
-            None => config.locale.1.clone(),
+                Err(e) => return Err(anyhow!("`{}` is not a valid locale: {}", loc, e)),
+            }
         };
-        config.refresh_alias.1 = options_value_to_u64(
-            &config.refresh_alias,
-            plugin.option(&config.refresh_alias.0),
-            1,
-            false,
-        )?;
-        config.max_alias_length.1 = options_value_to_u64(
-            &config.max_alias_length,
-            plugin.option(&config.max_alias_length.0),
-            5,
-            false,
-        )?;
-        config.availability_interval.1 = options_value_to_u64(
-            &config.availability_interval,
-            plugin.option(&config.availability_interval.0),
-            1,
-            false,
-        )?;
-        config.availability_window.1 = options_value_to_u64(
-            &config.availability_window,
-            plugin.option(&config.availability_window.0),
-            1,
-            false,
-        )?;
-        config.utf8.1 = match plugin.option(&config.utf8.0) {
-            Some(options::Value::Boolean(b)) => b,
-            Some(_) => config.utf8.1,
-            None => config.utf8.1,
+        if let Some(ra) = plugin.option(&OPT_REFRESH_ALIAS)? {
+            config.refresh_alias.value = options_value_to_u64(&OPT_REFRESH_ALIAS, ra, 1, false)?
         };
-        config.style.1 = match plugin.option(&config.style.0) {
-            Some(options::Value::String(s)) => Styles::from_str(&s)?,
-            Some(_) => config.style.1.clone(),
-            None => config.style.1.clone(),
+        if let Some(mal) = plugin.option(&OPT_MAX_ALIAS_LENGTH)? {
+            config.max_alias_length.value =
+                options_value_to_u64(&OPT_MAX_ALIAS_LENGTH, mal, 5, false)?
         };
-        config.flow_style.1 = match plugin.option(&config.flow_style.0) {
-            Some(options::Value::String(s)) => Styles::from_str(&s)?,
-            Some(_) => config.flow_style.1.clone(),
-            None => config.flow_style.1.clone(),
+        if let Some(ai) = plugin.option(&OPT_AVAILABILITY_INTERVAL)? {
+            config.availability_interval.value =
+                options_value_to_u64(&OPT_AVAILABILITY_INTERVAL, ai, 1, false)?
+        };
+        if let Some(aw) = plugin.option(&OPT_AVAILABILITY_WINDOW)? {
+            config.availability_window.value =
+                options_value_to_u64(&OPT_AVAILABILITY_WINDOW, aw, 1, false)?
+        };
+        if let Some(utf8) = plugin.option(&OPT_UTF8)? {
+            config.utf8.value = utf8
+        };
+        if let Some(style) = plugin.option(&OPT_STYLE)? {
+            config.style.value = Styles::from_str(&style)?
+        };
+        if let Some(fstyle) = plugin.option(&OPT_FLOW_STYLE)? {
+            config.flow_style.value = Styles::from_str(&fstyle)?
         };
     }
     Ok(())

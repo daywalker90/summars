@@ -88,7 +88,7 @@ pub fn draw_chans_graph(
     let their_len = (((total_msat - to_us_msat) as f64 / graph_max_chan_side_msat as f64) * 23.0)
         .round() as usize;
 
-    let draw = if config.utf8.1 {
+    let draw = if config.utf8.value {
         &draw_utf8
     } else {
         &draw_ascii
@@ -121,15 +121,17 @@ pub fn draw_chans_graph(
 }
 
 pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
-    let fixed_decimal_formatter =
-        match FixedDecimalFormatter::try_new(&config.locale.1.clone().into(), Default::default()) {
-            Ok(fmt) => fmt,
-            Err(e) => {
-                return Err(anyhow!(
-                    "Could not create DecimalFormatter: locale invalid? {e}"
-                ))
-            }
-        };
+    let fixed_decimal_formatter = match FixedDecimalFormatter::try_new(
+        &config.locale.value.clone().into(),
+        Default::default(),
+    ) {
+        Ok(fmt) => fmt,
+        Err(e) => {
+            return Err(anyhow!(
+                "Could not create DecimalFormatter: locale invalid? {e}"
+            ))
+        }
+    };
     let fixed_decimal = FixedDecimal::from(value)
         .multiplied_pow10(-11)
         .trunced(-8)
@@ -141,15 +143,17 @@ pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
 }
 
 pub fn u64_to_sat_string(config: &Config, value: u64) -> Result<String, Error> {
-    let fixed_decimal_formatter =
-        match FixedDecimalFormatter::try_new(&config.locale.1.clone().into(), Default::default()) {
-            Ok(fmt) => fmt,
-            Err(e) => {
-                return Err(anyhow!(
-                    "Could not create DecimalFormatter: locale invalid? {e}"
-                ))
-            }
-        };
+    let fixed_decimal_formatter = match FixedDecimalFormatter::try_new(
+        &config.locale.value.clone().into(),
+        Default::default(),
+    ) {
+        Ok(fmt) => fmt,
+        Err(e) => {
+            return Err(anyhow!(
+                "Could not create DecimalFormatter: locale invalid? {e}"
+            ))
+        }
+    };
     let fixed_decimal = FixedInteger::from(value);
     Ok(format!(
         "{}",
@@ -166,7 +170,7 @@ pub fn timestamp_to_localized_datetime_string(
     let datetime_options =
         length::Bag::from_date_time_style(length::Date::Short, length::Time::Medium);
     let date_time_formatter = match DateTimeFormatter::try_new(
-        &config.locale.1.clone().into(),
+        &config.locale.value.clone().into(),
         datetime_options.into(),
     ) {
         Ok(d) => d,
