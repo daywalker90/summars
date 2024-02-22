@@ -11,7 +11,7 @@ use fixed_decimal::{FixedDecimal, FixedInteger};
 use icu_datetime::{options::length, DateTimeFormatter};
 use icu_decimal::FixedDecimalFormatter;
 
-use crate::structs::{Config, PluginState};
+use crate::structs::{Config, GraphCharset, PluginState};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
@@ -47,42 +47,14 @@ pub fn make_channel_flags(private: Option<bool>, connected: bool) -> String {
     flags
 }
 
-#[derive(Debug)]
-struct Charset {
-    double_left: String,
-    left: String,
-    bar: String,
-    mid: String,
-    right: String,
-    double_right: String,
-    empty: String,
-}
-
 pub fn draw_chans_graph(
     config: &Config,
     total_msat: u64,
     to_us_msat: u64,
     graph_max_chan_side_msat: u64,
 ) -> String {
-    let draw_utf8 = Charset {
-        double_left: "╟".to_string(),
-        left: "├".to_string(),
-        bar: "─".to_string(),
-        mid: "┼".to_string(),
-        right: "┤".to_string(),
-        double_right: "╢".to_string(),
-        empty: "║".to_string(),
-    };
-
-    let draw_ascii = Charset {
-        double_left: "#".to_string(),
-        left: "[".to_string(),
-        bar: "-".to_string(),
-        mid: "+".to_string(),
-        right: "]".to_string(),
-        double_right: "#".to_string(),
-        empty: "|".to_string(),
-    };
+    let draw_utf8 = GraphCharset::new_utf8();
+    let draw_ascii = GraphCharset::new_ascii();
 
     let our_len = ((to_us_msat as f64 / graph_max_chan_side_msat as f64) * 23.0).round() as usize;
     let their_len = (((total_msat - to_us_msat) as f64 / graph_max_chan_side_msat as f64) * 23.0)
