@@ -12,7 +12,7 @@ use log::debug;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::settings::location::ByColumnName;
+use tabled::settings::location::{ByColumnName, Locator};
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Width};
 
@@ -28,7 +28,7 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    ChannelVisibility, Config, Forwards, Invoices, PagingIndex, Pays, PluginState,
+    ChannelVisibility, Config, Forwards, GraphCharset, Invoices, PagingIndex, Pays, PluginState,
     ShortChannelState, Summary, NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
@@ -196,6 +196,7 @@ pub async fn summary(
 
     let mut sumtable = Table::new(table);
     format_summary(&config, &mut sumtable);
+    draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
     debug!(
         "Format summary. Total: {}ms",
         now.elapsed().as_millis().to_string()
@@ -701,6 +702,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
             sumtable.with(Disable::column(ByColumnName::new(head)));
         }
     }
+
     sumtable.with(
         Modify::new(ByColumnName::new("ALIAS"))
             .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
@@ -800,4 +802,29 @@ fn get_addrstr(getinfo: &GetinfoResponse) -> String {
             None => "No addresses found!".to_string(),
         },
     }
+}
+
+fn draw_graph_sats_name(
+    config: &Config,
+    sumtable: &mut Table,
+    graph_max_chan_side_msat: u64,
+) -> Result<(), Error> {
+    let draw_utf8 = GraphCharset::new_utf8();
+    let draw_ascii = GraphCharset::new_ascii();
+    let draw = if config.utf8.value {
+        &draw_utf8
+    } else {
+        &draw_ascii
+    };
+    let btc_str = u64_to_btc_string(config, graph_max_chan_side_msat)?;
+    sumtable.with(
+        Modify::new(
+            ByColumnName::new("GRAPH_SATS").intersect(Locator::by(|n| n.contains("GRAPH_SATS"))),
+        )
+        .with(format!(
+            "{}{:<12} OUT GRAPH_SATS IN {:>14}{}",
+            draw.left, btc_str, btc_str, draw.right
+        )),
+    );
+    Ok(())
 }

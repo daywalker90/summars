@@ -390,7 +390,39 @@ impl FromStr for ShortChannelState {
         }
     }
 }
-
+pub struct GraphCharset {
+    pub double_left: String,
+    pub left: String,
+    pub bar: String,
+    pub mid: String,
+    pub right: String,
+    pub double_right: String,
+    pub empty: String,
+}
+impl GraphCharset {
+    pub fn new_utf8() -> GraphCharset {
+        GraphCharset {
+            double_left: "╟".to_string(),
+            left: "├".to_string(),
+            bar: "─".to_string(),
+            mid: "┼".to_string(),
+            right: "┤".to_string(),
+            double_right: "╢".to_string(),
+            empty: "║".to_string(),
+        }
+    }
+    pub fn new_ascii() -> GraphCharset {
+        GraphCharset {
+            double_left: "#".to_string(),
+            left: "[".to_string(),
+            bar: "-".to_string(),
+            mid: "+".to_string(),
+            right: "]".to_string(),
+            double_right: "#".to_string(),
+            empty: "|".to_string(),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
