@@ -145,6 +145,7 @@ You can mix theses methods but if you set the same option with multiple of these
 ## Options
 * ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Default is ``SCID``
+* ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,AWAIT_SPLICE``
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
