@@ -22,12 +22,19 @@ mod util;
 
 const OPT_COLUMNS: StringConfigOption = ConfigOption::new_str_no_default(
     "summars-columns",
-    "Enabled columns in the channel table. Allowed columns are: \
+    "Enabled columns in the channel table. Available columns are: \
     `GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE` \
     Default is `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
 );
 const OPT_SORT_BY: StringConfigOption =
     ConfigOption::new_str_no_default("summars-sort-by", "Sort by column name. Default is `SCID`");
+const OPT_EXCLUDE_CHANNEL_STATES: StringConfigOption = ConfigOption::new_str_no_default(
+    "summars-exclude-channel-states",
+    "Exclude channels with given state from the summary table. Comma-separated string with \
+    these available states: `OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,\
+    AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,\
+    AWAIT_SPLICE`",
+);
 const OPT_FORWARDS: IntegerConfigOption = ConfigOption::new_i64_no_default(
     "summars-forwards",
     "Show last x hours of forwards. Default is `0`",
@@ -96,6 +103,7 @@ async fn main() -> Result<(), anyhow::Error> {
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(OPT_COLUMNS)
         .option(OPT_SORT_BY)
+        .option(OPT_EXCLUDE_CHANNEL_STATES)
         .option(OPT_FORWARDS)
         .option(OPT_FORWARDS_FILTER_AMT)
         .option(OPT_FORWARDS_FILTER_FEE)

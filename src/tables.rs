@@ -28,8 +28,8 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    Config, Forwards, Invoices, PagingIndex, Pays, PluginState, Summary, NODE_GOSSIP_MISS,
-    NO_ALIAS_SET,
+    Config, Forwards, Invoices, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
+    NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
     draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path,
@@ -102,6 +102,8 @@ pub async fn summary(
     let mut avail_in = 0;
     let mut avail_out = 0;
 
+    let mut filter_count = 0;
+
     let mut table = Vec::new();
 
     let num_gossipers = peers
@@ -146,16 +148,25 @@ pub async fn summary(
             Some(a) => a.avail,
             None => -1.0,
         };
-        let summary = chan_to_summary(
-            &config,
-            chan,
-            alias,
-            avail,
-            to_us_msat,
-            total_msat,
-            graph_max_chan_side_msat,
-        )?;
-        table.push(summary);
+
+        if config
+            .exclude_channel_states
+            .value
+            .contains(&ShortChannelState(chan.state.unwrap()))
+        {
+            filter_count += 1;
+        } else {
+            let summary = chan_to_summary(
+                &config,
+                chan,
+                alias,
+                avail,
+                to_us_msat,
+                total_msat,
+                graph_max_chan_side_msat,
+            )?;
+            table.push(summary);
+        }
 
         if is_active_state(chan) {
             if chan.peer_connected.unwrap() {
@@ -218,6 +229,13 @@ pub async fn summary(
     let addr_str = get_addrstr(&getinfo);
 
     let mut result = sumtable.to_string();
+    if filter_count > 0 {
+        result += &format!(
+            "\n {} channel{} filtered.",
+            filter_count,
+            if filter_count == 1 { "" } else { "s" }
+        )
+    }
     if let Some(fws) = forwards {
         result += &("\n\n".to_owned() + &fws);
     }
@@ -605,22 +623,7 @@ fn chan_to_summary(
     total_msat: u64,
     graph_max_chan_side_msat: u64,
 ) -> Result<Summary, Error> {
-    let statestr = match chan.state.unwrap() {
-        ListpeerchannelsChannelsState::OPENINGD => "OPENING",
-        ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN => "AWAIT_LOCK",
-        ListpeerchannelsChannelsState::CHANNELD_NORMAL => "OK",
-        ListpeerchannelsChannelsState::CHANNELD_SHUTTING_DOWN => "SHUTTING_DOWN",
-        ListpeerchannelsChannelsState::CLOSINGD_SIGEXCHANGE => "CLOSINGD_SIGEX",
-        ListpeerchannelsChannelsState::CLOSINGD_COMPLETE => "CLOSINGD_DONE",
-        ListpeerchannelsChannelsState::AWAITING_UNILATERAL => "AWAIT_UNILATERAL",
-        ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN => "FUNDING_SPEND",
-        ListpeerchannelsChannelsState::ONCHAIN => "ONCHAIN",
-        ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => "DUAL_OPEN",
-        ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED => "DUAL_COMITTED",
-        ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY => "DUAL_COMMIT_RDY",
-        ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => "DUAL_AWAIT",
-        ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => "AWAIT_SPLICE",
-    };
+    let statestr = ShortChannelState(chan.state.unwrap());
 
     let scidsortdummy = ShortChannelId::from_str("999999999x9999x99").unwrap();
     let scid = match chan.short_channel_id {

@@ -12,11 +12,12 @@ use struct_field_names_as_array::FieldNamesAsArray;
 use tokio::fs;
 
 use crate::{
-    structs::{Config, Styles, Summary},
-    PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_FLOW_STYLE,
-    OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE,
-    OPT_INVOICES, OPT_INVOICES_FILTER_AMT, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS,
-    OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    structs::{Config, ShortChannelState, Styles, Summary},
+    PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
+    OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
+    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT,
+    OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE,
+    OPT_UTF8,
 };
 
 fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
@@ -31,6 +32,20 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
 
     let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
     Ok(cleaned_strings)
+}
+
+fn validate_exclude_states_input(input: &str) -> Result<Vec<ShortChannelState>, Error> {
+    let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
+    let split_input: Vec<&str> = cleaned_input.split(',').collect();
+    let mut parsed_input = Vec::new();
+    for i in &split_input {
+        if let Ok(state) = ShortChannelState::from_str(i) {
+            parsed_input.push(state);
+        } else {
+            return Err(anyhow!("Could not parse channel state: `{}`", i));
+        }
+    }
+    Ok(parsed_input)
 }
 
 fn validate_u64_input(
@@ -182,6 +197,15 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                         ))
                     }
                 },
+                name if name.eq(&config.exclude_channel_states.name) => match value {
+                    serde_json::Value::String(b) => {
+                        config.exclude_channel_states.value = validate_exclude_states_input(b)?;
+                    }
+                    _ => return Err(anyhow!(
+                        "Not a string. {} must be a comma separated string of available states.",
+                        config.exclude_channel_states.name
+                    )),
+                },
                 name if name.eq(&config.forwards.name) => {
                     config.forwards.value = value_to_u64(config.forwards.name, value, 0, true)?
                 }
@@ -311,6 +335,9 @@ pub async fn read_config(
                             ));
                         }
                     }
+                    opt if opt.eq(&config.exclude_channel_states.name) => {
+                        config.exclude_channel_states.value = validate_exclude_states_input(value)?
+                    }
                     opt if opt.eq(&config.forwards.name) => {
                         config.forwards.value = str_to_u64(config.forwards.name, value, 0, true)?
                     }
@@ -409,7 +436,6 @@ pub fn get_startup_options(
         if let Some(cols) = plugin.option(&OPT_COLUMNS)? {
             config.columns.value = validate_columns_input(&cols)?
         };
-
         if let Some(sort_by) = plugin.option(&OPT_SORT_BY)? {
             config.sort_by.value = {
                 if Summary::FIELD_NAMES_AS_ARRAY.contains(&sort_by.as_str()) {
@@ -422,6 +448,9 @@ pub fn get_startup_options(
                     ));
                 }
             }
+        };
+        if let Some(cols) = plugin.option(&OPT_EXCLUDE_CHANNEL_STATES)? {
+            config.exclude_channel_states.value = validate_exclude_states_input(&cols)?
         };
         if let Some(fws) = plugin.option(&OPT_FORWARDS)? {
             config.forwards.value = options_value_to_u64(&OPT_FORWARDS, fws, 0, true)?
