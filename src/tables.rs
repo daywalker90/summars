@@ -28,8 +28,8 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    Config, Forwards, Invoices, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
-    NODE_GOSSIP_MISS, NO_ALIAS_SET,
+    ChannelVisibility, Config, Forwards, Invoices, PagingIndex, Pays, PluginState,
+    ShortChannelState, Summary, NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
     draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path,
@@ -112,6 +112,22 @@ pub async fn summary(
         .count();
 
     for chan in &peer_channels {
+        if config
+            .exclude_channel_states
+            .value
+            .contains(&ShortChannelState(chan.state.unwrap()))
+            || if let Some(excl_vis) = &config.exclude_pub_priv_states {
+                match excl_vis {
+                    ChannelVisibility::Private => chan.private.unwrap(),
+                    ChannelVisibility::Public => !chan.private.unwrap(),
+                }
+            } else {
+                false
+            }
+        {
+            filter_count += 1;
+            continue;
+        }
         let alias = get_alias(&rpc_path, p.clone(), chan.peer_id.unwrap()).await?;
 
         let to_us_msat = Amount::msat(&chan.to_us_msat.ok_or(anyhow!(
@@ -149,24 +165,16 @@ pub async fn summary(
             None => -1.0,
         };
 
-        if config
-            .exclude_channel_states
-            .value
-            .contains(&ShortChannelState(chan.state.unwrap()))
-        {
-            filter_count += 1;
-        } else {
-            let summary = chan_to_summary(
-                &config,
-                chan,
-                alias,
-                avail,
-                to_us_msat,
-                total_msat,
-                graph_max_chan_side_msat,
-            )?;
-            table.push(summary);
-        }
+        let summary = chan_to_summary(
+            &config,
+            chan,
+            alias,
+            avail,
+            to_us_msat,
+            total_msat,
+            graph_max_chan_side_msat,
+        )?;
+        table.push(summary);
 
         if is_active_state(chan) {
             if chan.peer_connected.unwrap() {
