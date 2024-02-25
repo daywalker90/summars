@@ -33,6 +33,7 @@ pub struct Config {
     pub columns: DynamicConfigOption<Vec<String>>,
     pub sort_by: DynamicConfigOption<String>,
     pub exclude_channel_states: DynamicConfigOption<Vec<ShortChannelState>>,
+    pub exclude_pub_priv_states: Option<ChannelVisibility>,
     pub forwards: DynamicConfigOption<u64>,
     pub forwards_filter_amt_msat: DynamicConfigOption<i64>,
     pub forwards_filter_fee_msat: DynamicConfigOption<i64>,
@@ -70,6 +71,7 @@ impl Config {
                 name: OPT_EXCLUDE_CHANNEL_STATES.name,
                 value: Vec::new(),
             },
+            exclude_pub_priv_states: None,
             forwards: DynamicConfigOption {
                 name: OPT_FORWARDS.name,
                 value: 0,
@@ -150,6 +152,12 @@ impl Config {
 pub struct DynamicConfigOption<T> {
     pub name: &'static str,
     pub value: T,
+}
+
+#[derive(Clone, Debug)]
+pub enum ChannelVisibility {
+    Private,
+    Public,
 }
 
 #[derive(Clone)]
