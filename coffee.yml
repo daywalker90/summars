@@ -5,3 +5,4 @@ plugin:
   install: |
     cargo build --release
   main: target/release/summars
+  important: true
