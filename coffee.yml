@@ -6,3 +6,5 @@ plugin:
     cargo build --release
   main: target/release/summars
   important: true
+tipping:
+  bolt12: lno1qgsyxjtl6luzd9t3pr62xr7eemp6awnejusgf6gw45q75vcfqqqqqqq2qaeh2mtdv9e8xystv3shjampd34k2u3exqtzzqakhvs9q0rqe8e04mfsz6yayw5jva040r4mvg6tgdr94r70hny4zv
