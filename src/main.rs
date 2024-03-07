@@ -29,7 +29,7 @@ const OPT_COLUMNS: StringConfigOption = ConfigOption::new_str_no_default(
 const OPT_SORT_BY: StringConfigOption =
     ConfigOption::new_str_no_default("summars-sort-by", "Sort by column name. Default is `SCID`");
 const OPT_EXCLUDE_CHANNEL_STATES: StringConfigOption = ConfigOption::new_str_no_default(
-    "summars-exclude-channel-states",
+    "summars-exclude-states",
     "Exclude channels with given state from the summary table. Comma-separated string with \
     these available states: `OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,\
     AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,\
