@@ -93,7 +93,7 @@ def test_options(node_factory, get_plugin):
         )
         assert col in result["result"]
 
-    result = node.rpc.call("summars", {"summars-exclude-channel-states": "OK"})
+    result = node.rpc.call("summars", {"summars-exclude-states": "OK"})
 
     result = node.rpc.call("summars", {
         "summars-forwards": 1}
@@ -361,7 +361,7 @@ def test_chanstates(node_factory, bitcoind, get_plugin):
     result = l2.rpc.call("summars")
     assert "OK" in result["result"]
 
-    result = l1.rpc.call("summars", {"summars-exclude-channel-states": "OK"})
+    result = l1.rpc.call("summars", {"summars-exclude-states": "OK"})
     assert "OK" not in result["result"]
     assert "1 channel filtered" in result["result"]
 
