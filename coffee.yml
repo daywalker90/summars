@@ -1,10 +1,9 @@
 plugin:
   name: summars
-  version: 3.0.0
+  version: 3.1.0
   lang: rust
   install: |
-    cargo build --release
-  main: target/release/summars
-  important: true
+    cargo build --release && cp target/release/summars . && cargo clean
+  main: summars
 tipping:
-  bolt12: lno1qgsyxjtl6luzd9t3pr62xr7eemp6awnejusgf6gw45q75vcfqqqqqqq2qaeh2mtdv9e8xystv3shjampd34k2u3exqtzzqakhvs9q0rqe8e04mfsz6yayw5jva040r4mvg6tgdr94r70hny4zv
+  bolt12: lno1pgrhxatdd4shyucjpdjxz7thv9kxketj8ycpvggrsrhsyz0lrdrv8z3he4q0vy73mt37hfyp4yy5t8tvzs62petwtkxq
