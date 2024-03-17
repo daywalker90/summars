@@ -153,7 +153,7 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
-* ``summars-locale`` Set locale to change the thousand delimiter. Default is ``en``
+* ``summars-locale`` Set locale for number and date formatting. Default is the systems locale with ``en-US`` as fallback, if it could not be detected.
 * ``summars-refresh-alias`` How many hours between refreshing the node aliases in memory. Default is ``24`` hours
 * ``summars-max-alias-length`` How long aliases are allowed to be before they get cut off. Default is ``20`` chars
 * ``summars-availability-interval`` How often the availability should be calculated. Default is ``300`` seconds
