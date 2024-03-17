@@ -6,8 +6,9 @@ use cln_plugin::{
 };
 use icu_locid::Locale;
 use log::warn;
+use parking_lot::Mutex;
 use std::path::Path;
-use std::str::FromStr;
+use std::{str::FromStr, sync::Arc};
 use struct_field_names_as_array::FieldNamesAsArray;
 use tokio::fs;
 
@@ -32,6 +33,22 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
 
     let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
     Ok(cleaned_strings)
+}
+
+fn validate_sort_input(input: &str) -> Result<String, Error> {
+    let reverse = input.starts_with('-');
+
+    if reverse && Summary::FIELD_NAMES_AS_ARRAY.contains(&&input[1..])
+        || Summary::FIELD_NAMES_AS_ARRAY.contains(&input)
+    {
+        Ok(input.to_string())
+    } else {
+        Err(anyhow!(
+            "Not a valid column name: `{}`. Must be one of: {}",
+            input,
+            Summary::field_names_to_string()
+        ))
+    }
 }
 
 fn validate_exclude_states_input(
@@ -188,17 +205,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     }
                 },
                 name if name.eq(&config.sort_by.name) => match value {
-                    serde_json::Value::String(b) => {
-                        if Summary::FIELD_NAMES_AS_ARRAY.contains(&b.as_str()) {
-                            config.sort_by.value = b.to_string()
-                        } else {
-                            return Err(anyhow!(
-                                "Not a valid column name: `{}`. Must be one of: {}",
-                                b,
-                                Summary::field_names_to_string()
-                            ));
-                        }
-                    }
+                    serde_json::Value::String(b) => config.sort_by.value = validate_sort_input(b)?,
                     _ => {
                         return Err(anyhow!(
                             "Not a string. {} must be one of: {}",
@@ -313,19 +320,29 @@ pub async fn read_config(
     state: PluginState,
 ) -> Result<(), Error> {
     let dir = plugin.configuration().clone().lightning_dir;
-    let configfile = match fs::read_to_string(Path::new(&dir).join("config")).await {
+    let general_configfile =
+        match fs::read_to_string(Path::new(&dir).parent().unwrap().join("config")).await {
+            Ok(file2) => file2,
+            Err(_) => {
+                warn!("No general config file found!");
+                String::new()
+            }
+        };
+    let network_configfile = match fs::read_to_string(Path::new(&dir).join("config")).await {
         Ok(file) => file,
         Err(_) => {
-            match fs::read_to_string(Path::new(&dir).parent().unwrap().join("config")).await {
-                Ok(file2) => file2,
-                Err(_) => {
-                    warn!("No config file found!");
-                    String::new()
-                }
-            }
+            warn!("No network config file found!");
+            String::new()
         }
     };
-    let mut config = state.config.lock();
+
+    parse_config_file(general_configfile, state.config.clone())?;
+    parse_config_file(network_configfile, state.config.clone())?;
+    Ok(())
+}
+
+fn parse_config_file(configfile: String, config: Arc<Mutex<Config>>) -> Result<(), Error> {
+    let mut config = config.lock();
     for line in configfile.lines() {
         if line.contains('=') {
             let splitline = line.split('=').collect::<Vec<&str>>();
@@ -338,16 +355,7 @@ pub async fn read_config(
                         config.columns.value = validate_columns_input(value)?
                     }
                     opt if opt.eq(&config.sort_by.name) => {
-                        if Summary::FIELD_NAMES_AS_ARRAY.contains(value) {
-                            config.sort_by.value = value.to_string();
-                        } else {
-                            return Err(anyhow!(
-                                "Not a valid column name: `{}` for {}. Must be one of: {}",
-                                value,
-                                config.sort_by.name,
-                                Summary::field_names_to_string()
-                            ));
-                        }
+                        config.sort_by.value = validate_sort_input(value)?
                     }
                     opt if opt.eq(&config.exclude_channel_states.name) => {
                         let result = validate_exclude_states_input(value)?;
@@ -453,17 +461,7 @@ pub fn get_startup_options(
             config.columns.value = validate_columns_input(&cols)?
         };
         if let Some(sort_by) = plugin.option(&OPT_SORT_BY)? {
-            config.sort_by.value = {
-                if Summary::FIELD_NAMES_AS_ARRAY.contains(&sort_by.as_str()) {
-                    sort_by
-                } else {
-                    return Err(anyhow!(
-                        "Not a valid column name: `{}`. Must be one of {}",
-                        sort_by,
-                        Summary::field_names_to_string()
-                    ));
-                }
-            }
+            config.sort_by.value = validate_sort_input(&sort_by)?
         };
         if let Some(cols) = plugin.option(&OPT_EXCLUDE_CHANNEL_STATES)? {
             let result = validate_exclude_states_input(&cols)?;
