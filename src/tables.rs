@@ -9,6 +9,7 @@ use cln_rpc::{
 };
 
 use log::debug;
+use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
@@ -667,30 +668,126 @@ fn chan_to_summary(
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
-    match config.sort_by.value.clone() {
-        col if col.eq("OUT_SATS") => table.sort_by_key(|x| x.out_sats),
-        col if col.eq("IN_SATS") => table.sort_by_key(|x| x.in_sats),
-        col if col.eq("SCID_RAW") => table.sort_by_key(|x| x.scid_raw),
-        col if col.eq("SCID") => table.sort_by_key(|x| x.scid_raw),
-        col if col.eq("MAX_HTLC") => table.sort_by_key(|x| x.max_htlc),
-        col if col.eq("FLAG") => table.sort_by_key(|x| x.flag.clone()),
-        col if col.eq("BASE") => table.sort_by_key(|x| x.base),
-        col if col.eq("PPM") => table.sort_by_key(|x| x.ppm),
-        col if col.eq("ALIAS") => table.sort_by_key(|x| {
-            x.alias
-                .chars()
-                .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
-                .collect::<String>()
-                .to_ascii_lowercase()
-        }),
-        col if col.eq("UPTIME") => table.sort_by(|x, y| {
-            x.uptime
-                .partial_cmp(&y.uptime)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        }),
-        col if col.eq("PEER_ID") => table.sort_by_key(|x| x.peer_id),
-        col if col.eq("HTLCS") => table.sort_by_key(|x| x.htlcs),
-        col if col.eq("STATE") => table.sort_by_key(|x| x.state.clone()),
+    let reverse = config.sort_by.value.starts_with('-');
+    let sort_by = if reverse {
+        &config.sort_by.value[1..]
+    } else {
+        &config.sort_by.value
+    };
+    match sort_by {
+        col if col.eq("OUT_SATS") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.out_sats))
+            } else {
+                table.sort_by_key(|x| x.out_sats)
+            }
+        }
+        col if col.eq("IN_SATS") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.in_sats))
+            } else {
+                table.sort_by_key(|x| x.in_sats)
+            }
+        }
+        col if col.eq("SCID_RAW") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.scid_raw))
+            } else {
+                table.sort_by_key(|x| x.scid_raw)
+            }
+        }
+        col if col.eq("SCID") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.scid_raw))
+            } else {
+                table.sort_by_key(|x| x.scid_raw)
+            }
+        }
+        col if col.eq("MAX_HTLC") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.max_htlc))
+            } else {
+                table.sort_by_key(|x| x.max_htlc)
+            }
+        }
+        col if col.eq("FLAG") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.flag.clone()))
+            } else {
+                table.sort_by_key(|x| x.flag.clone())
+            }
+        }
+        col if col.eq("BASE") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.base))
+            } else {
+                table.sort_by_key(|x| x.base)
+            }
+        }
+        col if col.eq("PPM") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.ppm))
+            } else {
+                table.sort_by_key(|x| x.ppm)
+            }
+        }
+        col if col.eq("ALIAS") => {
+            if reverse {
+                table.sort_by_key(|x| {
+                    Reverse(
+                        x.alias
+                            .chars()
+                            .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
+                            .collect::<String>()
+                            .to_ascii_lowercase(),
+                    )
+                })
+            } else {
+                table.sort_by_key(|x| {
+                    x.alias
+                        .chars()
+                        .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
+                        .collect::<String>()
+                        .to_ascii_lowercase()
+                })
+            }
+        }
+        col if col.eq("UPTIME") => {
+            if reverse {
+                table.sort_by(|x, y| {
+                    y.uptime
+                        .partial_cmp(&x.uptime)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            } else {
+                table.sort_by(|x, y| {
+                    x.uptime
+                        .partial_cmp(&y.uptime)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            }
+        }
+        col if col.eq("PEER_ID") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.peer_id))
+            } else {
+                table.sort_by_key(|x| x.peer_id)
+            }
+        }
+        col if col.eq("HTLCS") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.htlcs))
+            } else {
+                table.sort_by_key(|x| x.htlcs)
+            }
+        }
+        col if col.eq("STATE") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.state.clone()))
+            } else {
+                table.sort_by_key(|x| x.state.clone())
+            }
+        }
         _ => table.sort_by_key(|x| x.scid_raw),
     }
 }
