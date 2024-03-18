@@ -15,7 +15,7 @@ use icu_locid::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use struct_field_names_as_array::FieldNamesAsArray;
-use sys_locale::get_locale;
+use sys_locale::get_locales;
 use tabled::{settings::Style, Table, Tabled};
 
 use crate::{
@@ -102,18 +102,19 @@ impl Config {
             },
             locale: DynamicConfigOption {
                 name: OPT_LOCALE.name,
-                value: match get_locale() {
-                    Some(l) => {
-                        if l.eq(&'C'.to_string()) {
-                            Locale::from_str("en-US").unwrap()
-                        } else {
-                            match Locale::from_str(&l) {
-                                Ok(sl) => sl,
-                                Err(_) => Locale::from_str("en-US").unwrap(),
-                            }
+                value: {
+                    let mut valid_locale = None;
+                    for loc in get_locales() {
+                        if let Ok(sl) = Locale::from_str(&loc) {
+                            valid_locale = Some(sl);
+                            break;
                         }
                     }
-                    None => Locale::from_str("en-US").unwrap(),
+                    if let Some(vsl) = valid_locale {
+                        vsl
+                    } else {
+                        Locale::from_str("en-US").unwrap()
+                    }
                 },
             },
             refresh_alias: DynamicConfigOption {
