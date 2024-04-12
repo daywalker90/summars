@@ -21,7 +21,7 @@ use tabled::{settings::Style, Table, Tabled};
 use crate::{
     OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_EXCLUDE_CHANNEL_STATES,
     OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT,
-    OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT, OPT_LOCALE,
+    OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE,
     OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
@@ -49,6 +49,7 @@ pub struct Config {
     pub utf8: DynamicConfigOption<bool>,
     pub style: DynamicConfigOption<Styles>,
     pub flow_style: DynamicConfigOption<Styles>,
+    pub json: DynamicConfigOption<bool>,
 }
 impl Config {
     pub fn new() -> Config {
@@ -145,6 +146,10 @@ impl Config {
                 name: OPT_FLOW_STYLE.name,
                 value: Styles::Blank,
             },
+            json: DynamicConfigOption {
+                name: OPT_JSON.name,
+                value: false,
+            },
         }
     }
 }
@@ -188,19 +193,26 @@ pub struct PeerAvailability {
     pub avail: f64,
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray)]
+#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
 #[field_names_as_array(rename_all = "SCREAMING_SNAKE_CASE")]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
+    #[serde(skip_serializing)]
     pub graph_sats: String,
     pub out_sats: u64,
     pub in_sats: u64,
     #[tabled(skip)]
+    #[serde(skip_serializing)]
     #[field_names_as_array(skip)]
     pub scid_raw: ShortChannelId,
     pub scid: String,
     pub max_htlc: u64,
+    #[serde(skip_serializing)]
     pub flag: String,
+    #[tabled(skip)]
+    pub private: bool,
+    #[tabled(skip)]
+    pub offline: bool,
     pub base: u64,
     pub ppm: u32,
     pub alias: String,
@@ -219,17 +231,35 @@ impl Summary {
     }
 }
 
-#[derive(Debug, Tabled)]
+#[derive(Debug, Tabled, Serialize)]
 pub struct Forwards {
     #[tabled(skip)]
     pub received: u64,
     #[tabled(rename = "forwards")]
+    #[serde(skip_serializing)]
     pub received_str: String,
-    pub in_channel: String,
-    pub out_channel: String,
-    pub in_sats: String,
-    pub out_sats: String,
+    #[tabled(rename = "in_channel")]
+    #[serde(skip_serializing)]
+    pub in_channel_alias: String,
+    #[tabled(rename = "out_channel")]
+    #[serde(skip_serializing)]
+    pub out_channel_alias: String,
+    #[tabled(skip)]
+    pub in_channel: ShortChannelId,
+    #[tabled(skip)]
+    pub out_channel: ShortChannelId,
+    #[tabled(rename = "in_sats")]
+    pub in_msats: u64,
+    #[tabled(rename = "out_sats")]
+    pub out_msats: u64,
     pub fee_msats: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ForwardsFilterStats {
+    pub filter_amt_sum_msat: u64,
+    pub filter_fee_sum_msat: u64,
+    pub filter_count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -246,25 +276,35 @@ impl PagingIndex {
     }
 }
 
-#[derive(Debug, Tabled)]
+#[derive(Debug, Tabled, Serialize)]
 pub struct Pays {
     #[tabled(skip)]
     pub completed_at: u64,
     #[tabled(rename = "pays")]
+    #[serde(skip_serializing)]
     pub completed_at_str: String,
     pub payment_hash: String,
-    pub sats_sent: String,
+    #[tabled(rename = "sats_sent")]
+    pub msats_sent: u64,
     pub destination: String,
 }
 
-#[derive(Debug, Tabled)]
+#[derive(Debug, Tabled, Serialize)]
 pub struct Invoices {
     #[tabled(skip)]
     pub paid_at: u64,
     #[tabled(rename = "invoices")]
+    #[serde(skip_serializing)]
     pub paid_at_str: String,
     pub label: String,
-    pub sats_received: String,
+    #[tabled(rename = "sats_received")]
+    pub msats_received: u64,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InvoicesFilterStats {
+    pub filter_amt_sum_msat: u64,
+    pub filter_count: u64,
 }
 
 #[derive(Debug, Clone)]

@@ -26,19 +26,15 @@ pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     }
 }
 
-pub fn make_channel_flags(private: Option<bool>, connected: bool) -> String {
+pub fn make_channel_flags(private: bool, offline: bool) -> String {
     let mut flags = String::from("[");
-    match private {
-        Some(is_priv) => {
-            if is_priv {
-                flags.push('P')
-            } else {
-                flags.push('_')
-            }
-        }
-        None => flags.push('E'),
+    if private {
+        flags.push('P')
+    } else {
+        flags.push('_')
     }
-    if connected {
+
+    if !offline {
         flags.push('_')
     } else {
         flags.push('O')
@@ -167,12 +163,10 @@ pub fn timestamp_to_localized_datetime_string(
 
 #[test]
 fn test_flags() {
-    assert_eq!(make_channel_flags(Some(false), true), "[__]");
-    assert_eq!(make_channel_flags(Some(true), true), "[P_]");
-    assert_eq!(make_channel_flags(Some(false), false), "[_O]");
-    assert_eq!(make_channel_flags(Some(true), false), "[PO]");
-    assert_eq!(make_channel_flags(None, true), "[E_]");
-    assert_eq!(make_channel_flags(None, false), "[EO]");
+    assert_eq!(make_channel_flags(false, false), "[__]");
+    assert_eq!(make_channel_flags(true, false), "[P_]");
+    assert_eq!(make_channel_flags(false, true), "[_O]");
+    assert_eq!(make_channel_flags(true, true), "[PO]");
 }
 
 pub fn make_rpc_path(plugin: &Plugin<PluginState>) -> PathBuf {

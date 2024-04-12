@@ -94,6 +94,8 @@ const OPT_FLOW_STYLE: StringConfigOption = ConfigOption::new_str_no_default(
     "summars-flow-style",
     "Set style for the flow tables (forwards, pays, invoices). Default is `blank`",
 );
+const OPT_JSON: BooleanConfigOption =
+    ConfigOption::new_bool_no_default("summars-json", "Set output to json. Default is `false`");
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -119,6 +121,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(OPT_UTF8)
         .option(OPT_STYLE)
         .option(OPT_FLOW_STYLE)
+        .option(OPT_JSON)
         .rpcmethod(
             "summars",
             "Show summary of channels and optionally recent forwards",
