@@ -29,8 +29,9 @@ use crate::rpc::{
     list_peers,
 };
 use crate::structs::{
-    ChannelVisibility, Config, Forwards, GraphCharset, Invoices, PagingIndex, Pays, PluginState,
-    ShortChannelState, Summary, NODE_GOSSIP_MISS, NO_ALIAS_SET,
+    ChannelVisibility, Config, Forwards, ForwardsFilterStats, GraphCharset, Invoices,
+    InvoicesFilterStats, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
+    NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
     draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path,
@@ -195,69 +196,94 @@ pub async fn summary(
         now.elapsed().as_millis().to_string()
     );
 
-    let mut sumtable = Table::new(table);
-    format_summary(&config, &mut sumtable);
-    draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
-    debug!(
-        "Format summary. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
-
     let forwards;
+    let forwards_filter_stats;
     if config.forwards.value > 0 {
-        forwards = Some(recent_forwards(&rpc_path, &peer_channels, p.clone(), &config, now).await?);
+        (forwards, forwards_filter_stats) =
+            recent_forwards(&rpc_path, &peer_channels, p.clone(), &config, now).await?;
         debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis().to_string()
         );
     } else {
-        forwards = None;
+        forwards = Vec::new();
+        forwards_filter_stats = ForwardsFilterStats::default();
     }
 
     let pays;
     if config.pays.value > 0 {
-        pays = Some(recent_pays(&rpc_path, p.clone(), &config, now, getinfo.id).await?);
+        pays = recent_pays(&rpc_path, p.clone(), &config, now, getinfo.id).await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
         );
     } else {
-        pays = None;
+        pays = Vec::new();
     }
 
     let invoices;
+    let invoices_filter_stats;
     if config.invoices.value > 0 {
-        invoices = Some(recent_invoices(p.clone(), &rpc_path, &config, now).await?);
+        (invoices, invoices_filter_stats) =
+            recent_invoices(p.clone(), &rpc_path, &config, now).await?;
         debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis().to_string()
         );
     } else {
-        invoices = None;
+        invoices = Vec::new();
+        invoices_filter_stats = InvoicesFilterStats::default();
     }
 
     let addr_str = get_addrstr(&getinfo);
 
-    let mut result = sumtable.to_string();
-    if filter_count > 0 {
-        result += &format!(
-            "\n {} channel{} filtered.",
-            filter_count,
-            if filter_count == 1 { "" } else { "s" }
-        )
-    }
-    if let Some(fws) = forwards {
-        result += &("\n\n".to_owned() + &fws);
-    }
-    if let Some(p) = pays {
-        result += &("\n\n".to_owned() + &p);
-    }
-    if let Some(i) = invoices {
-        result += &("\n\n".to_owned() + &i);
-    }
+    if config.json.value {
+        Ok(json!({"info":{
+            "address":addr_str,
+            "num_utxos":funds.outputs.len(),
+            "utxo_amount": format!("{} BTC",u64_to_btc_string(&config, utxo_amt)?),
+            "num_channels":channel_count,
+            "num_connected":num_connected,
+            "num_gossipers":num_gossipers,
+            "avail_out":format!("{} BTC",u64_to_btc_string(&config, avail_out)?),
+            "avail_in":format!("{} BTC",u64_to_btc_string(&config, avail_in)?),
+            "fees_collected":format!("{} BTC",u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?),
+        },
+        "channels":table,
+        "forwards":forwards,
+        "pays":pays,
+        "invoices":invoices}))
+    } else {
+        let mut sumtable = Table::new(table);
+        format_summary(&config, &mut sumtable);
+        draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
+        debug!(
+            "Format summary. Total: {}ms",
+            now.elapsed().as_millis().to_string()
+        );
 
-    Ok(json!({"format-hint":"simple","result":format!(
-        "address={}
+        let mut result = sumtable.to_string();
+        if filter_count > 0 {
+            result += &format!(
+                "\n {} channel{} filtered.",
+                filter_count,
+                if filter_count == 1 { "" } else { "s" }
+            )
+        }
+        if config.forwards.value > 0 {
+            result +=
+                &("\n\n".to_owned() + &format_forwards(forwards, &config, forwards_filter_stats));
+        }
+        if config.pays.value > 0 {
+            result += &("\n\n".to_owned() + &format_pays(pays, &config));
+        }
+        if config.invoices.value > 0 {
+            result +=
+                &("\n\n".to_owned() + &format_invoices(invoices, &config, invoices_filter_stats));
+        }
+
+        Ok(json!({"format-hint":"simple","result":format!(
+            "address={}
 num_utxos={}
 utxo_amount={} BTC
 num_channels={}
@@ -268,17 +294,18 @@ avail_in={} BTC
 fees_collected={} BTC
 channels_flags=P:private O:offline
 {}",
-        addr_str,
-        funds.outputs.len(),
-        u64_to_btc_string(&config, utxo_amt)?,
-        channel_count,
-        num_connected,
-        num_gossipers,
-        u64_to_btc_string(&config, avail_out)?,
-        u64_to_btc_string(&config, avail_in)?,
-        u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?,
-        result,
-    )}))
+            addr_str,
+            funds.outputs.len(),
+            u64_to_btc_string(&config, utxo_amt)?,
+            channel_count,
+            num_connected,
+            num_gossipers,
+            u64_to_btc_string(&config, avail_out)?,
+            u64_to_btc_string(&config, avail_in)?,
+            u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?,
+            result,
+        )}))
+    }
 }
 
 async fn recent_forwards(
@@ -287,7 +314,7 @@ async fn recent_forwards(
     plugin: Plugin<PluginState>,
     config: &Config,
     now: Instant,
-) -> Result<String, Error> {
+) -> Result<(Vec<Forwards>, ForwardsFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
         if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards.value * 60 * 60 {
@@ -389,21 +416,20 @@ async fn recent_forwards(
                         config,
                         forward.received_time as u64,
                     )?,
-                    in_channel: if config.utf8.value {
+                    in_channel_alias: if config.utf8.value {
                         inchan
                     } else {
                         inchan.replace(|c: char| !c.is_ascii(), "?")
                     },
-                    out_channel: if config.utf8.value {
+                    in_channel: forward.in_channel,
+                    out_channel_alias: if config.utf8.value {
                         outchan
                     } else {
                         outchan.replace(|c: char| !c.is_ascii(), "?")
                     },
-                    in_sats: u64_to_sat_string(config, Amount::msat(&forward.in_msat) / 1000)?,
-                    out_sats: u64_to_sat_string(
-                        config,
-                        Amount::msat(&forward.out_msat.unwrap()) / 1000,
-                    )?,
+                    out_channel: forward.out_channel.unwrap(),
+                    in_msats: Amount::msat(&forward.in_msat),
+                    out_msats: Amount::msat(&forward.out_msat.unwrap()),
                     fee_msats: u64_to_sat_string(config, Amount::msat(&forward.fee_msat.unwrap()))?,
                 })
             }
@@ -423,6 +449,21 @@ async fn recent_forwards(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.received);
+    Ok((
+        table,
+        ForwardsFilterStats {
+            filter_amt_sum_msat,
+            filter_fee_sum_msat,
+            filter_count,
+        },
+    ))
+}
+
+fn format_forwards(
+    table: Vec<Forwards>,
+    config: &Config,
+    filter_stats: ForwardsFilterStats,
+) -> String {
     let mut fwtable = Table::new(table);
     config.flow_style.value.apply(&mut fwtable);
     fwtable.with(
@@ -434,19 +475,29 @@ async fn recent_forwards(
             .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
     );
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("in_sats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
+        })),
+    );
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("out_sats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
+        })),
+    );
     fwtable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
 
-    if filter_count > 0 {
+    if filter_stats.filter_count > 0 {
         let filter_sum_result = format!(
             "\nFiltered: {} forwards with {} sats routed and {} msat fees.",
-            filter_count,
-            filter_amt_sum_msat / 1000,
-            filter_fee_sum_msat
+            filter_stats.filter_count,
+            filter_stats.filter_amt_sum_msat / 1000,
+            filter_stats.filter_fee_sum_msat
         );
-        Ok(fwtable.to_string() + &filter_sum_result)
+        fwtable.to_string() + &filter_sum_result
     } else {
-        Ok(fwtable.to_string())
+        fwtable.to_string()
     }
 }
 
@@ -456,7 +507,7 @@ async fn recent_pays(
     config: &Config,
     now: Instant,
     mypubkey: PublicKey,
-) -> Result<String, Error> {
+) -> Result<Vec<Pays>, Error> {
     let pays = list_pays(rpc_path, Some(ListpaysStatus::COMPLETE))
         .await?
         .pays;
@@ -477,10 +528,7 @@ async fn recent_pays(
                     pay.completed_at.unwrap(),
                 )?,
                 payment_hash: pay.payment_hash.to_string(),
-                sats_sent: u64_to_sat_string(
-                    config,
-                    Amount::msat(&pay.amount_sent_msat.unwrap()) / 1_000,
-                )?,
+                msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else if config.utf8.value {
@@ -496,10 +544,19 @@ async fn recent_pays(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.completed_at);
+    Ok(table)
+}
+
+fn format_pays(table: Vec<Pays>, config: &Config) -> String {
     let mut paystable = Table::new(table);
     config.flow_style.value.apply(&mut paystable);
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
-    Ok(paystable.to_string())
+    paystable.with(
+        Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
+        })),
+    );
+    paystable.to_string()
 }
 
 async fn recent_invoices(
@@ -507,7 +564,7 @@ async fn recent_invoices(
     rpc_path: &PathBuf,
     config: &Config,
     now: Instant,
-) -> Result<String, Error> {
+) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
         if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices.value * 60 * 60 {
@@ -563,10 +620,7 @@ async fn recent_invoices(
                             invoice.paid_at.unwrap(),
                         )?,
                         label: invoice.label,
-                        sats_received: u64_to_sat_string(
-                            config,
-                            Amount::msat(&invoice.amount_received_msat.unwrap()) / 1_000,
-                        )?,
+                        msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
                     });
                 }
                 if let Some(c_index) = invoice.created_index {
@@ -585,19 +639,39 @@ async fn recent_invoices(
         now.elapsed().as_millis().to_string()
     );
     table.sort_by_key(|x| x.paid_at);
+
+    Ok((
+        table,
+        InvoicesFilterStats {
+            filter_amt_sum_msat,
+            filter_count,
+        },
+    ))
+}
+
+fn format_invoices(
+    table: Vec<Invoices>,
+    config: &Config,
+    filter_stats: InvoicesFilterStats,
+) -> String {
     let mut invoicestable = Table::new(table);
     config.flow_style.value.apply(&mut invoicestable);
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
+    invoicestable.with(
+        Modify::new(ByColumnName::new("sats_received").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap(),
+        )),
+    );
 
-    if filter_count > 0 {
+    if filter_stats.filter_count > 0 {
         let filter_sum_result = format!(
             "\nFiltered: {} invoices with {} sats total.",
-            filter_count,
-            filter_amt_sum_msat / 1000
+            filter_stats.filter_count,
+            filter_stats.filter_amt_sum_msat / 1000
         );
-        Ok(invoicestable.to_string() + &filter_sum_result)
+        invoicestable.to_string() + &filter_sum_result
     } else {
-        Ok(invoicestable.to_string())
+        invoicestable.to_string()
     }
 }
 
@@ -652,7 +726,9 @@ fn chan_to_summary(
             scid.to_string()
         },
         max_htlc: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
-        flag: make_channel_flags(chan.private, chan.peer_connected.unwrap()),
+        flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected.unwrap()),
+        private: chan.private.unwrap(),
+        offline: !chan.peer_connected.unwrap(),
         base: Amount::msat(&chan.fee_base_msat.unwrap()),
         ppm: chan.fee_proportional_millionths.unwrap(),
         alias: if config.utf8.value {

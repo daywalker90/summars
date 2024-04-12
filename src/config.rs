@@ -17,8 +17,8 @@ use crate::{
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
     OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT,
-    OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE,
-    OPT_UTF8,
+    OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY,
+    OPT_STYLE, OPT_UTF8,
 };
 
 fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
@@ -308,6 +308,15 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                         ))
                     }
                 },
+                name if name.eq(&config.json.name) => match value {
+                    serde_json::Value::Bool(b) => config.json.value = *b,
+                    _ => {
+                        return Err(anyhow!(
+                            "{} needs to be bool (true or false).",
+                            config.json.name
+                        ))
+                    }
+                },
                 other => return Err(anyhow!("option not found:{:?}", other)),
             };
         }
@@ -442,6 +451,17 @@ fn parse_config_file(configfile: String, config: Arc<Mutex<Config>>) -> Result<(
                     opt if opt.eq(&config.flow_style.name) => {
                         config.flow_style.value = Styles::from_str(value)?
                     }
+                    opt if opt.eq(&config.json.name) => match value.parse::<bool>() {
+                        Ok(b) => config.json.value = b,
+                        Err(e) => {
+                            return Err(anyhow!(
+                                "Could not parse bool from `{}` for {}: {}",
+                                value,
+                                config.json.name,
+                                e
+                            ))
+                        }
+                    },
                     _ => (),
                 }
             }
@@ -521,6 +541,9 @@ pub fn get_startup_options(
         };
         if let Some(fstyle) = plugin.option(&OPT_FLOW_STYLE)? {
             config.flow_style.value = Styles::from_str(&fstyle)?
+        };
+        if let Some(js) = plugin.option(&OPT_JSON)? {
+            config.json.value = js
         };
     }
     Ok(())
