@@ -289,8 +289,12 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.rpc.connect(l2.info["id"], "localhost", l2.port)
     l2.rpc.connect(l3.info["id"], "localhost", l3.port)
     l1.rpc.connect(l3.info["id"], "localhost", l3.port)
-    l1.rpc.fundchannel(l2.info["id"], 1_000_000, mindepth=1)
-    l2.rpc.fundchannel(l3.info["id"], 1_000_000, mindepth=1)
+    l1.rpc.fundchannel(
+        l2.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1
+    )
+    l2.rpc.fundchannel(
+        l3.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1
+    )
 
     bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
@@ -329,7 +333,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         description="test_pay_routeboost2",
         dev_routes=[routel1l2l3],
     )
-    l1.dev_pay(inv["bolt11"], dev_use_shadow=False)
+    pay1 = l1.dev_pay(inv["bolt11"], dev_use_shadow=False)
 
     result = l2.rpc.call("summars", {"summars-forwards": 1})
     assert "123" in result["result"]
@@ -339,3 +343,64 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert "123" in result["result"]
+
+    routel3l2l1 = [
+        {
+            "id": l3.info["id"],
+            "short_channel_id": cl2,
+            "fee_base_msat": 1000,
+            "fee_proportional_millionths": 10,
+            "cltv_expiry_delta": 6,
+        },
+        {
+            "id": l2.info["id"],
+            "short_channel_id": cl1,
+            "fee_base_msat": 1000,
+            "fee_proportional_millionths": 10,
+            "cltv_expiry_delta": 6,
+        },
+    ]
+
+    inv2 = l1.dev_invoice(
+        amount_msat=223_000,
+        label="test_pay_routeboost3",
+        description="test_pay_routeboost3",
+        dev_routes=[routel3l2l1],
+    )
+    l3.dev_pay(inv2["bolt11"], dev_use_shadow=False)
+
+    result = l1.rpc.call(
+        "summars",
+        {"summars-forwards": 1, "summars-pays": 1, "summars-invoices": 1},
+    )
+    assert "forwards" in result["result"]
+    assert "pays" in result["result"]
+    assert "invoices" in result["result"]
+
+    result = l1.rpc.call(
+        "summars",
+        {
+            "summars-forwards": 1,
+            "summars-pays": 1,
+            "summars-invoices": 1,
+            "summars-json": True,
+        },
+    )
+    assert "info" in result
+    assert "channels" in result
+    assert "forwards" in result
+    assert "pays" in result
+    assert "invoices" in result
+    assert pay1["payment_hash"] == result["pays"][0]["payment_hash"]
+    assert 223_000 == result["invoices"][0]["msats_received"]
+
+    result = l2.rpc.call(
+        "summars",
+        {
+            "summars-forwards": 1,
+            "summars-pays": 1,
+            "summars-invoices": 1,
+            "summars-json": True,
+        },
+    )
+    assert len(result["forwards"]) == 2
