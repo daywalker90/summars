@@ -14,7 +14,6 @@ use tables::summary;
 use tasks::summars_refreshalias;
 use tokio::{self, time};
 mod config;
-mod rpc;
 mod structs;
 mod tables;
 mod tasks;

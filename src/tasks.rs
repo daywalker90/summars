@@ -2,7 +2,11 @@ use std::{collections::BTreeMap, path::Path, time::Duration};
 
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
-use cln_rpc::primitives::PublicKey;
+use cln_rpc::{
+    model::requests::{ListnodesRequest, ListpeerchannelsRequest, ListpeersRequest},
+    primitives::PublicKey,
+    ClnRpc,
+};
 use log::{info, warn};
 use serde_json::json;
 use tokio::{
@@ -11,7 +15,6 @@ use tokio::{
 };
 
 use crate::{
-    rpc::{list_nodes, list_peer_channels, list_peers},
     structs::{PeerAvailability, PluginState, NO_ALIAS_SET},
     util::{is_active_state, make_rpc_path},
 };
@@ -20,10 +23,20 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let now = Instant::now();
     info!("Starting alias map refresh");
     plugin.state().alias_map.lock().clear();
-    let rpc_path = make_rpc_path(&plugin);
 
-    for peer in list_peers(&rpc_path).await?.peers {
-        let alias = list_nodes(&rpc_path, &peer.id)
+    let rpc_path = make_rpc_path(&plugin);
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
+
+    for peer in rpc
+        .call_typed(&ListpeersRequest {
+            id: None,
+            level: None,
+        })
+        .await?
+        .peers
+    {
+        let alias = rpc
+            .call_typed(&ListnodesRequest { id: Some(peer.id) })
             .await?
             .nodes
             .first()
@@ -51,6 +64,8 @@ pub async fn summars_refreshalias(
 
 pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
+
     let summarsdir = Path::new(&plugin.configuration().lightning_dir).join("summars");
     let availdbfile = summarsdir.join("availdb.json");
     let availdbfilecontent = fs::read_to_string(availdbfile.clone()).await;
@@ -87,7 +102,8 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     loop {
         time::sleep(Duration::from_secs(summary_availability_interval as u64)).await;
         {
-            let mut channels = list_peer_channels(&rpc_path)
+            let mut channels = rpc
+                .call_typed(&ListpeerchannelsRequest { id: None })
                 .await?
                 .channels
                 .ok_or(anyhow!("list_peer_channels returned with None!"))?;

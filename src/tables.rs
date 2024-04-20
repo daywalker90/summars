@@ -2,6 +2,7 @@ use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::primitives::ShortChannelId;
+use cln_rpc::ClnRpc;
 use cln_rpc::{
     model::requests::*,
     model::responses::*,
@@ -18,16 +19,11 @@ use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Width};
 
 use serde_json::json;
-use std::path::PathBuf;
 
 use tabled::Table;
 use tokio::time::Instant;
 
 use crate::config::validateargs;
-use crate::rpc::{
-    get_info, list_forwards, list_funds, list_invoices, list_nodes, list_pays, list_peer_channels,
-    list_peers,
-};
 use crate::structs::{
     ChannelVisibility, Config, Forwards, ForwardsFilterStats, GraphCharset, Invoices,
     InvoicesFilterStats, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
@@ -45,22 +41,30 @@ pub async fn summary(
     let now = Instant::now();
 
     let rpc_path = make_rpc_path(&p);
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
 
     let mut config = p.state().config.lock().clone();
     validateargs(v, &mut config)?;
 
-    let getinfo = get_info(&rpc_path).await?;
+    let getinfo = rpc.call_typed(&GetinfoRequest {}).await?;
     debug!(
         "Getinfo. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
 
-    let peers = list_peers(&rpc_path).await?.peers;
+    let peers = rpc
+        .call_typed(&ListpeersRequest {
+            id: None,
+            level: None,
+        })
+        .await?
+        .peers;
     debug!(
         "Listpeers. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
-    let peer_channels = list_peer_channels(&rpc_path)
+    let peer_channels = rpc
+        .call_typed(&ListpeerchannelsRequest { id: None })
         .await?
         .channels
         .ok_or(anyhow!("list_peer_channels returned with None!"))?;
@@ -69,7 +73,9 @@ pub async fn summary(
         now.elapsed().as_millis().to_string()
     );
 
-    let funds = list_funds(&rpc_path).await?;
+    let funds = rpc
+        .call_typed(&ListfundsRequest { spent: Some(false) })
+        .await?;
     debug!(
         "Listfunds. Total: {}ms",
         now.elapsed().as_millis().to_string()
@@ -130,7 +136,7 @@ pub async fn summary(
             filter_count += 1;
             continue;
         }
-        let alias = get_alias(&rpc_path, p.clone(), chan.peer_id.unwrap()).await?;
+        let alias = get_alias(&mut rpc, p.clone(), chan.peer_id.unwrap()).await?;
 
         let to_us_msat = Amount::msat(&chan.to_us_msat.ok_or(anyhow!(
             "Channel with {} has no msats to us!",
@@ -200,7 +206,7 @@ pub async fn summary(
     let forwards_filter_stats;
     if config.forwards.value > 0 {
         (forwards, forwards_filter_stats) =
-            recent_forwards(&rpc_path, &peer_channels, p.clone(), &config, now).await?;
+            recent_forwards(&mut rpc, &peer_channels, p.clone(), &config, now).await?;
         debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -212,7 +218,7 @@ pub async fn summary(
 
     let pays;
     if config.pays.value > 0 {
-        pays = recent_pays(&rpc_path, p.clone(), &config, now, getinfo.id).await?;
+        pays = recent_pays(&mut rpc, p.clone(), &config, now, getinfo.id).await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -225,7 +231,7 @@ pub async fn summary(
     let invoices_filter_stats;
     if config.invoices.value > 0 {
         (invoices, invoices_filter_stats) =
-            recent_invoices(p.clone(), &rpc_path, &config, now).await?;
+            recent_invoices(p.clone(), &mut rpc, &config, now).await?;
         debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -309,7 +315,7 @@ channels_flags=P:private O:offline
 }
 
 async fn recent_forwards(
-    rpc_path: &PathBuf,
+    rpc: &mut ClnRpc,
     peer_channels: &[ListpeerchannelsChannels],
     plugin: Plugin<PluginState>,
     config: &Config,
@@ -327,17 +333,17 @@ async fn recent_forwards(
         "fw_index: start:{} timestamp:{}",
         fw_index.start, fw_index.timestamp
     );
-    let forwards = list_forwards(
-        rpc_path,
-        Some(ListforwardsStatus::SETTLED),
-        None,
-        None,
-        Some(ListforwardsIndex::CREATED),
-        Some(fw_index.start),
-        None,
-    )
-    .await?
-    .forwards;
+    let forwards = rpc
+        .call_typed(&ListforwardsRequest {
+            status: Some(ListforwardsStatus::SETTLED),
+            in_channel: None,
+            out_channel: None,
+            index: Some(ListforwardsIndex::CREATED),
+            start: Some(fw_index.start),
+            limit: None,
+        })
+        .await?
+        .forwards;
     debug!(
         "List {} forwards. Total: {}ms",
         forwards.len(),
@@ -502,13 +508,18 @@ fn format_forwards(
 }
 
 async fn recent_pays(
-    rpc_path: &PathBuf,
+    rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
     config: &Config,
     now: Instant,
     mypubkey: PublicKey,
 ) -> Result<Vec<Pays>, Error> {
-    let pays = list_pays(rpc_path, Some(ListpaysStatus::COMPLETE))
+    let pays = rpc
+        .call_typed(&ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status: Some(ListpaysStatus::COMPLETE),
+        })
         .await?
         .pays;
     debug!(
@@ -520,7 +531,7 @@ async fn recent_pays(
         if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.value * 60 * 60
             && pay.destination.unwrap() != mypubkey
         {
-            let destination = get_alias(rpc_path, plugin.clone(), pay.destination.unwrap()).await?;
+            let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
             table.push(Pays {
                 completed_at: pay.completed_at.unwrap(),
                 completed_at_str: timestamp_to_localized_datetime_string(
@@ -561,7 +572,7 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> String {
 
 async fn recent_invoices(
     plugin: Plugin<PluginState>,
-    rpc_path: &PathBuf,
+    rpc: &mut ClnRpc,
     config: &Config,
     now: Instant,
 ) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
@@ -577,16 +588,18 @@ async fn recent_invoices(
         "inv_index: start:{} timestamp:{}",
         inv_index.start, inv_index.timestamp
     );
-    let invoices = list_invoices(
-        rpc_path,
-        None,
-        None,
-        Some(ListinvoicesIndex::CREATED),
-        Some(inv_index.start),
-        None,
-    )
-    .await?
-    .invoices;
+    let invoices = rpc
+        .call_typed(&ListinvoicesRequest {
+            label: None,
+            invstring: None,
+            payment_hash: None,
+            offer_id: None,
+            index: Some(ListinvoicesIndex::CREATED),
+            start: Some(inv_index.start),
+            limit: None,
+        })
+        .await?
+        .invoices;
     debug!(
         "List {} invoices. Total: {}ms",
         invoices.len(),
@@ -676,7 +689,7 @@ fn format_invoices(
 }
 
 async fn get_alias(
-    rpc_path: &PathBuf,
+    rpc: &mut ClnRpc,
     p: Plugin<PluginState>,
     peer_id: PublicKey,
 ) -> Result<String, Error> {
@@ -684,7 +697,12 @@ async fn get_alias(
     let alias;
     match alias_map.get::<PublicKey>(&peer_id) {
         Some(a) => alias = a.clone(),
-        None => match list_nodes(rpc_path, &peer_id).await?.nodes.first() {
+        None => match rpc
+            .call_typed(&ListnodesRequest { id: Some(peer_id) })
+            .await?
+            .nodes
+            .first()
+        {
             Some(node) => {
                 match &node.alias {
                     Some(newalias) => alias = newalias.clone(),
