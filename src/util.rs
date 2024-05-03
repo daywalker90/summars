@@ -68,7 +68,7 @@ pub fn draw_chans_graph(
 
     if our_len == 0 {
         left = format!("{:>23}", "");
-        mid = draw.double_left.clone();
+        mid.clone_from(&draw.double_left);
     } else {
         left = format!("{:>23}", draw.left.clone() + &draw.bar.repeat(our_len - 1));
     }
@@ -77,9 +77,9 @@ pub fn draw_chans_graph(
         right = format!("{:23}", "");
         // Both 0 is a special case.
         if our_len == 0 {
-            mid = draw.empty.clone();
+            mid.clone_from(&draw.empty);
         } else {
-            mid = draw.double_right.clone();
+            mid.clone_from(&draw.double_right);
         }
     } else {
         right = format!("{:23}", draw.bar.repeat(their_len - 1) + &draw.right);
