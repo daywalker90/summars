@@ -132,13 +132,15 @@ channels_flags=P:private O:offline
 
 * Example: ``lightning-cli summars summars-forwards=6``
 
-2. when starting the plugin dynamically. 
+2. in the cln config file. 
+
+* Example: ``summars-forwards=6``
+
+3. when starting the plugin dynamically. 
 
 * Example: ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
 
-3. in the cln config file. 
 
-* Example: ``summars-forwards=6``
 
 :warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` (or have the plugin in the folder where cln automatically starts plugins from at startup) or cln will not start next time!
 

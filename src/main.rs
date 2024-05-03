@@ -136,16 +136,16 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
     {
         Some(plugin) => {
-            match read_config(&plugin, state.clone()).await {
-                Ok(()) => &(),
-                Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
-            };
-            info!("read config done");
             match get_startup_options(&plugin, state.clone()) {
                 Ok(()) => &(),
                 Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
             };
             info!("read startup options done");
+            match read_config(&plugin, state.clone()).await {
+                Ok(()) => &(),
+                Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
+            };
+            info!("read config done");
 
             confplugin = plugin;
         }
