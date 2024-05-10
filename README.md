@@ -13,7 +13,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 * [Availability Database](#availability-database)
 * [Thanks](#thanks)
 
-## Installation
+# Installation
 For general plugin installation instructions see the plugins repo [README.md](https://github.com/lightningd/plugins/blob/master/README.md#Installation)
 
 Release binaries for
@@ -25,19 +25,25 @@ can be found on the [release](https://github.com/daywalker90/summars/releases) p
 
 They require ``glibc>=2.31``, which you can check with ``ldd --version``.
 
-## Building
+# Building
 You can build the plugin yourself instead of using the release binaries.
 First clone the repo:
 
-``git clone https://github.com/daywalker90/summars.git``
+```
+git clone https://github.com/daywalker90/summars.git
+```
 
 Install a recent rust version ([rustup](https://rustup.rs/) is recommended) and in the ``summars`` folder run:
 
-``cargo build --release``
+```
+cargo build --release
+```
 
 After that the binary will be here: ``target/release/summars``
 
-## Example Usage
+Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
+
+# Example Usage
 
 There are currently two commands:
 * ``summars`` the main command
@@ -125,30 +131,24 @@ channels_flags=P:private O:offline
                       ├─┼──────────────────────┤  2505706x9x0
 ```
 
-## How to set options
-``summars`` is a dynamic plugin, so you can start it after cln is already running. You have three different methods of setting the options:
+# How to set options
+``summars`` is a dynamic plugin with dynamic options, so you can start it after CLN is already running and modify it's options after the plugin is started. There are three different methods of setting the options:
 
-1. running the summars command. 
+1. Running the ``summars`` command. This only sets the options temporarily for this one execution of ``summars`` and there are some exceptions for options that don't make sense here.
 
 * Example: ``lightning-cli summars summars-forwards=6``
 
-2. in the cln config file. 
-
-* Example: ``summars-forwards=6``
-
-3. when starting the plugin dynamically. 
+2. When starting the plugin dynamically.
 
 * Example: ``lightning-cli -k plugin subcommand=start plugin=/path/to/summars summars-forwards=6``
 
+3. Permanently saving them in the CLN config file. :warning:If you want to do this while CLN is running you must use [setconfig](https://docs.corelightning.org/reference/lightning-setconfig) instead of manually editing your config file! :warning:If you have options in the config file (either by manually editing it or by using the ``setconfig`` command) make sure the plugin will start automatically with CLN (include ``plugin=/path/to/summars`` or have a symlink to ``summars`` in your ``plugins`` folder). This is because CLN will refuse to start with config options that don't have a corresponding plugin loaded. :warning:If you edit your config file manually while CLN is running and a line changes their line number CLN will crash when you use the [setconfig](https://docs.corelightning.org/reference/lightning-setconfig) command, so better stick to ``setconfig`` only during CLN's uptime!
 
+* Example: ``lightning-cli setconfig summars-forwards 6``
 
-:warning:Warning: If you use the cln config file to set summars options make sure you include ``plugin=/path/to/summars`` (or have the plugin in the folder where cln automatically starts plugins from at startup) or cln will not start next time!
+You can mix these methods and if you set the same option with different methods, it will pick the value from your most recently used method.
 
-:warning:Only config files in your lightning-dir or the network dir will be read if you start the plugin dynamically after cln is already running!
-
-You can mix theses methods but if you set the same option with multiple of these three methods the priority is 1. -> 2. -> 3.
-
-## Options
+# Options
 * ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Default is ``SCID``
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,AWAIT_SPLICE`` and ``PUBLIC,PRIVATE`` to filter channels by their network visibility
@@ -169,10 +169,10 @@ You can mix theses methods but if you set the same option with multiple of these
 * ``summars-flow-style`` Same as ``summars-style`` but for the "flow" tables (forwards/pays/invoices). Default is ``blank``
 * ``summars-json`` Set output to json format. Default is ``false``
 
-## Availability Database
+# Availability Database
 The availability is persistent through plugin restarts.
-The db is located in your lightning folder in the summars folder (e.g. ``.lightning/bitcoin/summars/availdb.json``).
+The db is located in your lightning folder in the ``summars`` folder (e.g. ``.lightning/bitcoin/summars/availdb.json``).
 If you want to reset these stats stop the plugin and then remove the file.
 
-## Thanks
-Thank you to [cdecker](https://github.com/cdecker) for helping me get into writing a plugin with cln-plugin, the people in https://t.me/lightningd and the authors of the original [summary](https://github.com/lightningd/plugins/tree/master/summary) plugin.
+# Thanks
+Thank you to [cdecker](https://github.com/cdecker) for helping me get into writing a plugin with ``cln-plugin``, the people in https://t.me/lightningd and the authors of the original [summary](https://github.com/lightningd/plugins/tree/master/summary) plugin.

@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+
 import pytest
 from pyln.client import RpcError
 from pyln.testing.fixtures import *  # noqa: F403
@@ -46,9 +47,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
     for column in unexpected_columns:
         assert column not in result["result"]
 
-    with pytest.raises(
-        RpcError, match="summars-columns must be " "a comma separated string"
-    ):
+    with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-columns": 1})
 
     with pytest.raises(
@@ -112,6 +111,18 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     assert "forwards" in result["result"]
 
     result = node.rpc.call(
+        "summars",
+        {"summars-forwards": 1, "summars-forwards-filter-amount-msat": -1},
+    )
+    assert "forwards" in result["result"]
+
+    result = node.rpc.call(
+        "summars",
+        {"summars-forwards": 1, "summars-forwards-filter-fee-msat": -1},
+    )
+    assert "forwards" in result["result"]
+
+    result = node.rpc.call(
         "summars", {"summars-forwards": 1, "summars-forwards-alias": False}
     )
     assert "forwards" in result["result"]
@@ -128,19 +139,16 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     )
     assert "invoices" in result["result"]
 
+    result = node.rpc.call(
+        "summars",
+        {"summars-invoices": 1, "summars-invoices-filter-amount-msat": -1},
+    )
+    assert "invoices" in result["result"]
+
     result = node.rpc.call("summars", {"summars-locale": "de"})
     assert "result" in result
 
-    result = node.rpc.call("summars", {"summars-refresh-alias": 1})
-    assert "result" in result
-
     result = node.rpc.call("summars", {"summars-max-alias-length": 5})
-    assert "result" in result
-
-    result = node.rpc.call("summars", {"summars-availability-interval": 1})
-    assert "result" in result
-
-    result = node.rpc.call("summars", {"summars-availability-window": 1})
     assert "result" in result
 
     result = node.rpc.call("summars", {"summars-utf8": False})
@@ -155,91 +163,138 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin})
-    with pytest.raises(RpcError, match="Not a string"):
+    with pytest.raises(RpcError, match="does not make sense"):
+        node.rpc.call("summars", {"summars-refresh-alias": 1})
+
+    with pytest.raises(RpcError, match="does not make sense"):
+        node.rpc.call("summars", {"summars-availability-interval": 1})
+
+    with pytest.raises(RpcError, match="does not make sense"):
+        node.rpc.call("summars", {"summars-availability-window": 1})
+
+    with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-sort-by": 1})
     with pytest.raises(RpcError, match="Not a valid column name"):
         node.rpc.call("summars", {"summars-sort-by": "TEST"})
 
-    with pytest.raises(RpcError, match="must be a positive number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
+    with pytest.raises(RpcError, match="needs to be a positive number"):
         node.rpc.call("summars", {"summars-forwards": -1})
 
-    with pytest.raises(RpcError, match="must be a number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call(
             "summars", {"summars-forwards-filter-amount-msat": "TEST"}
         )
 
-    with pytest.raises(RpcError, match="must be a number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards-filter-fee-msat": "TEST"})
 
-    with pytest.raises(RpcError, match="needs to be bool"):
+    with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-forwards-alias": "TEST"})
-    with pytest.raises(RpcError, match="needs to be bool"):
+    with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-forwards-alias": 1})
 
-    with pytest.raises(RpcError, match="must be a positive number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-pays": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
+    with pytest.raises(RpcError, match="needs to be a positive number"):
         node.rpc.call("summars", {"summars-pays": -1})
 
-    with pytest.raises(RpcError, match="must be a positive number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-invoices": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
+    with pytest.raises(RpcError, match="needs to be a positive number"):
         node.rpc.call("summars", {"summars-invoices": -1})
 
-    with pytest.raises(RpcError, match="must be a number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call(
             "summars", {"summars-invoices-filter-amount-msat": "TEST"}
         )
 
-    with pytest.raises(RpcError, match="Not a valid string"):
+    with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-locale": -1})
-    with pytest.raises(RpcError, match="Not a valid locale"):
+    with pytest.raises(RpcError, match="not a valid locale"):
         node.rpc.call("summars", {"summars-locale": "xxxx"})
 
-    with pytest.raises(RpcError, match="must be a positive number"):
-        node.rpc.call("summars", {"summars-refresh-alias": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
-        node.rpc.call("summars", {"summars-refresh-alias": -1})
-    with pytest.raises(RpcError, match="must be greater than or equal to"):
-        node.rpc.call("summars", {"summars-refresh-alias": 0})
-
-    with pytest.raises(RpcError, match="must be a positive number"):
+    with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-max-alias-length": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
+    with pytest.raises(RpcError, match="needs to be a positive number"):
         node.rpc.call("summars", {"summars-max-alias-length": -1})
     with pytest.raises(RpcError, match="must be greater than or equal to"):
         node.rpc.call("summars", {"summars-max-alias-length": 4})
 
-    with pytest.raises(RpcError, match="must be a positive number"):
-        node.rpc.call("summars", {"summars-availability-interval": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
-        node.rpc.call("summars", {"summars-availability-interval": -1})
-    with pytest.raises(RpcError, match="must be greater than or equal to"):
-        node.rpc.call("summars", {"summars-availability-interval": 0})
-
-    with pytest.raises(RpcError, match="must be a positive number"):
-        node.rpc.call("summars", {"summars-availability-window": "TEST"})
-    with pytest.raises(RpcError, match="Could not read a positive number"):
-        node.rpc.call("summars", {"summars-availability-window": -1})
-    with pytest.raises(RpcError, match="must be greater than or equal to"):
-        node.rpc.call("summars", {"summars-availability-window": 0})
-
-    with pytest.raises(RpcError, match="needs to be bool"):
+    with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-utf8": "TEST"})
-    with pytest.raises(RpcError, match="needs to be bool"):
+    with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-utf8": 1})
 
-    with pytest.raises(RpcError, match="Not a valid string"):
+    with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-style": 1})
     with pytest.raises(RpcError, match="could not parse Style"):
         node.rpc.call("summars", {"summars-style": "TEST"})
 
-    with pytest.raises(RpcError, match="Not a valid string"):
+    with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-flow-style": 1})
     with pytest.raises(RpcError, match="could not parse Style"):
         node.rpc.call("summars", {"summars-flow-style": "TEST"})
+
+
+def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
+    node = node_factory.get_node(
+        allow_broken_log=True,
+        options={
+            "plugin": get_plugin,
+            "summars-forwards": 1,
+            "summars-invoices": 1,
+            "summars-pays": 1,
+            "summars-utf8": True,
+        },
+    )
+    result = node.rpc.call("summars")
+    assert "forwards" in result["result"]
+    assert "pays" in result["result"]
+    assert "invoices" in result["result"]
+
+    with pytest.raises(RpcError, match="needs to be a positive number"):
+        node.rpc.setconfig("summars-forwards", -1)
+    node.rpc.setconfig("summars-forwards", 0)
+    node.rpc.setconfig("summars-invoices", 0)
+    node.rpc.setconfig("summars-pays", 0)
+    result = node.rpc.call("summars")
+    assert "forwards" not in result["result"]
+    assert "pays" not in result["result"]
+    assert "invoices" not in result["result"]
+
+    node.rpc.setconfig("summars-columns", "IN_SATS, OUT_SATS")
+    result = node.rpc.call("summars")
+    assert "ALIAS" not in result["result"]
+    assert "PEER_ID" not in result["result"]
+    assert "STATE" not in result["result"]
+
+    with pytest.raises(RpcError, match="Not a valid column name"):
+        node.rpc.setconfig("summars-sort-by", 1)
+    with pytest.raises(RpcError, match="Not a valid column name"):
+        node.rpc.setconfig("summars-sort-by", "TEST")
+
+    with pytest.raises(RpcError, match="not a valid integer"):
+        node.rpc.setconfig("summars-forwards", "TEST")
+
+    with pytest.raises(RpcError) as err:
+        node.rpc.setconfig("summars-utf8", "test")
+    assert err.value.error["message"] == "summars-utf8 is not a valid boolean!"
+    assert err.value.error["code"] == -32602
+    assert (
+        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"][
+            "value_bool"
+        ]
+        != "test"
+    )
+    node.rpc.setconfig("summars-utf8", False)
+    assert (
+        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"][
+            "value_bool"
+        ]
+        is False
+    )
 
 
 def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
