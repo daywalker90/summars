@@ -55,7 +55,7 @@ impl Config {
     pub fn new() -> Config {
         Config {
             columns: DynamicConfigOption {
-                name: OPT_COLUMNS.name,
+                name: OPT_COLUMNS,
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
@@ -65,44 +65,44 @@ impl Config {
                 },
             },
             sort_by: DynamicConfigOption {
-                name: OPT_SORT_BY.name,
+                name: OPT_SORT_BY,
                 value: "SCID".to_string(),
             },
             exclude_channel_states: DynamicConfigOption {
-                name: OPT_EXCLUDE_CHANNEL_STATES.name,
+                name: OPT_EXCLUDE_CHANNEL_STATES,
                 value: Vec::new(),
             },
             exclude_pub_priv_states: None,
             forwards: DynamicConfigOption {
-                name: OPT_FORWARDS.name,
+                name: OPT_FORWARDS,
                 value: 0,
             },
             forwards_filter_amt_msat: DynamicConfigOption {
-                name: OPT_FORWARDS_FILTER_AMT.name,
+                name: OPT_FORWARDS_FILTER_AMT,
                 value: -1,
             },
             forwards_filter_fee_msat: DynamicConfigOption {
-                name: OPT_FORWARDS_FILTER_FEE.name,
+                name: OPT_FORWARDS_FILTER_FEE,
                 value: -1,
             },
             forwards_alias: DynamicConfigOption {
-                name: OPT_FORWARDS_ALIAS.name,
+                name: OPT_FORWARDS_ALIAS,
                 value: true,
             },
             pays: DynamicConfigOption {
-                name: OPT_PAYS.name,
+                name: OPT_PAYS,
                 value: 0,
             },
             invoices: DynamicConfigOption {
-                name: OPT_INVOICES.name,
+                name: OPT_INVOICES,
                 value: 0,
             },
             invoices_filter_amt_msat: DynamicConfigOption {
-                name: OPT_INVOICES_FILTER_AMT.name,
+                name: OPT_INVOICES_FILTER_AMT,
                 value: -1,
             },
             locale: DynamicConfigOption {
-                name: OPT_LOCALE.name,
+                name: OPT_LOCALE,
                 value: {
                     let mut valid_locale = None;
                     for loc in get_locales() {
@@ -119,35 +119,35 @@ impl Config {
                 },
             },
             refresh_alias: DynamicConfigOption {
-                name: OPT_REFRESH_ALIAS.name,
+                name: OPT_REFRESH_ALIAS,
                 value: 24,
             },
             max_alias_length: DynamicConfigOption {
-                name: OPT_MAX_ALIAS_LENGTH.name,
+                name: OPT_MAX_ALIAS_LENGTH,
                 value: 20,
             },
             availability_interval: DynamicConfigOption {
-                name: OPT_AVAILABILITY_INTERVAL.name,
+                name: OPT_AVAILABILITY_INTERVAL,
                 value: 300,
             },
             availability_window: DynamicConfigOption {
-                name: OPT_AVAILABILITY_WINDOW.name,
+                name: OPT_AVAILABILITY_WINDOW,
                 value: 72,
             },
             utf8: DynamicConfigOption {
-                name: OPT_UTF8.name,
+                name: OPT_UTF8,
                 value: true,
             },
             style: DynamicConfigOption {
-                name: OPT_STYLE.name,
+                name: OPT_STYLE,
                 value: Styles::Psql,
             },
             flow_style: DynamicConfigOption {
-                name: OPT_FLOW_STYLE.name,
+                name: OPT_FLOW_STYLE,
                 value: Styles::Blank,
             },
             json: DynamicConfigOption {
-                name: OPT_JSON.name,
+                name: OPT_JSON,
                 value: false,
             },
         }
