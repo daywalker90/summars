@@ -66,8 +66,7 @@ pub async fn summary(
     let peer_channels = rpc
         .call_typed(&ListpeerchannelsRequest { id: None })
         .await?
-        .channels
-        .ok_or(anyhow!("list_peer_channels returned with None!"))?;
+        .channels;
     debug!(
         "Listpeerchannels. Total: {}ms",
         now.elapsed().as_millis().to_string()
@@ -123,7 +122,7 @@ pub async fn summary(
         if config
             .exclude_channel_states
             .value
-            .contains(&ShortChannelState(chan.state.unwrap()))
+            .contains(&ShortChannelState(chan.state))
             || if let Some(excl_vis) = &config.exclude_pub_priv_states {
                 match excl_vis {
                     ChannelVisibility::Private => chan.private.unwrap(),
@@ -136,27 +135,29 @@ pub async fn summary(
             filter_count += 1;
             continue;
         }
-        let alias = get_alias(&mut rpc, p.clone(), chan.peer_id.unwrap()).await?;
+        let alias = get_alias(&mut rpc, p.clone(), chan.peer_id).await?;
 
-        let to_us_msat = Amount::msat(&chan.to_us_msat.ok_or(anyhow!(
-            "Channel with {} has no msats to us!",
-            chan.peer_id.unwrap()
-        ))?);
+        let to_us_msat = Amount::msat(
+            &chan
+                .to_us_msat
+                .ok_or(anyhow!("Channel with {} has no msats to us!", chan.peer_id))?,
+        );
         let total_msat = Amount::msat(&chan.total_msat.ok_or(anyhow!(
             "Channel with {} has no total amount!",
-            chan.peer_id.unwrap()
+            chan.peer_id
         ))?);
-        let our_reserve = Amount::msat(&chan.our_reserve_msat.ok_or(anyhow!(
-            "Channel with {} has no our_reserve!",
-            chan.peer_id.unwrap()
-        ))?);
+        let our_reserve = Amount::msat(
+            &chan
+                .our_reserve_msat
+                .ok_or(anyhow!("Channel with {} has no our_reserve!", chan.peer_id))?,
+        );
         let their_reserve = Amount::msat(&chan.their_reserve_msat.ok_or(anyhow!(
             "Channel with {} has no their_reserve!",
-            chan.peer_id.unwrap()
+            chan.peer_id
         ))?);
 
         if matches!(
-            chan.state.unwrap(),
+            chan.state,
             ListpeerchannelsChannelsState::CHANNELD_NORMAL
                 | ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
         ) {
@@ -168,7 +169,7 @@ pub async fn summary(
             }
         }
 
-        let avail = match p.state().avail.lock().get(&chan.peer_id.unwrap()) {
+        let avail = match p.state().avail.lock().get(&chan.peer_id) {
             Some(a) => a.avail,
             None => -1.0,
         };
@@ -185,7 +186,7 @@ pub async fn summary(
         table.push(summary);
 
         if is_active_state(chan) {
-            if chan.peer_connected.unwrap() {
+            if chan.peer_connected {
                 num_connected += 1
             }
             channel_count += 1;
@@ -369,7 +370,7 @@ async fn recent_forwards(
         if forward.received_time as u64 > now_utc - config.forwards.value * 60 * 60 {
             let inchan = if config.forwards_alias.value {
                 match chanmap.get(&forward.in_channel) {
-                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
+                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id) {
                         Some(alias) => {
                             if alias.eq(NO_ALIAS_SET) {
                                 forward.in_channel.to_string()
@@ -387,7 +388,7 @@ async fn recent_forwards(
             let fw_outchan = forward.out_channel.unwrap();
             let outchan = if config.forwards_alias.value {
                 match chanmap.get(&fw_outchan) {
-                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id.unwrap()) {
+                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id) {
                         Some(alias) => {
                             if alias.eq(NO_ALIAS_SET) {
                                 fw_outchan.to_string()
@@ -725,7 +726,7 @@ fn chan_to_summary(
     total_msat: u64,
     graph_max_chan_side_msat: u64,
 ) -> Result<Summary, Error> {
-    let statestr = ShortChannelState(chan.state.unwrap());
+    let statestr = ShortChannelState(chan.state);
 
     let scidsortdummy = ShortChannelId::from_str("999999999x9999x99").unwrap();
     let scid = match chan.short_channel_id {
@@ -744,9 +745,9 @@ fn chan_to_summary(
             scid.to_string()
         },
         max_htlc: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
-        flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected.unwrap()),
+        flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected),
         private: chan.private.unwrap(),
-        offline: !chan.peer_connected.unwrap(),
+        offline: !chan.peer_connected,
         base: Amount::msat(&chan.fee_base_msat.unwrap()),
         ppm: chan.fee_proportional_millionths.unwrap(),
         alias: if config.utf8.value {
@@ -754,7 +755,7 @@ fn chan_to_summary(
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
         },
-        peer_id: chan.peer_id.unwrap(),
+        peer_id: chan.peer_id,
         uptime: avail * 100.0,
         htlcs: chan.htlcs.clone().unwrap_or_default().len(),
         state: statestr.to_string(),
