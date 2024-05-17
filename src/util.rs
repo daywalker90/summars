@@ -15,7 +15,7 @@ use crate::structs::{Config, GraphCharset, PluginState};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
-    match channel.state.unwrap() {
+    match channel.state {
         ListpeerchannelsChannelsState::OPENINGD => true,
         ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN => true,
         ListpeerchannelsChannelsState::CHANNELD_NORMAL => true,

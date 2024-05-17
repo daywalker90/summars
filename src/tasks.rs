@@ -105,15 +105,14 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
             let mut channels = rpc
                 .call_typed(&ListpeerchannelsRequest { id: None })
                 .await?
-                .channels
-                .ok_or(anyhow!("list_peer_channels returned with None!"))?;
+                .channels;
             channels.retain(is_active_state);
             for chan in channels {
                 let leadwin = f64::max(
                     f64::min(
                         avail_window,
                         persistpeers
-                            .get(&chan.peer_id.unwrap())
+                            .get(&chan.peer_id)
                             .unwrap_or(&PeerAvailability {
                                 count: 0,
                                 connected: false,
@@ -127,24 +126,20 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                 let samples = leadwin / summary_availability_interval;
                 let alpha = 1.0 / samples;
                 let beta = 1.0 - alpha;
-                if let Some(data) = persistpeers.get_mut(&chan.peer_id.unwrap()) {
+                if let Some(data) = persistpeers.get_mut(&chan.peer_id) {
                     editpeer = data;
                 } else {
                     persistpeers.insert(
-                        chan.peer_id.unwrap(),
+                        chan.peer_id,
                         PeerAvailability {
                             count: 0,
-                            connected: chan.peer_connected.unwrap(),
-                            avail: if chan.peer_connected.unwrap() {
-                                1.0
-                            } else {
-                                0.0
-                            },
+                            connected: chan.peer_connected,
+                            avail: if chan.peer_connected { 1.0 } else { 0.0 },
                         },
                     );
-                    editpeer = persistpeers.get_mut(&chan.peer_id.unwrap()).unwrap();
+                    editpeer = persistpeers.get_mut(&chan.peer_id).unwrap();
                 };
-                if chan.peer_connected.unwrap() {
+                if chan.peer_connected {
                     editpeer.connected = true;
                     editpeer.avail = 1.0 * alpha + editpeer.avail * beta;
                 } else {
