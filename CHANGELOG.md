@@ -6,11 +6,13 @@
 
 - ``summars-pays-columns`` See README for more info
 - ``summars-max-description-length`` Set the max length for descriptions, see README
+- ``summars-invoices-columns`` See README for more info
+- ``summars-max-label-length`` Set the max length for invoice labels, see README
 
 ### Changed
 
 - Options code refactored. All options are now natively dynamic and there is no longer any manual reading of config files. Read the updated README section on how to set options for more information
-- ``summars-max-alias-length`` and ``summars-max-description-length`` support wrapping by using negative values, see README
+- ``summars-max-alias-length`` supports wrapping by using negative values (just like the new ``summars-max-description-length`` and ``summars-max-label-length``), see README
 
 ## [3.2.0] - 2024-05-03
 
