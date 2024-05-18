@@ -11,12 +11,13 @@ use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
-    structs::{ChannelVisibility, Config, Pays, ShortChannelState, Styles, Summary},
+    structs::{ChannelVisibility, Config, Invoices, Pays, ShortChannelState, Styles, Summary},
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
-    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT,
-    OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS,
-    OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_COLUMNS,
+    OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH,
+    OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE,
+    OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -69,6 +70,7 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
             || n.eq(OPT_PAYS)
             || n.eq(OPT_MAX_DESC_LENGTH)
             || n.eq(OPT_INVOICES)
+            || n.eq(OPT_MAX_LABEL_LENGTH)
             || n.eq(OPT_INVOICES_FILTER_AMT)
             || n.eq(OPT_REFRESH_ALIAS)
             || n.eq(OPT_MAX_ALIAS_LENGTH)
@@ -133,6 +135,24 @@ fn validate_pays_columns_input(input: &str) -> Result<Vec<String>, Error> {
     for i in &split_input {
         if !Pays::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid pays column names!", i));
+        }
+    }
+
+    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
+    Ok(cleaned_strings)
+}
+
+fn validate_invoices_columns_input(input: &str) -> Result<Vec<String>, Error> {
+    let cleaned_input: String = input
+        .chars()
+        .filter(|&c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let split_input: Vec<&str> = cleaned_input.split(',').collect();
+
+    for i in &split_input {
+        if !Invoices::FIELD_NAMES_AS_ARRAY.contains(i) {
+            return Err(anyhow!("`{}` not found in valid invoices column names!", i));
         }
     }
 
@@ -297,6 +317,16 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_INVOICES) => {
                     check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?
                 }
+                name if name.eq(OPT_INVOICES_COLUMNS) => check_option(
+                    config,
+                    OPT_INVOICES_COLUMNS,
+                    &parse_option(OPT_INVOICES_COLUMNS, value)?,
+                )?,
+                name if name.eq(OPT_MAX_LABEL_LENGTH) => check_option(
+                    config,
+                    OPT_MAX_LABEL_LENGTH,
+                    &parse_option(OPT_MAX_LABEL_LENGTH, value)?,
+                )?,
                 name if name.eq(OPT_INVOICES_FILTER_AMT) => check_option(
                     config,
                     OPT_INVOICES_FILTER_AMT,
@@ -380,6 +410,12 @@ pub fn get_startup_options(
         if let Some(invs) = plugin.option_str(OPT_INVOICES)? {
             check_option(&mut config, OPT_INVOICES, &invs)?;
         };
+        if let Some(cols) = plugin.option_str(OPT_INVOICES_COLUMNS)? {
+            check_option(&mut config, OPT_INVOICES_COLUMNS, &cols)?;
+        };
+        if let Some(mll) = plugin.option_str(OPT_MAX_LABEL_LENGTH)? {
+            check_option(&mut config, OPT_MAX_LABEL_LENGTH, &mll)?;
+        };
         if let Some(invfa) = plugin.option_str(OPT_INVOICES_FILTER_AMT)? {
             check_option(&mut config, OPT_INVOICES_FILTER_AMT, &invfa)?;
         };
@@ -455,6 +491,14 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_INVOICES) => {
             config.invoices.value =
                 options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
+        }
+        n if n.eq(OPT_INVOICES_COLUMNS) => {
+            config.invoices_columns.value =
+                validate_invoices_columns_input(value.as_str().unwrap())?;
+        }
+        n if n.eq(OPT_MAX_LABEL_LENGTH) => {
+            config.max_label_length.value =
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?
         }
         n if n.eq(OPT_INVOICES_FILTER_AMT) => {
             config.invoices_filter_amt_msat.value =

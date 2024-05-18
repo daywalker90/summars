@@ -700,6 +700,14 @@ async fn recent_invoices(
                         )?,
                         label: invoice.label,
                         msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
+                        sats_received: Amount::msat(&invoice.amount_received_msat.unwrap()) / 1000,
+                        description: if let Some(desc) = invoice.description {
+                            desc
+                        } else {
+                            String::new()
+                        },
+                        payment_hash: invoice.payment_hash.to_string(),
+                        preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
                     });
                 }
                 if let Some(c_index) = invoice.created_index {
@@ -735,12 +743,39 @@ fn format_invoices(
 ) -> String {
     let mut invoicestable = Table::new(table);
     config.flow_style.value.apply(&mut invoicestable);
+    for head in Invoices::FIELD_NAMES_AS_ARRAY {
+        if !config.invoices_columns.value.contains(&head.to_string()) {
+            invoicestable.with(Disable::column(ByColumnName::new(head)));
+        }
+    }
+
+    if config.max_desc_length.value < 0 {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::truncate(config.max_desc_length.value as usize).suffix("[..]")),
+        );
+    }
+
+    if config.max_label_length.value < 0 {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("label")).with(
+                Width::wrap(config.max_label_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("label"))
+                .with(Width::truncate(config.max_label_length.value as usize).suffix("[..]")),
+        );
+    }
+
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
-    invoicestable.with(
-        Modify::new(ByColumnName::new("sats_received").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap(),
-        )),
-    );
 
     if filter_stats.filter_count > 0 {
         let filter_sum_result = format!(

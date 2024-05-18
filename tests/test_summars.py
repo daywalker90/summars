@@ -23,6 +23,24 @@ columns = [
     "STATE",
 ]
 
+pay_columns = [
+    "completed_at",
+    "payment_hash",
+    "sats_sent",
+    "destination",
+    "description",
+    "preimage",
+]
+
+invoice_columns = [
+    "paid_at",
+    "label",
+    "description",
+    "sats_received",
+    "payment_hash",
+    "preimage",
+]
+
 
 def test_basic(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin})
@@ -85,6 +103,27 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     for col in columns:
         result = node.rpc.call("summars", {"summars-columns": col})
         assert col in result["result"]
+        for col2 in columns:
+            if col != col2:
+                assert col2 not in result["result"]
+
+    for col in pay_columns:
+        result = node.rpc.call(
+            "summars", {"summars-pays": 1, "summars-pays-columns": col}
+        )
+        assert col in result["result"]
+        for col2 in pay_columns:
+            if col != col2:
+                assert col2 not in result["result"]
+
+    for col in invoice_columns:
+        result = node.rpc.call(
+            "summars", {"summars-invoices": 1, "summars-invoices-columns": col}
+        )
+        assert col in result["result"]
+        for col2 in invoice_columns:
+            if col != col2:
+                assert col2 not in result["result"]
 
     for col in columns:
         result = node.rpc.call(
@@ -154,6 +193,9 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     result = node.rpc.call("summars", {"summars-max-description-length": 5})
     assert "result" in result
 
+    result = node.rpc.call("summars", {"summars-max-label-length": 5})
+    assert "result" in result
+
     result = node.rpc.call("summars", {"summars-utf8": False})
     assert "result" in result
 
@@ -163,18 +205,21 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     result = node.rpc.call("summars", {"summars-flow-style": "modern"})
     assert "result" in result
 
-    result = node.rpc.call(
-        "summars",
-        {
-            "summars-pays": 1,
-            "summars-pays-columns": "completed_at,payment_hash,sats_sent,destination,description",
-        },
-    )
-    assert "description" in result["result"]
-
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin})
+
+    with pytest.raises(RpcError, match="not found in valid column names"):
+        node.rpc.call("summars", {"summars-columns": "test"})
+
+    with pytest.raises(RpcError, match="not found in valid pays column names"):
+        node.rpc.call("summars", {"summars-pays-columns": "test"})
+
+    with pytest.raises(
+        RpcError, match="not found in valid invoices column names"
+    ):
+        node.rpc.call("summars", {"summars-invoices-columns": "test"})
+
     with pytest.raises(RpcError, match="does not make sense"):
         node.rpc.call("summars", {"summars-refresh-alias": 1})
 
@@ -234,8 +279,19 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
     with pytest.raises(RpcError, match="must be greater than or equal to |"):
         node.rpc.call("summars", {"summars-max-alias-length": 4})
 
+    with pytest.raises(RpcError, match="not a valid integer"):
+        node.rpc.call("summars", {"summars-max-description-length": "TEST"})
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-max-description-length": -1})
     with pytest.raises(RpcError, match="must be greater than or equal to |"):
         node.rpc.call("summars", {"summars-max-description-length": 4})
+
+    with pytest.raises(RpcError, match="not a valid integer"):
+        node.rpc.call("summars", {"summars-max-label-length": "TEST"})
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-max-label-length": -1})
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-max-label-length": 4})
 
     with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-utf8": "TEST"})

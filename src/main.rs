@@ -31,6 +31,8 @@ const OPT_PAYS: &str = "summars-pays";
 const OPT_PAYS_COLUMNS: &str = "summars-pays-columns";
 const OPT_MAX_DESC_LENGTH: &str = "summars-max-description-length";
 const OPT_INVOICES: &str = "summars-invoices";
+const OPT_INVOICES_COLUMNS: &str = "summars-invoices-columns";
+const OPT_MAX_LABEL_LENGTH: &str = "summars-max-label-length";
 const OPT_INVOICES_FILTER_AMT: &str = "summars-invoices-filter-amount-msat";
 const OPT_LOCALE: &str = "summars-locale";
 const OPT_REFRESH_ALIAS: &str = "summars-refresh-alias";
@@ -105,6 +107,18 @@ async fn main() -> Result<(), anyhow::Error> {
         "Show last x hours of invoices. Default is `0`",
     )
     .dynamic();
+    let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
+        OPT_INVOICES_COLUMNS,
+        "Enabled columns in the invoices table. Available columns are: \
+            `` \
+            Default is ``",
+    )
+    .dynamic();
+    let opt_max_label_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
+        OPT_MAX_LABEL_LENGTH,
+        "Max string length of an invoice label. Default is `30`",
+    )
+    .dynamic();
     let opt_invoices_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
         OPT_INVOICES_FILTER_AMT,
         "Filter invoices smaller than or equal to x msats. Default is `-1`",
@@ -166,6 +180,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(opt_pays_columns)
         .option(opt_max_desc_length)
         .option(opt_invoices)
+        .option(opt_invoices_columns)
+        .option(opt_max_label_length)
         .option(opt_invoices_filter_amt)
         .option(opt_locale)
         .option(opt_refresh_alias)
