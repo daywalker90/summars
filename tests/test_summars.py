@@ -151,6 +151,9 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     result = node.rpc.call("summars", {"summars-max-alias-length": 5})
     assert "result" in result
 
+    result = node.rpc.call("summars", {"summars-max-description-length": 5})
+    assert "result" in result
+
     result = node.rpc.call("summars", {"summars-utf8": False})
     assert "result" in result
 
@@ -159,6 +162,15 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
     result = node.rpc.call("summars", {"summars-flow-style": "modern"})
     assert "result" in result
+
+    result = node.rpc.call(
+        "summars",
+        {
+            "summars-pays": 1,
+            "summars-pays-columns": "completed_at,payment_hash,sats_sent,destination,description",
+        },
+    )
+    assert "description" in result["result"]
 
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
@@ -217,10 +229,13 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-max-alias-length": "TEST"})
-    with pytest.raises(RpcError, match="needs to be a positive number"):
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
         node.rpc.call("summars", {"summars-max-alias-length": -1})
-    with pytest.raises(RpcError, match="must be greater than or equal to"):
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
         node.rpc.call("summars", {"summars-max-alias-length": 4})
+
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-max-description-length": 4})
 
     with pytest.raises(RpcError, match="not a valid boolean"):
         node.rpc.call("summars", {"summars-utf8": "TEST"})

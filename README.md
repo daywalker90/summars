@@ -149,24 +149,33 @@ channels_flags=P:private O:offline
 You can mix these methods and if you set the same option with different methods, it will pick the value from your most recently used method.
 
 # Options
+### Channels table
 * ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE``
 * ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Default is ``SCID``
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,AWAIT_SPLICE`` and ``PUBLIC,PRIVATE`` to filter channels by their network visibility
+### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
+### Pays table
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-pays-columns`` List of enabled columns in the pays table. Comma-separated. Valid columns: ``completed_at,payment_hash,sats_sent,destination,description,preimage``. Default columns are: ``completed_at,payment_hash,sats_sent,destination``
+### Invoices table
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
-* ``summars-locale`` Set locale for number and date formatting. Default is the systems locale with ``en-US`` as fallback, if it could not be detected.
+### Background tasks
 * ``summars-refresh-alias`` How many hours between refreshing the node aliases in memory. Default is ``24`` hours
-* ``summars-max-alias-length`` How long aliases are allowed to be before they get cut off. Default is ``20`` chars
 * ``summars-availability-interval`` How often the availability should be calculated. Default is ``300`` seconds
 * ``summars-availability-window`` How many hours the availability should be averaged over. Default is ``72`` hours
+### Formatting
+* ``summars-locale`` Set locale for number and date formatting. Default is the systems locale with ``en-US`` as fallback, if it could not be detected.
 * ``summars-utf8`` Switch on/off special characters in node aliases. Off replaces special characters with a ``?``. Default is ``true`` (on)
-* ``summars-style`` Set the table style for the summary table. Valid values are: ``ascii, modern, sharp, rounded, extended, psql, markdown, re_structured_text, dots, ascii_rounded, blank, empty``. You can see previews here: [tabled-styles](https://github.com/zhiburt/tabled/?tab=readme-ov-file#styles). Default is ``modern``
+* ``summars-style`` Set the table style for the summary table. Valid values are: ``ascii``, ``modern``, ``sharp``, ``rounded``, ``extended``, ``psql``, ``markdown``, ``re_structured_text``, ``dots``, ``ascii_rounded``, ``blank``, ``empty``. You can see previews here: [tabled-styles](https://github.com/zhiburt/tabled/?tab=readme-ov-file#styles). Default is ``modern``
 * ``summars-flow-style`` Same as ``summars-style`` but for the "flow" tables (forwards/pays/invoices). Default is ``blank``
+* ``summars-max-alias-length`` How long aliases are allowed to be before they get cut off. If you use a negative value (e.g. ``-20``) it will use wrapping at that length instead. Default is ``20``
+* ``summars-max-description-length`` How long descriptions are allowed to be before they get cut off. If you use a negative value (e.g. ``-30``) it will use wrapping at that length instead. Default is ``30``
+### Misc
 * ``summars-json`` Set output to json format. Default is ``false``
 
 # Availability Database

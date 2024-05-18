@@ -11,12 +11,12 @@ use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
-    structs::{ChannelVisibility, Config, ShortChannelState, Styles, Summary},
+    structs::{ChannelVisibility, Config, Pays, ShortChannelState, Styles, Summary},
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
     OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT,
-    OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY,
-    OPT_STYLE, OPT_UTF8,
+    OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS,
+    OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -67,6 +67,7 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
             || n.eq(OPT_FORWARDS_FILTER_AMT)
             || n.eq(OPT_FORWARDS_FILTER_FEE)
             || n.eq(OPT_PAYS)
+            || n.eq(OPT_MAX_DESC_LENGTH)
             || n.eq(OPT_INVOICES)
             || n.eq(OPT_INVOICES_FILTER_AMT)
             || n.eq(OPT_REFRESH_ALIAS)
@@ -104,12 +105,34 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
 }
 
 fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
-    let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
+    let cleaned_input: String = input
+        .chars()
+        .filter(|&c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_uppercase();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
 
     for i in &split_input {
         if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
+        }
+    }
+
+    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
+    Ok(cleaned_strings)
+}
+
+fn validate_pays_columns_input(input: &str) -> Result<Vec<String>, Error> {
+    let cleaned_input: String = input
+        .chars()
+        .filter(|&c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let split_input: Vec<&str> = cleaned_input.split(',').collect();
+
+    for i in &split_input {
+        if !Pays::FIELD_NAMES_AS_ARRAY.contains(i) {
+            return Err(anyhow!("`{}` not found in valid pays column names!", i));
         }
     }
 
@@ -196,6 +219,18 @@ fn validate_i64_input(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
     Ok(n)
 }
 
+fn validate_i64_input_absolute(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
+    if n.abs() < gteq {
+        return Err(anyhow!(
+            "{} must be greater than or equal to |{}|",
+            var_name,
+            gteq
+        ));
+    }
+
+    Ok(n)
+}
+
 fn options_value_to_u64(
     name: &str,
     value: i64,
@@ -249,6 +284,16 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_PAYS) => {
                     check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?
                 }
+                name if name.eq(OPT_PAYS_COLUMNS) => check_option(
+                    config,
+                    OPT_PAYS_COLUMNS,
+                    &parse_option(OPT_PAYS_COLUMNS, value)?,
+                )?,
+                name if name.eq(OPT_MAX_DESC_LENGTH) => check_option(
+                    config,
+                    OPT_MAX_DESC_LENGTH,
+                    &parse_option(OPT_MAX_DESC_LENGTH, value)?,
+                )?,
                 name if name.eq(OPT_INVOICES) => {
                     check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?
                 }
@@ -326,6 +371,12 @@ pub fn get_startup_options(
         if let Some(pays) = plugin.option_str(OPT_PAYS)? {
             check_option(&mut config, OPT_PAYS, &pays)?;
         };
+        if let Some(cols) = plugin.option_str(OPT_PAYS_COLUMNS)? {
+            check_option(&mut config, OPT_PAYS_COLUMNS, &cols)?;
+        };
+        if let Some(mdl) = plugin.option_str(OPT_MAX_DESC_LENGTH)? {
+            check_option(&mut config, OPT_MAX_DESC_LENGTH, &mdl)?;
+        };
         if let Some(invs) = plugin.option_str(OPT_INVOICES)? {
             check_option(&mut config, OPT_INVOICES, &invs)?;
         };
@@ -394,6 +445,13 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_PAYS) => {
             config.pays.value = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
         }
+        n if n.eq(OPT_PAYS_COLUMNS) => {
+            config.pays_columns.value = validate_pays_columns_input(value.as_str().unwrap())?;
+        }
+        n if n.eq(OPT_MAX_DESC_LENGTH) => {
+            config.max_desc_length.value =
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_DESC_LENGTH, 5)?
+        }
         n if n.eq(OPT_INVOICES) => {
             config.invoices.value =
                 options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
@@ -420,7 +478,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_MAX_ALIAS_LENGTH) => {
             config.max_alias_length.value =
-                options_value_to_u64(OPT_MAX_ALIAS_LENGTH, value.as_i64().unwrap(), 5, false)?
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_ALIAS_LENGTH, 5)?
         }
         n if n.eq(OPT_AVAILABILITY_INTERVAL) => {
             config.availability_interval.value =
