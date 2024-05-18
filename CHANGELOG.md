@@ -2,9 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- ``summars-pays-columns`` See README for more info
+- ``summars-max-description-length`` Set the max length for descriptions, see README
+
 ### Changed
 
 - Options code refactored. All options are now natively dynamic and there is no longer any manual reading of config files. Read the updated README section on how to set options for more information
+- ``summars-max-alias-length`` and ``summars-max-description-length`` support wrapping by using negative values, see README
 
 ## [3.2.0] - 2024-05-03
 

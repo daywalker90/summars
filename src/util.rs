@@ -161,6 +161,14 @@ pub fn timestamp_to_localized_datetime_string(
     }
 }
 
+pub fn hex_encode(bytes: &[u8]) -> String {
+    let mut hex_string = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        hex_string.push_str(&format!("{:02x}", byte));
+    }
+    hex_string
+}
+
 #[test]
 fn test_flags() {
     assert_eq!(make_channel_flags(false, false), "[__]");

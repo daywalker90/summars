@@ -30,7 +30,7 @@ use crate::structs::{
     NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
-    draw_chans_graph, is_active_state, make_channel_flags, make_rpc_path,
+    draw_chans_graph, hex_encode, is_active_state, make_channel_flags, make_rpc_path,
     timestamp_to_localized_datetime_string, u64_to_btc_string, u64_to_sat_string,
 };
 
@@ -278,15 +278,17 @@ pub async fn summary(
             )
         }
         if config.forwards.value > 0 {
-            result +=
-                &("\n\n".to_owned() + &format_forwards(forwards, &config, forwards_filter_stats));
+            result += &("\n\n".to_owned()
+                + "forwards\n"
+                + &format_forwards(forwards, &config, forwards_filter_stats));
         }
         if config.pays.value > 0 {
-            result += &("\n\n".to_owned() + &format_pays(pays, &config));
+            result += &("\n\n".to_owned() + "pays\n" + &format_pays(pays, &config));
         }
         if config.invoices.value > 0 {
-            result +=
-                &("\n\n".to_owned() + &format_invoices(invoices, &config, invoices_filter_stats));
+            result += &("\n\n".to_owned()
+                + "invoices\n"
+                + &format_invoices(invoices, &config, invoices_filter_stats));
         }
 
         Ok(json!({"format-hint":"simple","result":format!(
@@ -368,41 +370,34 @@ async fn recent_forwards(
     };
     for forward in forwards {
         if forward.received_time as u64 > now_utc - config.forwards.value * 60 * 60 {
-            let inchan = if config.forwards_alias.value {
-                match chanmap.get(&forward.in_channel) {
-                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id) {
-                        Some(alias) => {
-                            if alias.eq(NO_ALIAS_SET) {
-                                forward.in_channel.to_string()
-                            } else {
-                                alias.clone()
-                            }
-                        }
-                        None => forward.in_channel.to_string(),
-                    },
-                    None => forward.in_channel.to_string(),
-                }
-            } else {
-                forward.in_channel.to_string()
-            };
+            let inchan = config
+                .forwards_alias
+                .value
+                .then(|| {
+                    chanmap.get(&forward.in_channel).and_then(|chan| {
+                        alias_map
+                            .get::<PublicKey>(&chan.peer_id)
+                            .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
+                            .cloned()
+                    })
+                })
+                .flatten()
+                .unwrap_or_else(|| forward.in_channel.to_string());
+
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = if config.forwards_alias.value {
-                match chanmap.get(&fw_outchan) {
-                    Some(chan) => match alias_map.get::<PublicKey>(&chan.peer_id) {
-                        Some(alias) => {
-                            if alias.eq(NO_ALIAS_SET) {
-                                fw_outchan.to_string()
-                            } else {
-                                alias.clone()
-                            }
-                        }
-                        None => fw_outchan.to_string(),
-                    },
-                    None => fw_outchan.to_string(),
-                }
-            } else {
-                fw_outchan.to_string()
-            };
+            let outchan = config
+                .forwards_alias
+                .value
+                .then(|| {
+                    chanmap.get(&fw_outchan).and_then(|chan| {
+                        alias_map
+                            .get::<PublicKey>(&chan.peer_id)
+                            .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
+                            .cloned()
+                    })
+                })
+                .flatten()
+                .unwrap_or_else(|| fw_outchan.to_string());
 
             let mut should_filter = false;
             if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat.value {
@@ -473,14 +468,33 @@ fn format_forwards(
 ) -> String {
     let mut fwtable = Table::new(table);
     config.flow_style.value.apply(&mut fwtable);
-    fwtable.with(
-        Modify::new(ByColumnName::new("in_channel"))
-            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
-    );
-    fwtable.with(
-        Modify::new(ByColumnName::new("out_channel"))
-            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
-    );
+
+    if config.max_alias_length.value < 0 {
+        fwtable.with(
+            Modify::new(ByColumnName::new("in_channel")).with(
+                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        fwtable.with(
+            Modify::new(ByColumnName::new("in_channel"))
+                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+        );
+    }
+
+    if config.max_alias_length.value < 0 {
+        fwtable.with(
+            Modify::new(ByColumnName::new("out_channel")).with(
+                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        fwtable.with(
+            Modify::new(ByColumnName::new("out_channel"))
+                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+        );
+    }
+
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
     fwtable.with(
         Modify::new(ByColumnName::new("in_sats").not(Rows::first())).with(Format::content(|s| {
@@ -541,6 +555,7 @@ async fn recent_pays(
                 )?,
                 payment_hash: pay.payment_hash.to_string(),
                 msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
+                sats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()) / 1000,
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else if config.utf8.value {
@@ -548,6 +563,28 @@ async fn recent_pays(
                 } else {
                     destination.replace(|c: char| !c.is_ascii(), "?")
                 },
+                description: if config
+                    .pays_columns
+                    .value
+                    .contains(&"description".to_string())
+                    && !config.json.value
+                {
+                    if let Some(desc) = pay.description {
+                        desc
+                    } else if let Some(b11) = pay.bolt11 {
+                        let invoice = rpc.call_typed(&DecodeRequest { string: b11 }).await?;
+                        invoice.description.unwrap_or_default()
+                    } else {
+                        let b12 = pay
+                            .bolt12
+                            .ok_or_else(|| anyhow!("No description, bolt11 or bolt12 found"))?;
+                        let invoice = rpc.call_typed(&DecodeRequest { string: b12 }).await?;
+                        invoice.offer_description.unwrap_or_default()
+                    }
+                } else {
+                    String::new()
+                },
+                preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
             })
         }
     }
@@ -562,12 +599,40 @@ async fn recent_pays(
 fn format_pays(table: Vec<Pays>, config: &Config) -> String {
     let mut paystable = Table::new(table);
     config.flow_style.value.apply(&mut paystable);
+    for head in Pays::FIELD_NAMES_AS_ARRAY {
+        if !config.pays_columns.value.contains(&head.to_string()) {
+            paystable.with(Disable::column(ByColumnName::new(head)));
+        }
+    }
+
+    if config.max_alias_length.value < 0 {
+        paystable.with(
+            Modify::new(ByColumnName::new("destination")).with(
+                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        paystable.with(
+            Modify::new(ByColumnName::new("destination"))
+                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+        );
+    }
+
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
-        })),
-    );
+
+    if config.max_desc_length.value < 0 {
+        paystable.with(
+            Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        paystable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::truncate(config.max_desc_length.value as usize).suffix("[..]")),
+        );
+    }
+
     paystable.to_string()
 }
 
@@ -895,10 +960,19 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
         }
     }
 
-    sumtable.with(
-        Modify::new(ByColumnName::new("ALIAS"))
-            .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
-    );
+    if config.max_alias_length.value < 0 {
+        sumtable.with(
+            Modify::new(ByColumnName::new("ALIAS")).with(
+                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
+            ),
+        );
+    } else {
+        sumtable.with(
+            Modify::new(ByColumnName::new("ALIAS"))
+                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+        );
+    }
+
     sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("MAX_HTLC")).with(Alignment::right()));

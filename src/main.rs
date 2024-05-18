@@ -28,6 +28,8 @@ const OPT_FORWARDS_FILTER_AMT: &str = "summars-forwards-filter-amount-msat";
 const OPT_FORWARDS_FILTER_FEE: &str = "summars-forwards-filter-fee-msat";
 const OPT_FORWARDS_ALIAS: &str = "summars-forwards-alias";
 const OPT_PAYS: &str = "summars-pays";
+const OPT_PAYS_COLUMNS: &str = "summars-pays-columns";
+const OPT_MAX_DESC_LENGTH: &str = "summars-max-description-length";
 const OPT_INVOICES: &str = "summars-invoices";
 const OPT_INVOICES_FILTER_AMT: &str = "summars-invoices-filter-amount-msat";
 const OPT_LOCALE: &str = "summars-locale";
@@ -86,6 +88,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_pays: IntegerConfigOption =
         ConfigOption::new_i64_no_default(OPT_PAYS, "Show last x hours of pays. Default is `0`")
             .dynamic();
+    let opt_pays_columns: StringConfigOption = ConfigOption::new_str_no_default(
+        OPT_PAYS_COLUMNS,
+        "Enabled columns in the pays table. Available columns are: \
+            `completed_at,payment_hash,sats_sent,destination,description,preimage` \
+            Default is `completed_at,payment_hash,sats_sent,destination`",
+    )
+    .dynamic();
+    let opt_max_desc_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
+        OPT_MAX_DESC_LENGTH,
+        "Max string length of an invoice description. Default is `30`",
+    )
+    .dynamic();
     let opt_invoices: IntegerConfigOption = ConfigOption::new_i64_no_default(
         OPT_INVOICES,
         "Show last x hours of invoices. Default is `0`",
@@ -149,6 +163,8 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(opt_forwards_filter_fee)
         .option(opt_forwards_alias)
         .option(opt_pays)
+        .option(opt_pays_columns)
+        .option(opt_max_desc_length)
         .option(opt_invoices)
         .option(opt_invoices_filter_amt)
         .option(opt_locale)

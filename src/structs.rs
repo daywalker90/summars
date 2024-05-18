@@ -22,7 +22,8 @@ use crate::{
     OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_EXCLUDE_CHANNEL_STATES,
     OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT,
     OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE,
-    OPT_MAX_ALIAS_LENGTH, OPT_PAYS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS,
+    OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
@@ -39,11 +40,13 @@ pub struct Config {
     pub forwards_filter_fee_msat: DynamicConfigOption<i64>,
     pub forwards_alias: DynamicConfigOption<bool>,
     pub pays: DynamicConfigOption<u64>,
+    pub pays_columns: DynamicConfigOption<Vec<String>>,
+    pub max_desc_length: DynamicConfigOption<i64>,
     pub invoices: DynamicConfigOption<u64>,
     pub invoices_filter_amt_msat: DynamicConfigOption<i64>,
     pub locale: DynamicConfigOption<Locale>,
     pub refresh_alias: DynamicConfigOption<u64>,
-    pub max_alias_length: DynamicConfigOption<u64>,
+    pub max_alias_length: DynamicConfigOption<i64>,
     pub availability_interval: DynamicConfigOption<u64>,
     pub availability_window: DynamicConfigOption<u64>,
     pub utf8: DynamicConfigOption<bool>,
@@ -92,6 +95,20 @@ impl Config {
             pays: DynamicConfigOption {
                 name: OPT_PAYS,
                 value: 0,
+            },
+            pays_columns: DynamicConfigOption {
+                name: OPT_PAYS_COLUMNS,
+                value: {
+                    Pays::FIELD_NAMES_AS_ARRAY
+                        .into_iter()
+                        .filter(|t| t != &"description" && t != &"preimage")
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                },
+            },
+            max_desc_length: DynamicConfigOption {
+                name: OPT_MAX_DESC_LENGTH,
+                value: 30,
             },
             invoices: DynamicConfigOption {
                 name: OPT_INVOICES,
@@ -235,7 +252,7 @@ impl Summary {
 pub struct Forwards {
     #[tabled(skip)]
     pub received: u64,
-    #[tabled(rename = "forwards")]
+    #[tabled(rename = "received_time")]
     #[serde(skip_serializing)]
     pub received_str: String,
     #[tabled(rename = "in_channel")]
@@ -276,24 +293,31 @@ impl PagingIndex {
     }
 }
 
-#[derive(Debug, Tabled, Serialize)]
+#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
 pub struct Pays {
     #[tabled(skip)]
     pub completed_at: u64,
-    #[tabled(rename = "pays")]
+    #[tabled(rename = "completed_at")]
     #[serde(skip_serializing)]
+    #[field_names_as_array(skip)]
     pub completed_at_str: String,
     pub payment_hash: String,
-    #[tabled(rename = "sats_sent")]
+    #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub msats_sent: u64,
+    #[serde(skip_serializing)]
+    pub sats_sent: u64,
     pub destination: String,
+    #[serde(skip_serializing)]
+    pub description: String,
+    pub preimage: String,
 }
 
 #[derive(Debug, Tabled, Serialize)]
 pub struct Invoices {
     #[tabled(skip)]
     pub paid_at: u64,
-    #[tabled(rename = "invoices")]
+    #[tabled(rename = "paid_at")]
     #[serde(skip_serializing)]
     pub paid_at_str: String,
     pub label: String,
