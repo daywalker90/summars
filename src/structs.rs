@@ -114,7 +114,12 @@ impl Config {
                 value: {
                     Pays::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"description" && t != &"preimage")
+                        .filter(|t| {
+                            t != &"description"
+                                && t != &"preimage"
+                                && t != &"sats_requested"
+                                && t != &"fees_msat"
+                        })
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                 },
@@ -339,9 +344,15 @@ pub struct Pays {
     pub payment_hash: String,
     #[tabled(skip)]
     #[field_names_as_array(skip)]
+    pub msats_requested: u64,
+    #[serde(skip_serializing)]
+    pub sats_requested: u64,
+    #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub msats_sent: u64,
     #[serde(skip_serializing)]
     pub sats_sent: u64,
+    pub fee_msats: u64,
     pub destination: String,
     #[serde(skip_serializing)]
     pub description: String,

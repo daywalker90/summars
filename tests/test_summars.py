@@ -36,7 +36,9 @@ forwards_columns = [
 pay_columns = [
     "completed_at",
     "payment_hash",
+    "sats_requested",
     "sats_sent",
+    "fee_msats",
     "destination",
     "description",
     "preimage",

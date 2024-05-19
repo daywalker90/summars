@@ -105,8 +105,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_pays_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_PAYS_COLUMNS,
         "Enabled columns in the pays table. Available columns are: \
-            `completed_at,payment_hash,sats_sent,destination,description,preimage` \
-            Default is `completed_at,payment_hash,sats_sent,destination`",
+            `completed_at, payment_hash, sats_requested, sats_sent, fee_msats, destination, description, preimage` \
+            Default is `completed_at, payment_hash, sats_sent, destination`",
     )
     .dynamic();
     let opt_max_desc_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
