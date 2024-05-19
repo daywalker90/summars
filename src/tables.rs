@@ -14,6 +14,8 @@ use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
+use tabled::grid::records::vec_records::Cell;
+use tabled::grid::records::Records;
 use tabled::settings::location::{ByColumnName, Locator};
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Disable, Format, Modify, Width};
@@ -30,7 +32,7 @@ use crate::structs::{
     NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
-    draw_chans_graph, hex_encode, is_active_state, make_channel_flags, make_rpc_path,
+    draw_chans_graph, hex_encode, is_active_state, make_channel_flags, make_rpc_path, sort_columns,
     timestamp_to_localized_datetime_string, u64_to_btc_string, u64_to_sat_string,
 };
 
@@ -262,7 +264,7 @@ pub async fn summary(
         "invoices":invoices}))
     } else {
         let mut sumtable = Table::new(table);
-        format_summary(&config, &mut sumtable);
+        format_summary(&config, &mut sumtable)?;
         draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
         debug!(
             "Format summary. Total: {}ms",
@@ -283,12 +285,12 @@ pub async fn summary(
                 + &format_forwards(forwards, &config, forwards_filter_stats));
         }
         if config.pays.value > 0 {
-            result += &("\n\n".to_owned() + "pays\n" + &format_pays(pays, &config));
+            result += &("\n\n".to_owned() + "pays\n" + &format_pays(pays, &config)?);
         }
         if config.invoices.value > 0 {
             result += &("\n\n".to_owned()
                 + "invoices\n"
-                + &format_invoices(invoices, &config, invoices_filter_stats));
+                + &format_invoices(invoices, &config, invoices_filter_stats)?);
         }
 
         Ok(json!({"format-hint":"simple","result":format!(
@@ -596,7 +598,7 @@ async fn recent_pays(
     Ok(table)
 }
 
-fn format_pays(table: Vec<Pays>, config: &Config) -> String {
+fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
     let mut paystable = Table::new(table);
     config.flow_style.value.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
@@ -604,6 +606,23 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> String {
             paystable.with(Disable::column(ByColumnName::new(head)));
         }
     }
+    let headers = paystable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = paystable.get_records_mut();
+    if headers.len() != config.pays_columns.value.len() {
+        return Err(anyhow!(
+            "Error formatting pays! Length difference detected: {} {}",
+            headers.join(","),
+            config.pays_columns.value.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.pays_columns.value);
 
     if config.max_alias_length.value < 0 {
         paystable.with(
@@ -633,7 +652,7 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> String {
         );
     }
 
-    paystable.to_string()
+    Ok(paystable.to_string())
 }
 
 async fn recent_invoices(
@@ -740,7 +759,7 @@ fn format_invoices(
     table: Vec<Invoices>,
     config: &Config,
     filter_stats: InvoicesFilterStats,
-) -> String {
+) -> Result<String, Error> {
     let mut invoicestable = Table::new(table);
     config.flow_style.value.apply(&mut invoicestable);
     for head in Invoices::FIELD_NAMES_AS_ARRAY {
@@ -748,6 +767,23 @@ fn format_invoices(
             invoicestable.with(Disable::column(ByColumnName::new(head)));
         }
     }
+    let headers = invoicestable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = invoicestable.get_records_mut();
+    if headers.len() != config.invoices_columns.value.len() {
+        return Err(anyhow!(
+            "Error formatting invoices! Length difference detected: {} {}",
+            headers.join(","),
+            config.invoices_columns.value.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.invoices_columns.value);
 
     if config.max_desc_length.value < 0 {
         invoicestable.with(
@@ -783,9 +819,9 @@ fn format_invoices(
             filter_stats.filter_count,
             filter_stats.filter_amt_sum_msat / 1000
         );
-        invoicestable.to_string() + &filter_sum_result
+        Ok(invoicestable.to_string() + &filter_sum_result)
     } else {
-        invoicestable.to_string()
+        Ok(invoicestable.to_string())
     }
 }
 
@@ -987,13 +1023,31 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
     }
 }
 
-fn format_summary(config: &Config, sumtable: &mut Table) {
+fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.value.apply(sumtable);
     for head in Summary::FIELD_NAMES_AS_ARRAY {
         if !config.columns.value.contains(&head.to_string()) {
             sumtable.with(Disable::column(ByColumnName::new(head)));
         }
     }
+
+    let headers = sumtable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = sumtable.get_records_mut();
+    if headers.len() != config.columns.value.len() {
+        return Err(anyhow!(
+            "Error formatting channels! Length difference detected: {} {}",
+            headers.join(","),
+            config.columns.value.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.columns.value);
 
     if config.max_alias_length.value < 0 {
         sumtable.with(
@@ -1055,6 +1109,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) {
     );
 
     sumtable.with(Modify::new(Rows::first()).with(Alignment::center()));
+    Ok(())
 }
 
 fn get_addrstr(getinfo: &GetinfoResponse) -> String {

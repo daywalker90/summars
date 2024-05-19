@@ -13,6 +13,7 @@
 
 - Options code refactored. All options are now natively dynamic and there is no longer any manual reading of config files. Read the updated README section on how to set options for more information
 - ``summars-max-alias-length`` supports wrapping by using negative values (just like the new ``summars-max-description-length`` and ``summars-max-label-length``), see README
+- ``summars-columns`` and the new ``-columns`` options now also dictate the order of the columns
 
 ## [3.2.0] - 2024-05-03
 
