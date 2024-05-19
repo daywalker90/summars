@@ -50,85 +50,75 @@ There are currently two commands:
 * ``summars-refreshalias`` to manually refresh the alias cache
 
 ```
-lightning-cli summars summars-style=modern summars-forwards=168 summars-pays=168 summars-invoices=168
-address=03b2687cb99a272ab73796071ef5c545c33087f0ae39ec3bf4fb91551ac959c453@127.0.0.1:7272
-num_utxos=4
-utxo_amount=1.95473201 BTC
-num_channels=5
-num_connected=3
-num_gossipers=0
-avail_out=0.04454602 BTC
-avail_in=0.02405398 BTC
-fees_collected=0.00000005 BTC
+lightning-cli summars summars-forwards=200 summars-pays=3 summars-invoices=3
+address=03da2efc78ba5420048e636e541e3b484d3e314e2fca7672c0450214f7a9f2fd2e@189.78.23.211:9735
+num_utxos=11
+utxo_amount=0.125046909 BTC
+num_channels=13
+num_connected=12
+num_gossipers=2
+avail_out=0.05614095 BTC
+avail_in=0.09208059 BTC
+fees_collected=0.00001555 BTC
 channels_flags=P:private O:offline
-┌───────────┬─────────┬─────────┬───────────┬──────┬──────┬─────┬─────────────┬────────────────────────────────────────────────────────────────────┬────────┬───────┬────────────┐
-│ OUT_SATS  │ IN_SATS │  SCID   │ MAX_HTLC  │ FLAG │ BASE │ PPM │    ALIAS    │                              PEER_ID                               │ UPTIME │ HTLCS │   STATE    │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│   494,956 │ 505,043 │ 103x1x1 │   990,000 │ [__] │    1 │  10 │ SLIMYGLEE   │ 0247a9c9098827b15b76bf7e6b867595e1adef69817caf0f9850c9c13d883e7345 │   100% │     0 │     OK     │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│   479,848 │ 520,151 │ 312x4x0 │   990,000 │ [_O] │    0 │  40 │ ODDFEED     │ 0358695158e877b3ddd10012de0695025a7a41a9c02df23478996a113b30cb8b2d │    10% │     0 │     OK     │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│   479,950 │ 520,049 │ 312x7x1 │   990,000 │ [__] │    1 │  10 │ REDWALK     │ 026935bc8ee97458163a09d8fc0b9860a8d7464a24593858cdf22fa3b170230099 │   100% │     0 │  ONCHAIN   │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│ 1,469,962 │ 530,037 │ 573x1x0 │ 1,980,000 │ [__] │    0 │  30 │ WEIRDTROUGH │ 0252e6ee10696089721f4fec5d14c041fff92a12b654a5b221df8895bff64c5e5b │   100% │     0 │     OK     │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│ 2,079,833 │ 920,166 │ 585x1x1 │ 2,970,000 │ [_O] │    0 │  20 │ ODDFEED     │ 0358695158e877b3ddd10012de0695025a7a41a9c02df23478996a113b30cb8b2d │    10% │     0 │     OK     │
-├───────────┼─────────┼─────────┼───────────┼──────┼──────┼─────┼─────────────┼────────────────────────────────────────────────────────────────────┼────────┼───────┼────────────┤
-│ 1,000,000 │       0 │ PENDING │   990,000 │ [__] │    1 │  10 │ REDWALK     │ 026935bc8ee97458163a09d8fc0b9860a8d7464a24593858cdf22fa3b170230099 │   100% │     0 │ AWAIT_LOCK │
-└───────────┴─────────┴─────────┴───────────┴──────┴──────┴─────┴─────────────┴────────────────────────────────────────────────────────────────────┴────────┴───────┴────────────┘
- 
- forwards              in_channel   out_channel   in_sats   out_sats   fee_msats
- 2022-12-28 14:47:28   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-28 14:49:12   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-28 14:50:13   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-29 17:32:15   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-30 12:20:49   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-30 15:44:24   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-30 15:45:17   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-30 15:48:28   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2022-12-30 15:50:17   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2023-01-04 14:00:54   SLIMYGLEE    REDWALK        10,000     10,000         101
- 2023-01-04 14:10:35   SLIMYGLEE    REDWALK        10,000     10,000         101
+ OUT_SATS  |  IN_SATS   |     SCID      |  MAX_HTLC  | FLAG | BASE |  PPM  |        ALIAS         |                              PEER_ID                               | UPTIME | HTLCS | STATE
+-----------+------------+---------------+------------+------+------+-------+----------------------+--------------------------------------------------------------------+--------+-------+-------
+   103,313 |     96,686 | 2471854x37x7  |     51,000 | [__] |    0 |     1 | node204.fra.memp[..] | 039c14fdec2d958e3d14cebf657451bbd9e039196615785e82c917f274e3fb2205 |   100% |     0 |  OK
+    84,313 |    115,686 | 2471854x37x9  |     51,000 | [_O] |    0 |     1 | node205.fra.memp[..] | 033589bbcb233ffc416cefd5437c7f37e9d7cb7942d405e39e72c4c846d9b37f18 |    81% |     0 |  OK
+   172,977 |     27,022 | 2471854x37x10 |     51,000 | [__] |    0 |     1 | OLYMPUS by ZEUS      | 03e84a109cd70e57864274932fc87c5e6434c59ebb8e6e7d28532219ba38f7f6df |   100% |     0 |  OK
+   194,978 |      5,021 | 2471854x37x12 |     51,000 | [__] |    0 |     1 | 1ML.com node ALPHA   | 02312627fdf07fbdd7e5ddb136611bdde9b00d26821d14d94891395452f67af248 |   100% |     0 |  OK
+    10,147 |    189,852 | 2471854x37x13 |          1 | [P_] |    0 |     1 | cyclopes             | 028ec70462207b57e3d4d9332d9e0aee676c92d89b7c9fb0850fc2a24814d4d83c |   100% |     0 |  OK
+    13,947 |    186,052 | 2471854x37x14 |          1 | [__] |    0 |     1 | 030f375d8aecdddc8523 | 030f375d8aecdddc852309c15c3b67c2934de0de4d31e1e04a03d656ca0a78d008 |   100% |     0 |  OK
+   127,035 |    873,964 | 2476625x46x0  |     51,000 | [__] |    0 | 1,849 | lndus1.next.zaphq.io | 022251a9fa007cd60acee9cbc6ab4b15d2ad52cad5f271b0276d3b2d97e3d87b43 |    87% |     0 |  OK
+    48,836 |    952,163 | 2476625x46x1  |          1 | [__] |    0 | 1,849 | lndus0.next.zaphq.io | 028c3640c57ffe47eb41db8225968833c5032f297aeba98672d6f7037090d59e3f |    86% |     0 |  OK
+   380,431 |    620,568 | 2476625x46x2  |     51,000 | [__] |    0 |     1 | Bitnob(Jos, 2001)    | 035c32eded21dd4a073153c4e3c1e56618f1f77b8edb66653a0a643f7a78260117 |    99% |     0 |  OK
+   375,512 |    625,487 | 2476625x46x3  |    990,990 | [__] |    0 |     1 | lndus0.dev.zaphq.io  | 03819f6e407d3890484bed25b56b2ca582a883a4aa5671965462f591732381b358 |   100% |     0 |  OK
+   253,922 |    747,077 | 2476625x46x4  |    990,990 | [__] |    0 |     1 | lndus1.dev.zaphq.io  | 02be8f360e57600486b93dd33ea0872a4e14a259924ba4084f27d693a77d151158 |   100% |     0 |  OK
+    26,738 |  1,819,119 | 2476654x19x0  |          1 | [__] |    0 |     1 | Boltz                | 03f060953bef5b777dc77e44afa3859d022fc1a77c55138deb232ad7255e869c00 |   100% |     0 |  OK
+    49,714 |    951,285 | 2501790x6x4   |          1 | [__] |    0 |     1 | endurance            | 03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134 |   100% |     0 |  OK
 
- pays                  payment_hash                                                       sats_sent  destination
- 2023-01-17 21:03:10   b4222a957dc058ec5a4613e4a34f5bea26f9b2e36561497894d838774bd42dff       8,015  RoboSats
- 2023-01-17 21:18:48   4a48c7690f4ac0a16c39ed7a71f232380fc6d3c9927a87d7c531da49204f86c7      28,112  STACKER.NEWS
- 2023-01-17 23:20:41   12b2c23562eb77b468f679d0aec0067f60d3e39edf3b33fb0e4d9ad51ef4e9c2       2,000  WalletOfSatoshi.com
- 2023-01-19 22:32:31   b924776ae274ddc39f41b9f170e18b67d648aa68d04dd682eef60fe8addc965d       1,012  Kraken
- 2023-01-19 22:49:30   812e80e8e82923b8ab937d72461784542da6b605c11fb2a5be2cf16c83761c97     128,015  Kraken
+                                              forwards
+ resolved_time         in_channel             out_channel            in_sats   out_sats   fee_msats
+ 5/16/24, 3:48:58 PM   lndus1.next.zaphq.io   02758997f184be06f435    11,503     11,503          11
 
- invoices              label     sats_received
- 2023-01-17 17:16:13   label1           15,000
- 2023-01-17 23:19:11   label2               10
- 2023-01-18 00:11:54   label3                1
- 2023-01-18 18:16:06   label4          200,000
- 2023-01-18 19:25:31   label5           13,000
- 2023-01-18 23:05:04   label6          200,000
- 2023-01-20 13:24:18   label7               10
+                                                                pays
+ completed_at          payment_hash                                                       sats_sent   fee_msats   destination
+ 5/19/24, 5:34:58 PM   19483c34259aa832a6bb805b72bc02db89d639975608adf4371d8ff4eda8be99      50,000           0   Boltz
+ 5/19/24, 5:34:59 PM   175168a906829f668d712786604bc1db04358f02fcf37563afb58402a7cb9282      50,000           0   Boltz
+ 5/19/24, 5:35:01 PM   ad6491728f6a120980f14a5eb5688b7406ec2563525af812b911a39649da3f09      50,000           0   Boltz
+ 5/19/24, 5:35:02 PM   d2ca9282a0a546b01b6ff5ecc71a313cbe0c2f0ac084b9075c203078f8dbaa71      50,000           0   Boltz
+ 5/19/24, 5:35:03 PM   71ce7cabc80f55b51dd9373f2ea57acaa21b9087e993ebfad3b4302dc46a943b      50,000           0   Boltz
+ 5/19/24, 5:35:04 PM   cbd929f8a0bc4bc46dba51b0dc3188662708d1bd8e6ae5ee71ccd894194d40db      50,000           0   Boltz
+
+                                                                invoices
+ paid_at               label                            sats_received   payment_hash
+ 5/19/24, 5:35:21 PM   WpcvbXKW                                50,000   39eb0fa161fb85ab7c653bdfb49da8ca4914287b2ecd567968a3c4156c285768
+ 5/19/24, 5:35:22 PM   TQCankEM                                50,000   432c37e7bfae40df087e2e8a3c4590d3cd7011ebf56760dee8edfea3b8281e0e
+ 5/19/24, 5:35:23 PM   HgGRjkrs                                50,000   3568ebd9431ec2cf17528ba4e7a144aca62f9606f7766a33afd41ef30c50700c
+ 5/19/24, 5:35:25 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   623743a48f5d0a8f20b9605228b4da0be7bd2cd72f7da39ec0028bf953317785
+ 5/19/24, 5:35:26 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   be5fe3a6fff1efe77362186f357414f69d6d43e26f35af6233135fb2fcac06e3
+ 5/19/24, 5:35:27 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   7ad2e0bb16ecc6f3f893c9f626cdb85802aa27c0ff00d24bce32e28dbebb32ab
 ```
 
 
 ```
 lightning-cli summars summars-columns=GRAPH_SATS,SCID summars-style=empty summars-sort-by=IN_SATS
-address=03da2efc78ba5420088e636e542e3b484d3e514e2fca7672c0450215f7a9f2fd3e@89.58.53.211:9435
-num_utxos=9
-utxo_amount=0.10786713 BTC
-num_channels=50
-num_connected=39
-num_gossipers=3
-avail_out=0.39643534 BTC
-avail_in=0.76310729 BTC
-fees_collected=0.00002650 BTC
+address=03da2efc781a5420088e636e342e3b484d3e514e1fca7672c0450515f7a9f2fd6e@129.38.53.21:9735
+num_utxos=5
+utxo_amount=0.25046909 BTC
+num_channels=5
+num_connected=5
+num_gossipers=1
+avail_out=0.15614095 BTC
+avail_in=0.49208059 BTC
+fees_collected=0.00103555 BTC
 channels_flags=P:private O:offline
-                   GRAPH_SATS                         SCID
-                        ╟┤                        2471860x21x0
-                    ├───┼───┤                     2532712x19x0
-                        ╟─────┤                   2543282x66x1
-           ├────────────┼───────────┤             2530335x6x0
-             ├──────────┼─────────────┤           2530331x11x0
-                  ├─────┼──────────────────┤      2530339x5x0
-                        ╟────────────────────┤    2539317x16x0
-                      ├─┼──────────────────────┤  2505706x9x0
+ ├0.16777060   OUT GRAPH_SATS IN     0.16777060┤      SCID
+                        ╟─┤                       2472654x19x0
+            ├───────────┼──────────┤              2534335x3x0
+              ├─────────┼────────────┤            2536331x16x0
+                   ├────┼─────────────────┤       2531339x15x0
+                        ╟──────────────────────┤  2576452x228x0
 ```
 
 # How to set options
@@ -155,7 +145,7 @@ You can mix these methods and if you set the same option with different methods,
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING``, ``AWAIT_LOCK``, ``OK``, ``SHUTTING_DOWN``, ``CLOSINGD_SIGEX``, ``CLOSINGD_DONE``, ``AWAIT_UNILATERAL``, ``FUNDING_SPEND``, ``ONCHAIN``, ``DUAL_OPEN``, ``DUAL_COMITTED``, ``DUAL_COMMIT_RDY``, ``DUAL_AWAIT``, ``AWAIT_SPLICE`` and ``PUBLIC``, ``PRIVATE`` to filter channels by their network visibility
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
-* ``summars-forwards-columns`` Comma-separated list of enabled columns in the channel table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
+* ``summars-forwards-columns`` Comma-separated list of enabled columns in the forwards table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
