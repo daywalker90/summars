@@ -11,13 +11,15 @@ use std::{collections::HashSet, str::FromStr};
 use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
-    structs::{ChannelVisibility, Config, Invoices, Pays, ShortChannelState, Styles, Summary},
+    structs::{
+        ChannelVisibility, Config, Forwards, Invoices, Pays, ShortChannelState, Styles, Summary,
+    },
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
-    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_COLUMNS,
-    OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH,
-    OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE,
-    OPT_UTF8,
+    OPT_FORWARDS_COLUMNS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES,
+    OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH,
+    OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS,
+    OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -128,6 +130,35 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
     for i in &split_input {
         if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
+        }
+    }
+
+    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
+    Ok(cleaned_strings)
+}
+
+fn validate_forwards_columns_input(input: &str) -> Result<Vec<String>, Error> {
+    let cleaned_input: String = input
+        .chars()
+        .filter(|&c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let split_input: Vec<&str> = cleaned_input.split(',').collect();
+
+    let mut uniq = HashSet::new();
+    for i in &split_input {
+        if !uniq.insert(i) {
+            return Err(anyhow!(
+                "Duplicate entry detected in {}: {}",
+                OPT_FORWARDS_COLUMNS,
+                i
+            ));
+        }
+    }
+
+    for i in &split_input {
+        if !Forwards::FIELD_NAMES_AS_ARRAY.contains(i) {
+            return Err(anyhow!("`{}` not found in valid forwards column names!", i));
         }
     }
 
@@ -322,6 +353,11 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_FORWARDS) => {
                     check_option(config, OPT_FORWARDS, &parse_option(OPT_FORWARDS, value)?)?
                 }
+                name if name.eq(OPT_FORWARDS_COLUMNS) => check_option(
+                    config,
+                    OPT_FORWARDS_COLUMNS,
+                    &parse_option(OPT_FORWARDS_COLUMNS, value)?,
+                )?,
                 name if name.eq(OPT_FORWARDS_FILTER_AMT) => check_option(
                     config,
                     OPT_FORWARDS_FILTER_AMT,
@@ -425,6 +461,9 @@ pub fn get_startup_options(
         if let Some(fws) = plugin.option_str(OPT_FORWARDS)? {
             check_option(&mut config, OPT_FORWARDS, &fws)?;
         };
+        if let Some(cols) = plugin.option_str(OPT_FORWARDS_COLUMNS)? {
+            check_option(&mut config, OPT_FORWARDS_COLUMNS, &cols)?;
+        };
         if let Some(ffa) = plugin.option_str(OPT_FORWARDS_FILTER_AMT)? {
             check_option(&mut config, OPT_FORWARDS_FILTER_AMT, &ffa)?;
         };
@@ -502,6 +541,10 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_FORWARDS) => {
             config.forwards.value =
                 options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
+        }
+        n if n.eq(OPT_FORWARDS_COLUMNS) => {
+            config.forwards_columns.value =
+                validate_forwards_columns_input(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
             config.forwards_filter_amt_msat.value =

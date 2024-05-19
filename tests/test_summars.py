@@ -23,6 +23,16 @@ columns = [
     "STATE",
 ]
 
+forwards_columns = [
+    "received_time",
+    "resolved_time",
+    "in_channel",
+    "out_channel",
+    "in_sats",
+    "out_sats",
+    "fee_msats",
+]
+
 pay_columns = [
     "completed_at",
     "payment_hash",
@@ -177,6 +187,39 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         sats_received < description and description < label and label < paid_at
     )
 
+    for col in forwards_columns:
+        result = node.rpc.call(
+            "summars", {"summars-forwards": 1, "summars-forwards-columns": col}
+        )
+        assert col in result["result"]
+        for col2 in forwards_columns:
+            if col != col2:
+                assert col2 not in result["result"]
+
+    result = node.rpc.call(
+        "summars",
+        {
+            "summars-forwards": 1,
+            "summars-forwards-columns": "in_sats,in_channel,resolved_time,out_channel,out_sats",
+        },
+    )
+    in_sats = result["result"].find("in_sats")
+    in_channel = result["result"].find("in_channel")
+    resolved_time = result["result"].find("resolved_time")
+    out_channel = result["result"].find("out_channel")
+    out_sats = result["result"].find("out_sats")
+    assert in_sats != -1
+    assert in_channel != -1
+    assert resolved_time != -1
+    assert paid_at != -1
+    assert out_sats != -1
+    assert (
+        in_sats < in_channel
+        and in_channel < resolved_time
+        and resolved_time < out_channel
+        and out_channel < out_sats
+    )
+
     for col in columns:
         if col == "GRAPH_SATS":
             continue
@@ -271,6 +314,15 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-columns": "PRIVATE"})
     with pytest.raises(RpcError, match="not found in valid column names"):
         node.rpc.call("summars", {"summars-columns": "OFFLINE"})
+
+    with pytest.raises(
+        RpcError, match="not found in valid forwards column names"
+    ):
+        node.rpc.call("summars", {"summars-forwards-columns": "test"})
+    with pytest.raises(RpcError, match="Duplicate entry"):
+        node.rpc.call(
+            "summars", {"summars-forwards-columns": "in_channel,in_channel"}
+        )
 
     with pytest.raises(RpcError, match="not found in valid pays column names"):
         node.rpc.call("summars", {"summars-pays-columns": "test"})

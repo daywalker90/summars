@@ -24,6 +24,7 @@ const OPT_COLUMNS: &str = "summars-columns";
 const OPT_SORT_BY: &str = "summars-sort-by";
 const OPT_EXCLUDE_CHANNEL_STATES: &str = "summars-exclude-states";
 const OPT_FORWARDS: &str = "summars-forwards";
+const OPT_FORWARDS_COLUMNS: &str = "summars-forwards-columns";
 const OPT_FORWARDS_FILTER_AMT: &str = "summars-forwards-filter-amount-msat";
 const OPT_FORWARDS_FILTER_FEE: &str = "summars-forwards-filter-fee-msat";
 const OPT_FORWARDS_ALIAS: &str = "summars-forwards-alias";
@@ -76,6 +77,13 @@ async fn main() -> Result<(), anyhow::Error> {
         "Show last x hours of forwards. Default is `0`",
     )
     .dynamic();
+    let opt_forwards_columns: StringConfigOption = ConfigOption::new_str_no_default(
+        OPT_FORWARDS_COLUMNS,
+        "Enabled columns in the forwards table. Available columns are: \
+        `received_time, resolved_time, in_channel, out_channel, in_sats, out_sats, fee_msats` \
+        Default is `resolved_time, in_channel, out_channel, in_sats, out_sats, fee_msats`",
+    )
+    .dynamic();
     let opt_forwards_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
         OPT_FORWARDS_FILTER_AMT,
         "Filter forwards smaller than or equal to x msats. Default is `-1`",
@@ -114,8 +122,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_INVOICES_COLUMNS,
         "Enabled columns in the invoices table. Available columns are: \
-            `` \
-            Default is ``",
+            `paid_at, label, description, sats_received, payment_hash, preimage` \
+            Default is `paid_at, label, sats_received, payment_hash`",
     )
     .dynamic();
     let opt_max_label_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
@@ -177,6 +185,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(opt_sort_by)
         .option(opt_exclude_channel_states)
         .option(opt_forwards)
+        .option(opt_forwards_columns)
         .option(opt_forwards_filter_amt)
         .option(opt_forwards_filter_fee)
         .option(opt_forwards_alias)

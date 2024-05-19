@@ -415,10 +415,15 @@ async fn recent_forwards(
                 filter_count += 1;
             } else {
                 table.push(Forwards {
-                    received: (forward.received_time * 1000.0) as u64,
-                    received_str: timestamp_to_localized_datetime_string(
+                    received_time: (forward.received_time * 1000.0) as u64,
+                    received_time_str: timestamp_to_localized_datetime_string(
                         config,
                         forward.received_time as u64,
+                    )?,
+                    resolved_time: (forward.resolved_time.unwrap() * 1000.0) as u64,
+                    resolved_time_str: timestamp_to_localized_datetime_string(
+                        config,
+                        forward.resolved_time.unwrap() as u64,
                     )?,
                     in_channel_alias: if config.utf8.value {
                         inchan
@@ -434,7 +439,9 @@ async fn recent_forwards(
                     out_channel: forward.out_channel.unwrap(),
                     in_msats: Amount::msat(&forward.in_msat),
                     out_msats: Amount::msat(&forward.out_msat.unwrap()),
-                    fee_msats: u64_to_sat_string(config, Amount::msat(&forward.fee_msat.unwrap()))?,
+                    fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
+                    in_sats: Amount::msat(&forward.in_msat) / 1000,
+                    out_sats: Amount::msat(&forward.out_msat.unwrap()) / 1000,
                 })
             }
 
@@ -452,7 +459,7 @@ async fn recent_forwards(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
-    table.sort_by_key(|x| x.received);
+    table.sort_by_key(|x| x.resolved_time);
     Ok((
         table,
         ForwardsFilterStats {
@@ -470,6 +477,28 @@ fn format_forwards(
 ) -> Result<String, Error> {
     let mut fwtable = Table::new(table);
     config.flow_style.value.apply(&mut fwtable);
+    for head in Forwards::FIELD_NAMES_AS_ARRAY {
+        if !config.forwards_columns.value.contains(&head.to_string()) {
+            fwtable.with(Disable::column(ByColumnName::new(head)));
+        }
+    }
+    let headers = fwtable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = fwtable.get_records_mut();
+    if headers.len() != config.forwards_columns.value.len() {
+        return Err(anyhow!(
+            "Error formatting forwards! Length difference detected: {} {}",
+            headers.join(","),
+            config.forwards_columns.value.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.forwards_columns.value);
 
     if config.max_alias_length.value < 0 {
         fwtable.with(
@@ -500,16 +529,21 @@ fn format_forwards(
     fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
     fwtable.with(
         Modify::new(ByColumnName::new("in_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
     fwtable.with(
         Modify::new(ByColumnName::new("out_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap() / 1000).unwrap()
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
     fwtable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
 
     fwtable.with(Panel::header("forwards"));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));

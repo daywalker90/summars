@@ -150,20 +150,21 @@ You can mix these methods and if you set the same option with different methods,
 
 # Options
 ### Channels table
-* ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS``, ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``
+* ``summars-columns`` Comma-separated list of enabled columns in the channel table. Also dictates order of columns. Valid columns: ``GRAPH_SATS``, ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``. Default columns: ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``
 * ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Valid columns are all ``summars-columns`` except for ``GRAPH_SATS``. Default is ``SCID``
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING``, ``AWAIT_LOCK``, ``OK``, ``SHUTTING_DOWN``, ``CLOSINGD_SIGEX``, ``CLOSINGD_DONE``, ``AWAIT_UNILATERAL``, ``FUNDING_SPEND``, ``ONCHAIN``, ``DUAL_OPEN``, ``DUAL_COMITTED``, ``DUAL_COMMIT_RDY``, ``DUAL_AWAIT``, ``AWAIT_SPLICE`` and ``PUBLIC``, ``PRIVATE`` to filter channels by their network visibility
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-forwards-columns`` Comma-separated list of enabled columns in the channel table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
 ### Pays table
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
-* ``summars-pays-columns`` List of enabled columns in the pays table. Comma-separated. Valid columns: ``completed_at``, ``payment_hash``, ``sats_sent``, ``destination``, ``description``, ``preimage``. Default columns are: ``completed_at``, ``payment_hash``, ``sats_sent``, ``destination``
+* ``summars-pays-columns`` Comma-separated list of enabled columns in the pays table. Also dictates order of columns. Valid columns: ``completed_at``, ``payment_hash``, ``sats_sent``, ``destination``, ``description``, ``preimage``. Default columns are: ``completed_at``, ``payment_hash``, ``sats_sent``, ``destination``
 ### Invoices table
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
-* ``summars-invoices-columns`` List of enabled columns in the invoices table. Comma-separated. Valid columns: ``paid_at``, ``label``, ``description``, ``sats_received``, ``payment_hash``, ``preimage``. Default columns are: ``paid_at``, ``label``, ``sats_received``, ``payment_hash``
+* ``summars-invoices-columns`` Comma-separated list of enabled columns in the invoices table. Also dictates order of columns. Valid columns: ``paid_at``, ``label``, ``description``, ``sats_received``, ``payment_hash``, ``preimage``. Default columns are: ``paid_at``, ``label``, ``sats_received``, ``payment_hash``
 * ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
 ### Background tasks
 * ``summars-refresh-alias`` How many hours between refreshing the node aliases in memory. Default is ``24`` hours
