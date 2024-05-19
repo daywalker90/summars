@@ -131,6 +131,16 @@ def test_options(node_factory, get_plugin):  # noqa: F811
             {"summars-columns": ",".join(columns), "summars-sort-by": col},
         )
         assert col in result["result"]
+    result = node.rpc.call(
+        "summars",
+        {"summars-columns": ",".join(columns), "summars-sort-by": "OFFLINE"},
+    )
+    assert col in result["result"]
+    result = node.rpc.call(
+        "summars",
+        {"summars-columns": ",".join(columns), "summars-sort-by": "PRIVATE"},
+    )
+    assert col in result["result"]
 
     result = node.rpc.call("summars", {"summars-exclude-states": "OK"})
 
@@ -213,6 +223,10 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
         node.rpc.call("summars", {"summars-columns": "IN_SATS,IN_SATS"})
+    with pytest.raises(RpcError, match="not found in valid column names"):
+        node.rpc.call("summars", {"summars-columns": "PRIVATE"})
+    with pytest.raises(RpcError, match="not found in valid column names"):
+        node.rpc.call("summars", {"summars-columns": "OFFLINE"})
 
     with pytest.raises(RpcError, match="not found in valid pays column names"):
         node.rpc.call("summars", {"summars-pays-columns": "test"})
