@@ -126,7 +126,7 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
     }
 
     for i in &split_input {
-        if !Summary::valid_column_names().contains(&i.to_string()) {
+        if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
         }
     }
@@ -196,15 +196,18 @@ fn validate_invoices_columns_input(input: &str) -> Result<Vec<String>, Error> {
 fn validate_sort_input(input: &str) -> Result<String, Error> {
     let reverse = input.starts_with('-');
 
-    if reverse && Summary::FIELD_NAMES_AS_ARRAY.contains(&&input[1..])
-        || Summary::FIELD_NAMES_AS_ARRAY.contains(&input)
-    {
+    let sortable_columns = Summary::FIELD_NAMES_AS_ARRAY
+        .into_iter()
+        .filter(|t| t != &"GRAPH_SATS")
+        .collect::<Vec<&str>>();
+
+    if reverse && sortable_columns.contains(&&input[1..]) || sortable_columns.contains(&input) {
         Ok(input.to_string())
     } else {
         Err(anyhow!(
             "Not a valid column name: `{}`. Must be one of: {}",
             input,
-            Summary::field_names_to_string()
+            sortable_columns.join(", ")
         ))
     }
 }

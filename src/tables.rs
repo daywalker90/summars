@@ -920,20 +920,6 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| x.in_sats)
             }
         }
-        col if col.eq("SCID_RAW") => {
-            if reverse {
-                table.sort_by_key(|x| Reverse(x.scid_raw))
-            } else {
-                table.sort_by_key(|x| x.scid_raw)
-            }
-        }
-        col if col.eq("SCID") => {
-            if reverse {
-                table.sort_by_key(|x| Reverse(x.scid_raw))
-            } else {
-                table.sort_by_key(|x| x.scid_raw)
-            }
-        }
         col if col.eq("MAX_HTLC") => {
             if reverse {
                 table.sort_by_key(|x| Reverse(x.max_htlc))
@@ -1019,7 +1005,13 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| x.state.clone())
             }
         }
-        _ => table.sort_by_key(|x| x.scid_raw),
+        _ => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.scid_raw))
+            } else {
+                table.sort_by_key(|x| x.scid_raw)
+            }
+        }
     }
 }
 

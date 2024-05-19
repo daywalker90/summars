@@ -178,21 +178,13 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     )
 
     for col in columns:
+        if col == "GRAPH_SATS":
+            continue
         result = node.rpc.call(
             "summars",
             {"summars-columns": ",".join(columns), "summars-sort-by": col},
         )
         assert col in result["result"]
-    result = node.rpc.call(
-        "summars",
-        {"summars-columns": ",".join(columns), "summars-sort-by": "OFFLINE"},
-    )
-    assert col in result["result"]
-    result = node.rpc.call(
-        "summars",
-        {"summars-columns": ",".join(columns), "summars-sort-by": "PRIVATE"},
-    )
-    assert col in result["result"]
 
     result = node.rpc.call("summars", {"summars-exclude-states": "OK"})
 
@@ -309,6 +301,8 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-sort-by": 1})
     with pytest.raises(RpcError, match="Not a valid column name"):
         node.rpc.call("summars", {"summars-sort-by": "TEST"})
+    with pytest.raises(RpcError, match="Not a valid column name"):
+        node.rpc.call("summars", {"summars-sort-by": "GRAPH_SATS"})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards": "TEST"})
