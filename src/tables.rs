@@ -679,6 +679,11 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
     }
 
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
 
     if config.max_desc_length.value < 0 {
         paystable.with(
@@ -856,6 +861,11 @@ fn format_invoices(
     }
 
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
+    invoicestable.with(
+        Modify::new(ByColumnName::new("sats_received").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
 
     invoicestable.with(Panel::header("invoices"));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
