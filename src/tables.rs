@@ -628,6 +628,9 @@ async fn recent_pays(
                     String::new()
                 },
                 preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
+                msats_requested: Amount::msat(&pay.amount_msat.unwrap()),
+                sats_requested: Amount::msat(&pay.amount_msat.unwrap()) / 1000,
+                fee_msats: pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat(),
             })
         }
     }
@@ -681,6 +684,20 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
     paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+
+    paystable.with(Modify::new(ByColumnName::new("sats_requested")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("sats_requested").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+
+    paystable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
