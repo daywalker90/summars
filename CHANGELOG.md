@@ -4,11 +4,11 @@
 
 ### Added
 
-- ``summars-pays-columns`` See README for more info
-- ``summars-max-description-length`` Set the max length for descriptions, see README
-- ``summars-invoices-columns`` See README for more info
-- ``summars-max-label-length`` Set the max length for invoice labels, see README
-- ``summars-forwards-columns`` See README for more info
+- ``summars-pays-columns`` Comma-separated list of enabled columns in the pays table. Also dictates order of columns. Valid columns: ``completed_at``, ``payment_hash``, ``sats_requested``, ``sats_sent``, ``fee_msats``, ``destination``, ``description``, ``preimage``. Default columns are: ``completed_at``, ``payment_hash``, ``sats_sent``, ``destination``
+- ``summars-max-description-length`` How long descriptions are allowed to be before they get cut off. If you use a negative value (e.g. ``-30``) it will use wrapping at that length instead. Default is ``30``
+- ``summars-invoices-columns`` Comma-separated list of enabled columns in the invoices table. Also dictates order of columns. Valid columns: ``paid_at``, ``label``, ``description``, ``sats_received``, ``payment_hash``, ``preimage``. Default columns are: ``paid_at``, ``label``, ``sats_received``, ``payment_hash``
+- ``summars-max-label-length`` How long invoice labels are allowed to be before they get cut off. If you use a negative value (e.g. ``-30``) it will use wrapping at that length instead. Default is ``30``
+- ``summars-forwards-columns`` Comma-separated list of enabled columns in the forwards table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
 
 ### Changed
 
@@ -20,7 +20,7 @@
 
 ### Fixed
 
-- Documentation error that stated you can sort by ``GRAP_SATS`` (you never could and it will error now if you try)
+- Documentation error that stated you can sort by ``GRAPH_SATS`` (you never could and it will error now if you try)
 - Filter message spelling and formatting
 
 ## [3.2.0] - 2024-05-03
