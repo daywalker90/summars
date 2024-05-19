@@ -106,6 +106,19 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         for col2 in columns:
             if col != col2:
                 assert col2 not in result["result"]
+    result = node.rpc.call(
+        "summars",
+        {"summars-columns": "PPM,PEER_ID,IN_SATS,SCID"},
+    )
+    ppm = result["result"].find("PPM")
+    peer_id = result["result"].find("PEER_ID")
+    in_sats = result["result"].find("IN_SATS")
+    scid = result["result"].find("SCID")
+    assert ppm != -1
+    assert peer_id != -1
+    assert in_sats != -1
+    assert scid != -1
+    assert ppm < peer_id and peer_id < in_sats and in_sats < scid
 
     for col in pay_columns:
         result = node.rpc.call(
@@ -115,6 +128,26 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         for col2 in pay_columns:
             if col != col2:
                 assert col2 not in result["result"]
+    result = node.rpc.call(
+        "summars",
+        {
+            "summars-pays": 1,
+            "summars-pays-columns": "description,destination,sats_sent,preimage",
+        },
+    )
+    description = result["result"].find("description")
+    destination = result["result"].find("destination")
+    sats_sent = result["result"].find("sats_sent")
+    preimage = result["result"].find("preimage")
+    assert description != -1
+    assert destination != -1
+    assert sats_sent != -1
+    assert preimage != -1
+    assert (
+        description < destination
+        and destination < sats_sent
+        and sats_sent < preimage
+    )
 
     for col in invoice_columns:
         result = node.rpc.call(
@@ -124,6 +157,25 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         for col2 in invoice_columns:
             if col != col2:
                 assert col2 not in result["result"]
+
+    result = node.rpc.call(
+        "summars",
+        {
+            "summars-invoices": 1,
+            "summars-invoices-columns": "sats_received,description,label,paid_at",
+        },
+    )
+    sats_received = result["result"].find("sats_received")
+    description = result["result"].find("description")
+    label = result["result"].find("label")
+    paid_at = result["result"].find("paid_at")
+    assert sats_received != -1
+    assert description != -1
+    assert label != -1
+    assert paid_at != -1
+    assert (
+        sats_received < description and description < label and label < paid_at
+    )
 
     for col in columns:
         result = node.rpc.call(

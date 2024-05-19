@@ -10,6 +10,10 @@ use cln_rpc::model::responses::{ListpeerchannelsChannels, ListpeerchannelsChanne
 use fixed_decimal::{FixedDecimal, FixedInteger};
 use icu_datetime::{options::length, DateTimeFormatter};
 use icu_decimal::FixedDecimalFormatter;
+use tabled::grid::records::{
+    vec_records::{CellInfo, VecRecords},
+    Resizable,
+};
 
 use crate::structs::{Config, GraphCharset, PluginState};
 
@@ -167,6 +171,31 @@ pub fn hex_encode(bytes: &[u8]) -> String {
         hex_string.push_str(&format!("{:02x}", byte));
     }
     hex_string
+}
+
+pub fn sort_columns(
+    records: &mut VecRecords<CellInfo<String>>,
+    headers: &[String],
+    config_columns: &[String],
+) {
+    let mut target_index_map = Vec::new();
+
+    for head in headers {
+        for (j, prehead) in config_columns.iter().enumerate() {
+            if head.eq_ignore_ascii_case(prehead) {
+                target_index_map.push(j);
+                break;
+            }
+        }
+    }
+
+    for i in 0..target_index_map.len() {
+        while target_index_map[i] != i {
+            let target_index = target_index_map[i];
+            target_index_map.swap(i, target_index);
+            records.swap_column(i, target_index)
+        }
+    }
 }
 
 #[test]
