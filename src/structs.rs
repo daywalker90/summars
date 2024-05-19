@@ -62,10 +62,9 @@ impl Config {
             columns: DynamicConfigOption {
                 name: OPT_COLUMNS,
                 value: {
-                    Summary::FIELD_NAMES_AS_ARRAY
+                    Summary::valid_column_names()
                         .into_iter()
-                        .filter(|t| t != &"GRAPH_SATS")
-                        .map(|s| s.to_string())
+                        .filter(|t| t != "GRAPH_SATS")
                         .collect::<Vec<String>>()
                 },
             },
@@ -261,6 +260,18 @@ impl Summary {
             .map(ToString::to_string)
             .collect::<Vec<_>>()
             .join(", ")
+    }
+    pub fn valid_column_names() -> Vec<String> {
+        Summary::FIELD_NAMES_AS_ARRAY
+            .iter()
+            .filter_map(|x| {
+                if *x != "PRIVATE" && *x != "OFFLINE" {
+                    Some(x.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 

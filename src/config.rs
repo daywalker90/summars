@@ -126,7 +126,7 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
     }
 
     for i in &split_input {
-        if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
+        if !Summary::valid_column_names().contains(&i.to_string()) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
         }
     }
