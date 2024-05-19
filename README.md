@@ -151,7 +151,7 @@ You can mix these methods and if you set the same option with different methods,
 # Options
 ### Channels table
 * ``summars-columns`` List of enabled columns in the channel table. Comma-separated. Valid columns: ``GRAPH_SATS``, ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``. Default are all columns except for ``GRAPH_SATS``: ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``
-* ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Default is ``SCID``
+* ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Valid columns are all ``summars-columns`` except for ``GRAPH_SATS``. Default is ``SCID``
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING``, ``AWAIT_LOCK``, ``OK``, ``SHUTTING_DOWN``, ``CLOSINGD_SIGEX``, ``CLOSINGD_DONE``, ``AWAIT_UNILATERAL``, ``FUNDING_SPEND``, ``ONCHAIN``, ``DUAL_OPEN``, ``DUAL_COMITTED``, ``DUAL_COMMIT_RDY``, ``DUAL_AWAIT``, ``AWAIT_SPLICE`` and ``PUBLIC``, ``PRIVATE`` to filter channels by their network visibility
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)

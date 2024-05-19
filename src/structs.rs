@@ -62,9 +62,10 @@ impl Config {
             columns: DynamicConfigOption {
                 name: OPT_COLUMNS,
                 value: {
-                    Summary::valid_column_names()
+                    Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != "GRAPH_SATS")
+                        .filter(|t| t != &"GRAPH_SATS")
+                        .map(ToString::to_string)
                         .collect::<Vec<String>>()
                 },
             },
@@ -242,8 +243,10 @@ pub struct Summary {
     #[serde(skip_serializing)]
     pub flag: String,
     #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub private: bool,
     #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub offline: bool,
     pub base: u64,
     pub ppm: u32,
@@ -252,27 +255,6 @@ pub struct Summary {
     pub uptime: f64,
     pub htlcs: usize,
     pub state: String,
-}
-impl Summary {
-    pub fn field_names_to_string() -> String {
-        Summary::FIELD_NAMES_AS_ARRAY
-            .iter()
-            .map(ToString::to_string)
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-    pub fn valid_column_names() -> Vec<String> {
-        Summary::FIELD_NAMES_AS_ARRAY
-            .iter()
-            .filter_map(|x| {
-                if *x != "PRIVATE" && *x != "OFFLINE" {
-                    Some(x.to_string())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 #[derive(Debug, Tabled, Serialize)]
