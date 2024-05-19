@@ -92,7 +92,7 @@ pub fn draw_chans_graph(
     format!("{}{}{}", left, mid, right)
 }
 
-pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
+pub fn u64_to_btc_string(config: &Config, amount_msat: u64) -> Result<String, Error> {
     let fixed_decimal_formatter = match FixedDecimalFormatter::try_new(
         &config.locale.value.clone().into(),
         Default::default(),
@@ -104,7 +104,7 @@ pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
             ))
         }
     };
-    let fixed_decimal = FixedDecimal::from(value)
+    let fixed_decimal = FixedDecimal::from(amount_msat)
         .multiplied_pow10(-11)
         .trunced(-8)
         .padded_end(-8);
@@ -114,7 +114,7 @@ pub fn u64_to_btc_string(config: &Config, value: u64) -> Result<String, Error> {
     ))
 }
 
-pub fn u64_to_sat_string(config: &Config, value: u64) -> Result<String, Error> {
+pub fn u64_to_sat_string(config: &Config, amount_sat: u64) -> Result<String, Error> {
     let fixed_decimal_formatter = match FixedDecimalFormatter::try_new(
         &config.locale.value.clone().into(),
         Default::default(),
@@ -126,7 +126,7 @@ pub fn u64_to_sat_string(config: &Config, value: u64) -> Result<String, Error> {
             ))
         }
     };
-    let fixed_decimal = FixedInteger::from(value);
+    let fixed_decimal = FixedInteger::from(amount_sat);
     Ok(format!(
         "{}",
         fixed_decimal_formatter.format(&fixed_decimal.into())
