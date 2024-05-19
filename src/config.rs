@@ -7,7 +7,7 @@ use cln_plugin::{
 use cln_rpc::RpcError;
 use icu_locid::Locale;
 use serde_json::json;
-use std::str::FromStr;
+use std::{collections::HashSet, str::FromStr};
 use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
@@ -114,6 +114,17 @@ fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
         .to_ascii_uppercase();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
 
+    let mut uniq = HashSet::new();
+    for i in &split_input {
+        if !uniq.insert(i) {
+            return Err(anyhow!(
+                "Duplicate entry detected in {}: {}",
+                OPT_COLUMNS,
+                i
+            ));
+        }
+    }
+
     for i in &split_input {
         if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid column names!", i));
@@ -132,6 +143,17 @@ fn validate_pays_columns_input(input: &str) -> Result<Vec<String>, Error> {
         .to_ascii_lowercase();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
 
+    let mut uniq = HashSet::new();
+    for i in &split_input {
+        if !uniq.insert(i) {
+            return Err(anyhow!(
+                "Duplicate entry detected in {}: {}",
+                OPT_PAYS_COLUMNS,
+                i
+            ));
+        }
+    }
+
     for i in &split_input {
         if !Pays::FIELD_NAMES_AS_ARRAY.contains(i) {
             return Err(anyhow!("`{}` not found in valid pays column names!", i));
@@ -149,6 +171,17 @@ fn validate_invoices_columns_input(input: &str) -> Result<Vec<String>, Error> {
         .collect::<String>()
         .to_ascii_lowercase();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
+
+    let mut uniq = HashSet::new();
+    for i in &split_input {
+        if !uniq.insert(i) {
+            return Err(anyhow!(
+                "Duplicate entry detected in {}: {}",
+                OPT_INVOICES_COLUMNS,
+                i
+            ));
+        }
+    }
 
     for i in &split_input {
         if !Invoices::FIELD_NAMES_AS_ARRAY.contains(i) {

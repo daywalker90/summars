@@ -211,14 +211,24 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
 
     with pytest.raises(RpcError, match="not found in valid column names"):
         node.rpc.call("summars", {"summars-columns": "test"})
+    with pytest.raises(RpcError, match="Duplicate entry"):
+        node.rpc.call("summars", {"summars-columns": "IN_SATS,IN_SATS"})
 
     with pytest.raises(RpcError, match="not found in valid pays column names"):
         node.rpc.call("summars", {"summars-pays-columns": "test"})
+    with pytest.raises(RpcError, match="Duplicate entry"):
+        node.rpc.call(
+            "summars", {"summars-pays-columns": "description,description"}
+        )
 
     with pytest.raises(
         RpcError, match="not found in valid invoices column names"
     ):
         node.rpc.call("summars", {"summars-invoices-columns": "test"})
+    with pytest.raises(RpcError, match="Duplicate entry"):
+        node.rpc.call(
+            "summars", {"summars-invoices-columns": "description, description"}
+        )
 
     with pytest.raises(RpcError, match="does not make sense"):
         node.rpc.call("summars", {"summars-refresh-alias": 1})
