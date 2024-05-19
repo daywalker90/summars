@@ -20,10 +20,10 @@ use tabled::{settings::Style, Table, Tabled};
 
 use crate::{
     OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_EXCLUDE_CHANNEL_STATES,
-    OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_FILTER_AMT,
-    OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_JSON,
-    OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS,
-    OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_COLUMNS,
+    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_COLUMNS,
+    OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH,
+    OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
@@ -36,6 +36,7 @@ pub struct Config {
     pub exclude_channel_states: DynamicConfigOption<Vec<ShortChannelState>>,
     pub exclude_pub_priv_states: Option<ChannelVisibility>,
     pub forwards: DynamicConfigOption<u64>,
+    pub forwards_columns: DynamicConfigOption<Vec<String>>,
     pub forwards_filter_amt_msat: DynamicConfigOption<i64>,
     pub forwards_filter_fee_msat: DynamicConfigOption<i64>,
     pub forwards_alias: DynamicConfigOption<bool>,
@@ -81,6 +82,16 @@ impl Config {
             forwards: DynamicConfigOption {
                 name: OPT_FORWARDS,
                 value: 0,
+            },
+            forwards_columns: DynamicConfigOption {
+                name: OPT_FORWARDS_COLUMNS,
+                value: {
+                    Forwards::FIELD_NAMES_AS_ARRAY
+                        .into_iter()
+                        .filter(|t| t != &"received_time")
+                        .map(|s| s.to_string())
+                        .collect::<Vec<String>>()
+                },
             },
             forwards_filter_amt_msat: DynamicConfigOption {
                 name: OPT_FORWARDS_FILTER_AMT,
@@ -257,28 +268,43 @@ pub struct Summary {
     pub state: String,
 }
 
-#[derive(Debug, Tabled, Serialize)]
+#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
 pub struct Forwards {
     #[tabled(skip)]
-    pub received: u64,
+    pub received_time: u64,
     #[tabled(rename = "received_time")]
     #[serde(skip_serializing)]
-    pub received_str: String,
+    #[field_names_as_array(skip)]
+    pub received_time_str: String,
+    #[tabled(skip)]
+    pub resolved_time: u64,
+    #[tabled(rename = "resolved_time")]
+    #[serde(skip_serializing)]
+    #[field_names_as_array(skip)]
+    pub resolved_time_str: String,
     #[tabled(rename = "in_channel")]
     #[serde(skip_serializing)]
+    #[field_names_as_array(skip)]
     pub in_channel_alias: String,
     #[tabled(rename = "out_channel")]
     #[serde(skip_serializing)]
+    #[field_names_as_array(skip)]
     pub out_channel_alias: String,
     #[tabled(skip)]
     pub in_channel: ShortChannelId,
     #[tabled(skip)]
     pub out_channel: ShortChannelId,
-    #[tabled(rename = "in_sats")]
+    #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub in_msats: u64,
-    #[tabled(rename = "out_sats")]
+    #[serde(skip_serializing)]
+    pub in_sats: u64,
+    #[tabled(skip)]
+    #[field_names_as_array(skip)]
     pub out_msats: u64,
-    pub fee_msats: String,
+    #[serde(skip_serializing)]
+    pub out_sats: u64,
+    pub fee_msats: u64,
 }
 
 #[derive(Debug, Clone, Default)]

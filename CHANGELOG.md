@@ -8,12 +8,20 @@
 - ``summars-max-description-length`` Set the max length for descriptions, see README
 - ``summars-invoices-columns`` See README for more info
 - ``summars-max-label-length`` Set the max length for invoice labels, see README
+- ``summars-forwards-columns`` See README for more info
 
 ### Changed
 
 - Options code refactored. All options are now natively dynamic and there is no longer any manual reading of config files. Read the updated README section on how to set options for more information
 - ``summars-max-alias-length`` supports wrapping by using negative values (just like the new ``summars-max-description-length`` and ``summars-max-label-length``), see README
 - ``summars-columns`` and the new ``-columns`` options now also dictate the order of the columns
+- ``summars-forwards`` now sorted by `resolved_time` instead of `received_time`
+- ``summars-json``: in forwards objects ``received`` is now called ``received_time``
+
+### Fixed
+
+- Documentation error that stated you can sort by ``GRAP_SATS`` (you never could and it will error now if you try)
+- Filter message spelling and formatting
 
 ## [3.2.0] - 2024-05-03
 
