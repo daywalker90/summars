@@ -18,7 +18,7 @@ use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::{ByColumnName, Locator};
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Width};
+use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
 
 use serde_json::json;
 
@@ -271,26 +271,26 @@ pub async fn summary(
             now.elapsed().as_millis().to_string()
         );
 
-        let mut result = sumtable.to_string();
         if filter_count > 0 {
-            result += &format!(
+            sumtable.with(Panel::footer(format!(
                 "\n {} channel{} filtered.",
                 filter_count,
                 if filter_count == 1 { "" } else { "s" }
-            )
+            )));
+            sumtable.with(Modify::new(Rows::last()).with(Alignment::left()));
         }
+
+        let mut result = sumtable.to_string();
         if config.forwards.value > 0 {
-            result += &("\n\n".to_owned()
-                + "forwards\n"
-                + &format_forwards(forwards, &config, forwards_filter_stats));
+            result +=
+                &("\n\n".to_owned() + &format_forwards(forwards, &config, forwards_filter_stats)?);
         }
         if config.pays.value > 0 {
-            result += &("\n\n".to_owned() + "pays\n" + &format_pays(pays, &config)?);
+            result += &("\n\n".to_owned() + &format_pays(pays, &config)?);
         }
         if config.invoices.value > 0 {
-            result += &("\n\n".to_owned()
-                + "invoices\n"
-                + &format_invoices(invoices, &config, invoices_filter_stats)?);
+            result +=
+                &("\n\n".to_owned() + &format_invoices(invoices, &config, invoices_filter_stats)?);
         }
 
         Ok(json!({"format-hint":"simple","result":format!(
@@ -467,7 +467,7 @@ fn format_forwards(
     table: Vec<Forwards>,
     config: &Config,
     filter_stats: ForwardsFilterStats,
-) -> String {
+) -> Result<String, Error> {
     let mut fwtable = Table::new(table);
     config.flow_style.value.apply(&mut fwtable);
 
@@ -511,17 +511,24 @@ fn format_forwards(
     );
     fwtable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
 
+    fwtable.with(Panel::header("forwards"));
+    fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
+
     if filter_stats.filter_count > 0 {
         let filter_sum_result = format!(
-            "\nFiltered: {} forwards with {} sats routed and {} msat fees.",
+            "\nFiltered {} forward{} with {} sats routed and {} msat fees.",
             filter_stats.filter_count,
-            filter_stats.filter_amt_sum_msat / 1000,
-            filter_stats.filter_fee_sum_msat
+            if filter_stats.filter_count == 1 {
+                ""
+            } else {
+                "s"
+            },
+            u64_to_sat_string(config, filter_stats.filter_amt_sum_msat / 1000)?,
+            u64_to_sat_string(config, filter_stats.filter_fee_sum_msat)?,
         );
-        fwtable.to_string() + &filter_sum_result
-    } else {
-        fwtable.to_string()
+        fwtable.with(Panel::footer(filter_sum_result));
     }
+    Ok(fwtable.to_string())
 }
 
 async fn recent_pays(
@@ -651,6 +658,9 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
                 .with(Width::truncate(config.max_desc_length.value as usize).suffix("[..]")),
         );
     }
+
+    paystable.with(Panel::header("pays"));
+    paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     Ok(paystable.to_string())
 }
@@ -813,16 +823,23 @@ fn format_invoices(
 
     invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
 
+    invoicestable.with(Panel::header("invoices"));
+    invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
+
     if filter_stats.filter_count > 0 {
         let filter_sum_result = format!(
-            "\nFiltered: {} invoices with {} sats total.",
+            "\nFiltered {} invoice{} with {} sats total.",
             filter_stats.filter_count,
-            filter_stats.filter_amt_sum_msat / 1000
+            if filter_stats.filter_count == 1 {
+                ""
+            } else {
+                "s"
+            },
+            u64_to_sat_string(config, filter_stats.filter_amt_sum_msat / 1000)?
         );
-        Ok(invoicestable.to_string() + &filter_sum_result)
-    } else {
-        Ok(invoicestable.to_string())
+        invoicestable.with(Panel::footer(filter_sum_result));
     }
+    Ok(invoicestable.to_string())
 }
 
 async fn get_alias(
