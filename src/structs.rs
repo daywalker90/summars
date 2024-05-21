@@ -118,7 +118,7 @@ impl Config {
                             t != &"description"
                                 && t != &"preimage"
                                 && t != &"sats_requested"
-                                && t != &"fees_msat"
+                                && t != &"fee_msats"
                         })
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
