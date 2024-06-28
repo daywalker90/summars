@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "Exclude channels with given state from the summary table. Comma-separated string with \
         these available states: `OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,\
         AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,\
-        AWAIT_SPLICE` or `PUBLIC,PRIVATE`",
+        AWAIT_SPLICE` or `PUBLIC,PRIVATE` or `ONLINE,OFFLINE`",
     )
     .dynamic();
     let opt_forwards: IntegerConfigOption = ConfigOption::new_i64_no_default(
