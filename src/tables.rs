@@ -232,7 +232,15 @@ pub async fn summary(
 
     let pays;
     if config.pays > 0 {
-        pays = recent_pays(&mut rpc, p.clone(), &config, now, getinfo.id).await?;
+        pays = recent_pays(
+            &mut rpc,
+            p.clone(),
+            &config,
+            now,
+            getinfo.id,
+            &getinfo.version,
+        )
+        .await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -338,13 +346,14 @@ async fn recent_forwards(
     now: Instant,
 ) -> Result<(Vec<Forwards>, ForwardsFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
+    let config_forwards_sec = config.forwards * 60 * 60;
     {
-        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards * 60 * 60 {
+        if plugin.state().fw_index.lock().timestamp > now_utc - config_forwards_sec {
             *plugin.state().fw_index.lock() = PagingIndex::new();
             debug!("fw_index: forwards-age increased, resetting index");
         }
     }
-    let fw_index = plugin.state().fw_index.lock().clone();
+    let mut fw_index = plugin.state().fw_index.lock().clone();
     debug!(
         "fw_index: start:{} timestamp:{}",
         fw_index.start, fw_index.timestamp
@@ -366,6 +375,11 @@ async fn recent_forwards(
         now.elapsed().as_millis().to_string()
     );
 
+    fw_index.timestamp = now_utc - config_forwards_sec;
+    if let Some(last_fw) = forwards.last() {
+        fw_index.start = last_fw.created_index.unwrap_or(u64::MAX);
+    }
+
     let chanmap: BTreeMap<ShortChannelId, ListpeerchannelsChannels> = peer_channels
         .iter()
         .filter_map(|s| s.short_channel_id.map(|id| (id, s.clone())))
@@ -377,12 +391,9 @@ async fn recent_forwards(
     let mut filter_amt_sum_msat = 0;
     let mut filter_fee_sum_msat = 0;
     let mut filter_count = 0;
-    let mut new_fw_index = PagingIndex {
-        start: u64::MAX,
-        timestamp: now_utc - config.forwards * 60 * 60,
-    };
-    for forward in forwards {
-        if forward.received_time as u64 > now_utc - config.forwards * 60 * 60 {
+
+    for forward in forwards.into_iter() {
+        if forward.received_time as u64 > now_utc - config_forwards_sec {
             let inchan = config
                 .forwards_alias
                 .then(|| {
@@ -458,14 +469,14 @@ async fn recent_forwards(
             }
 
             if let Some(c_index) = forward.created_index {
-                if c_index < new_fw_index.start {
-                    new_fw_index.start = c_index;
+                if c_index < fw_index.start {
+                    fw_index.start = c_index;
                 }
             }
         }
     }
-    if new_fw_index.start < u64::MAX {
-        *plugin.state().fw_index.lock() = new_fw_index;
+    if fw_index.start < u64::MAX {
+        *plugin.state().fw_index.lock() = fw_index;
     }
     debug!(
         "Build forwards table. Total: {}ms",
@@ -604,22 +615,60 @@ async fn recent_pays(
     config: &Config,
     now: Instant,
     mypubkey: PublicKey,
+    version: &str,
 ) -> Result<Vec<Pays>, Error> {
-    let pays = rpc
-        .call_typed(&ListpaysRequest {
+    let now_utc = Utc::now().timestamp() as u64;
+    let config_pays_sec = config.pays * 60 * 60;
+    {
+        if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
+            *plugin.state().pay_index.lock() = PagingIndex::new();
+            debug!("pay_index: pays-age increased, resetting index");
+        }
+    }
+    let mut pay_index = plugin.state().pay_index.lock().clone();
+
+    let pays = if at_or_above_version(version, "24.08")? {
+        debug!(
+            "pay_index: start:{} timestamp:{}",
+            pay_index.start, pay_index.timestamp
+        );
+        rpc.call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
             status: Some(ListpaysStatus::COMPLETE),
+            index: Some(ListpaysIndex::CREATED),
+            limit: None,
+            start: Some(pay_index.start),
         })
         .await?
-        .pays;
+        .pays
+    } else {
+        rpc.call_typed(&ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status: Some(ListpaysStatus::COMPLETE),
+            index: None,
+            limit: None,
+            start: None,
+        })
+        .await?
+        .pays
+    };
     debug!(
-        "List pays. Total: {}ms",
+        "List {} pays. Total: {}ms",
+        pays.len(),
         now.elapsed().as_millis().to_string()
     );
+
+    pay_index.timestamp = now_utc - config_pays_sec;
+    if let Some(last_pay) = pays.last() {
+        pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
+    }
+
     let mut table = Vec::new();
-    for pay in pays {
-        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays * 60 * 60
+
+    for pay in pays.into_iter() {
+        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config_pays_sec
             && pay.destination.unwrap() != mypubkey
         {
             let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
@@ -667,8 +716,16 @@ async fn recent_pays(
                     as f64)
                     / 1_000.0)
                     .round() as u64,
-            })
+            });
+            if let Some(c_index) = pay.created_index {
+                if c_index < pay_index.start {
+                    pay_index.start = c_index;
+                }
+            }
         }
+    }
+    if pay_index.start < u64::MAX {
+        *plugin.state().pay_index.lock() = pay_index;
     }
     debug!(
         "Build pays table. Total: {}ms",
@@ -781,13 +838,14 @@ async fn recent_invoices(
     now: Instant,
 ) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
+    let config_invoices_sec = config.invoices * 60 * 60;
     {
-        if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices * 60 * 60 {
+        if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
             *plugin.state().inv_index.lock() = PagingIndex::new();
             debug!("inv_index: invoices-age increased, resetting index");
         }
     }
-    let inv_index = plugin.state().inv_index.lock().clone();
+    let mut inv_index = plugin.state().inv_index.lock().clone();
     debug!(
         "inv_index: start:{} timestamp:{}",
         inv_index.start, inv_index.timestamp
@@ -809,21 +867,24 @@ async fn recent_invoices(
         invoices.len(),
         now.elapsed().as_millis().to_string()
     );
+
+    inv_index.timestamp = now_utc - config_invoices_sec;
+    if let Some(last_inv) = invoices.last() {
+        inv_index.start = last_inv.created_index.unwrap_or(u64::MAX);
+    }
+
     let mut table = Vec::new();
     let mut filter_count = 0;
     let mut filter_amt_sum_msat = 0;
-    let mut new_inv_index = PagingIndex {
-        start: u64::MAX,
-        timestamp: now_utc - config.invoices * 60 * 60,
-    };
-    for invoice in invoices {
+
+    for invoice in invoices.into_iter() {
         if let ListinvoicesInvoicesStatus::PAID = invoice.status {
             let inv_paid_at = if let Some(p_at) = invoice.paid_at {
                 p_at
             } else {
                 continue;
             };
-            if inv_paid_at > now_utc - config.invoices * 60 * 60 {
+            if inv_paid_at > now_utc - config_invoices_sec {
                 if invoice.amount_received_msat.unwrap().msat() as i64
                     <= config.invoices_filter_amt_msat
                 {
@@ -848,15 +909,15 @@ async fn recent_invoices(
                     });
                 }
                 if let Some(c_index) = invoice.created_index {
-                    if c_index < new_inv_index.start {
-                        new_inv_index.start = c_index;
+                    if c_index < inv_index.start {
+                        inv_index.start = c_index;
                     }
                 }
             }
         }
     }
-    if new_inv_index.start < u64::MAX {
-        *plugin.state().inv_index.lock() = new_inv_index;
+    if inv_index.start < u64::MAX {
+        *plugin.state().inv_index.lock() = inv_index;
     }
     debug!(
         "Build invoices table. Total: {}ms",
