@@ -4,7 +4,7 @@
 import pytest
 from pyln.client import RpcError
 from pyln.testing.fixtures import *  # noqa: F403
-from pyln.testing.utils import sync_blockheight
+from pyln.testing.utils import only_one, sync_blockheight, wait_for
 from util import get_plugin  # noqa: F401
 
 columns = [
@@ -493,41 +493,74 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
 
 
 def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
-    l1, l2, l3 = node_factory.get_nodes(3, opts={"plugin": get_plugin})
+    l1, l2, l3 = node_factory.get_nodes(
+        3, opts=[{"plugin": get_plugin}, {}, {}]
+    )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
-    l1.rpc.connect(l2.info["id"], "localhost", l2.port)
-    l2.rpc.connect(l3.info["id"], "localhost", l3.port)
-    l1.rpc.fundchannel(l2.info["id"], 1_000_000, mindepth=1)
-    l2.rpc.fundchannel(l3.info["id"], 1_000_000, mindepth=1)
-
-    result = l2.rpc.call("summars")
+    l1.rpc.fundchannel(
+        l2.info["id"] + "@localhost:" + str(l2.port), 1_000_000, mindepth=1
+    )
+    bitcoind.generate_block(1)
+    sync_blockheight(bitcoind, [l1, l2, l3])
+    l1.rpc.fundchannel(
+        l3.info["id"] + "@localhost:" + str(l3.port),
+        1_000_000,
+        mindepth=1,
+        announce=False,
+    )
+    result = l1.rpc.call("summars")
     assert l1.info["id"] in result["result"]
-    assert l3.info["id"] in result["result"]
     assert "AWAIT_LOCK" in result["result"]
 
     bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
 
-    cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0][
-        "short_channel_id"
-    ]
-    cl2 = l2.rpc.listpeerchannels(l3.info["id"])["channels"][0][
-        "short_channel_id"
-    ]
-    l2.wait_channel_active(cl1)
-    l2.wait_channel_active(cl2)
+    chans = l1.rpc.listpeerchannels(l2.info["id"])["channels"]
 
-    result = l2.rpc.call("summars")
+    for chan in chans:
+        if not chan["private"]:
+            l1.wait_channel_active(chan["short_channel_id"])
+
+    result = l1.rpc.call("summars")
     assert "OK" in result["result"]
 
     result = l1.rpc.call("summars", {"summars-exclude-states": "OK"})
     assert "OK" not in result["result"]
+    assert "2 channels filtered" in result["result"]
+
+    result = l1.rpc.call("summars", {"summars-exclude-states": "PRIVATE"})
+    assert "[P" not in result["result"]
     assert "1 channel filtered" in result["result"]
 
-    l1.rpc.close(cl1)
+    result = l1.rpc.call("summars", {"summars-exclude-states": "PUBLIC"})
+    assert "[_" not in result["result"]
+    assert "1 channel filtered" in result["result"]
 
-    result = l2.rpc.call("summars")
+    result = l1.rpc.call("summars", {"summars-exclude-states": "ONLINE"})
+    assert "_]" not in result["result"]
+    assert "2 channels filtered" in result["result"]
+
+    l3.stop()
+
+    wait_for(
+        lambda: not only_one(
+            l1.rpc.listpeerchannels(l3.info["id"])["channels"]
+        )["peer_connected"]
+    )
+    result = l1.rpc.call("summars", {"summars-exclude-states": "OFFLINE"})
+    assert "O]" not in result["result"]
+    assert "1 channel filtered" in result["result"]
+
+    l1.rpc.close(chans[0]["short_channel_id"])
+
+    wait_for(
+        lambda: only_one(l1.rpc.listpeerchannels(l2.info["id"])["channels"])[
+            "state"
+        ]
+        == "CLOSINGD_COMPLETE"
+    )
+    result = l1.rpc.call("summars")
     assert "CLOSINGD_DONE" in result["result"]
     assert "OK" in result["result"]
 

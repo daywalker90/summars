@@ -27,8 +27,8 @@ use tokio::time::Instant;
 
 use crate::config::validateargs;
 use crate::structs::{
-    ChannelVisibility, Config, Forwards, ForwardsFilterStats, GraphCharset, Invoices,
-    InvoicesFilterStats, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
+    ChannelVisibility, Config, ConnectionStatus, Forwards, ForwardsFilterStats, GraphCharset,
+    Invoices, InvoicesFilterStats, PagingIndex, Pays, PluginState, ShortChannelState, Summary,
     NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
@@ -124,11 +124,20 @@ pub async fn summary(
         if config
             .exclude_channel_states
             .value
+            .channel_states
             .contains(&ShortChannelState(chan.state))
-            || if let Some(excl_vis) = &config.exclude_pub_priv_states {
+            || if let Some(excl_vis) = &config.exclude_channel_states.value.channel_visibility {
                 match excl_vis {
                     ChannelVisibility::Private => chan.private.unwrap(),
                     ChannelVisibility::Public => !chan.private.unwrap(),
+                }
+            } else {
+                false
+            }
+            || if let Some(excl_conn) = &config.exclude_channel_states.value.connection_status {
+                match excl_conn {
+                    ConnectionStatus::Online => chan.peer_connected,
+                    ConnectionStatus::Offline => !chan.peer_connected,
                 }
             } else {
                 false

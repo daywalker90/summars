@@ -1,5 +1,11 @@
 # Changelog
 
+## [3.3.1] 2024-06-28
+
+### Added
+
+- ``summars-exclude-states``: added `ONLINE,OFFLINE` states to filter by connection status
+
 ## [3.3.0] 2024-06-05
 
 ### Added

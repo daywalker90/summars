@@ -33,8 +33,7 @@ pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 pub struct Config {
     pub columns: DynamicConfigOption<Vec<String>>,
     pub sort_by: DynamicConfigOption<String>,
-    pub exclude_channel_states: DynamicConfigOption<Vec<ShortChannelState>>,
-    pub exclude_pub_priv_states: Option<ChannelVisibility>,
+    pub exclude_channel_states: DynamicConfigOption<ExcludeStates>,
     pub forwards: DynamicConfigOption<u64>,
     pub forwards_columns: DynamicConfigOption<Vec<String>>,
     pub forwards_filter_amt_msat: DynamicConfigOption<i64>,
@@ -76,9 +75,12 @@ impl Config {
             },
             exclude_channel_states: DynamicConfigOption {
                 name: OPT_EXCLUDE_CHANNEL_STATES,
-                value: Vec::new(),
+                value: ExcludeStates {
+                    channel_states: Vec::new(),
+                    channel_visibility: None,
+                    connection_status: None,
+                },
             },
-            exclude_pub_priv_states: None,
             forwards: DynamicConfigOption {
                 name: OPT_FORWARDS,
                 value: 0,
@@ -207,6 +209,19 @@ impl Config {
 pub struct DynamicConfigOption<T> {
     pub name: &'static str,
     pub value: T,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExcludeStates {
+    pub channel_states: Vec<ShortChannelState>,
+    pub channel_visibility: Option<ChannelVisibility>,
+    pub connection_status: Option<ConnectionStatus>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ConnectionStatus {
+    Online,
+    Offline,
 }
 
 #[derive(Clone, Debug)]

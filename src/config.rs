@@ -12,7 +12,8 @@ use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
     structs::{
-        ChannelVisibility, Config, Forwards, Invoices, Pays, ShortChannelState, Styles, Summary,
+        ChannelVisibility, Config, ConnectionStatus, ExcludeStates, Forwards, Invoices, Pays,
+        ShortChannelState, Styles, Summary,
     },
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
@@ -243,16 +244,18 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
     }
 }
 
-fn validate_exclude_states_input(
-    input: &str,
-) -> Result<(Vec<ShortChannelState>, Option<ChannelVisibility>), Error> {
+fn validate_exclude_states_input(input: &str) -> Result<ExcludeStates, Error> {
     let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
     if split_input.contains(&"PUBLIC") && split_input.contains(&"PRIVATE") {
         return Err(anyhow!("Can only filter `PUBLIC` OR `PRIVATE`, not both."));
     }
+    if split_input.contains(&"ONLINE") && split_input.contains(&"OFFLINE") {
+        return Err(anyhow!("Can only filter `ONLINE` OR `OFFLINE`, not both."));
+    }
     let mut parsed_input = Vec::new();
     let mut parsed_visibility = None;
+    let mut parsed_connection_status = None;
     for i in &split_input {
         if let Ok(state) = ShortChannelState::from_str(i) {
             parsed_input.push(state);
@@ -260,11 +263,19 @@ fn validate_exclude_states_input(
             parsed_visibility = Some(ChannelVisibility::Public)
         } else if i.eq(&"PRIVATE") {
             parsed_visibility = Some(ChannelVisibility::Private)
+        } else if i.eq(&"ONLINE") {
+            parsed_connection_status = Some(ConnectionStatus::Online)
+        } else if i.eq(&"OFFLINE") {
+            parsed_connection_status = Some(ConnectionStatus::Offline)
         } else {
             return Err(anyhow!("Could not parse channel state: `{}`", i));
         }
     }
-    Ok((parsed_input, parsed_visibility))
+    Ok(ExcludeStates {
+        channel_states: parsed_input,
+        channel_visibility: parsed_visibility,
+        connection_status: parsed_connection_status,
+    })
 }
 
 fn validate_u64_input(
@@ -534,9 +545,8 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
             config.sort_by.value = validate_sort_input(value.as_str().unwrap())?
         }
         n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
-            let result = validate_exclude_states_input(value.as_str().unwrap())?;
-            config.exclude_channel_states.value = result.0;
-            config.exclude_pub_priv_states = result.1;
+            config.exclude_channel_states.value =
+                validate_exclude_states_input(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS) => {
             config.forwards.value =
