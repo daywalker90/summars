@@ -79,7 +79,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: venv
-        key: cache-python-${{ matrix.bitcoind-version }}-${{ steps.exact_versions.outputs.python_version }}-${{ steps.exact_versions.outputs.os_version }}-${{ inputs.pyln-version }}-${{ hashFiles('tests/requirements.txt') }}
+        key: cache-python-${{ steps.exact_versions.outputs.python_version }}-${{ steps.exact_versions.outputs.os_version }}-${{ inputs.pyln-version }}-${{ hashFiles('tests/requirements.txt') }}
 
     - name: Download Bitcoin ${{ matrix.bitcoind-version }} & install binaries
       if: ${{ steps.cache-bitcoind.outputs.cache-hit != 'true' }}
