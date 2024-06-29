@@ -90,7 +90,12 @@ impl Config {
                 value: {
                     Forwards::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"received_time")
+                        .filter(|t| {
+                            t != &"received_time"
+                                && t != &"in_msats"
+                                && t != &"out_msats"
+                                && t != &"fee_sats"
+                        })
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                 },
@@ -314,17 +319,15 @@ pub struct Forwards {
     pub in_channel: ShortChannelId,
     #[tabled(skip)]
     pub out_channel: ShortChannelId,
-    #[tabled(skip)]
-    #[field_names_as_array(skip)]
     pub in_msats: u64,
     #[serde(skip_serializing)]
     pub in_sats: u64,
-    #[tabled(skip)]
-    #[field_names_as_array(skip)]
     pub out_msats: u64,
     #[serde(skip_serializing)]
     pub out_sats: u64,
     pub fee_msats: u64,
+    #[serde(skip_serializing)]
+    pub fee_sats: u64,
 }
 
 #[derive(Debug, Clone, Default)]

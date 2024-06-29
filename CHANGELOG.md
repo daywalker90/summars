@@ -5,6 +5,11 @@
 ### Added
 
 - ``summars-exclude-states``: added `ONLINE,OFFLINE` states to filter by connection status
+- ``summars-forwards-columns``: added ``fee_sats``, ``in_msats``, ``out_msats`` as non-default columns
+
+### Changed
+
+- sats values are rounded to the closest integer instead of rounded down
 
 ## [3.3.0] 2024-06-05
 

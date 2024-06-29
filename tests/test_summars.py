@@ -598,14 +598,14 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         {
             "id": l1.info["id"],
             "short_channel_id": cl1,
-            "fee_base_msat": 1000,
+            "fee_base_msat": 1_000,
             "fee_proportional_millionths": 10,
             "cltv_expiry_delta": 6,
         },
         {
             "id": l2.info["id"],
             "short_channel_id": cl2,
-            "fee_base_msat": 1000,
+            "fee_base_msat": 1_000,
             "fee_proportional_millionths": 10,
             "cltv_expiry_delta": 6,
         },
@@ -631,14 +631,14 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         {
             "id": l3.info["id"],
             "short_channel_id": cl2,
-            "fee_base_msat": 1000,
+            "fee_base_msat": 1_000,
             "fee_proportional_millionths": 10,
             "cltv_expiry_delta": 6,
         },
         {
             "id": l2.info["id"],
             "short_channel_id": cl1,
-            "fee_base_msat": 1000,
+            "fee_base_msat": 1_000,
             "fee_proportional_millionths": 10,
             "cltv_expiry_delta": 6,
         },
