@@ -424,12 +424,12 @@ async fn recent_forwards(
                 filter_count += 1;
             } else {
                 table.push(Forwards {
-                    received_time: (forward.received_time * 1000.0) as u64,
+                    received_time: (forward.received_time * 1_000.0) as u64,
                     received_time_str: timestamp_to_localized_datetime_string(
                         config,
                         forward.received_time as u64,
                     )?,
-                    resolved_time: (forward.resolved_time.unwrap() * 1000.0) as u64,
+                    resolved_time: (forward.resolved_time.unwrap() * 1_000.0) as u64,
                     resolved_time_str: timestamp_to_localized_datetime_string(
                         config,
                         forward.resolved_time.unwrap() as u64,
@@ -449,8 +449,11 @@ async fn recent_forwards(
                     in_msats: Amount::msat(&forward.in_msat),
                     out_msats: Amount::msat(&forward.out_msat.unwrap()),
                     fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
-                    in_sats: Amount::msat(&forward.in_msat) / 1000,
-                    out_sats: Amount::msat(&forward.out_msat.unwrap()) / 1000,
+                    in_sats: ((Amount::msat(&forward.in_msat) as f64) / 1_000.0).round() as u64,
+                    out_sats: ((Amount::msat(&forward.out_msat.unwrap()) as f64) / 1_000.0).round()
+                        as u64,
+                    fee_sats: ((Amount::msat(&forward.fee_msat.unwrap()) as f64) / 1_000.0).round()
+                        as u64,
                 })
             }
 
@@ -541,9 +544,27 @@ fn format_forwards(
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
+    fwtable.with(Modify::new(ByColumnName::new("in_msats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("in_msats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
     fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
     fwtable.with(
         Modify::new(ByColumnName::new("out_sats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+    fwtable.with(Modify::new(ByColumnName::new("out_msats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("out_msats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+    fwtable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
@@ -566,7 +587,10 @@ fn format_forwards(
             } else {
                 "s"
             },
-            u64_to_sat_string(config, filter_stats.filter_amt_sum_msat / 1000)?,
+            u64_to_sat_string(
+                config,
+                ((filter_stats.filter_amt_sum_msat as f64) / 1_000.0).round() as u64
+            )?,
             u64_to_sat_string(config, filter_stats.filter_fee_sum_msat)?,
         );
         fwtable.with(Panel::footer(filter_sum_result));
@@ -607,7 +631,8 @@ async fn recent_pays(
                 )?,
                 payment_hash: pay.payment_hash.to_string(),
                 msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-                sats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()) / 1000,
+                sats_sent: ((Amount::msat(&pay.amount_sent_msat.unwrap()) as f64) / 1_000.0).round()
+                    as u64,
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
                 } else if config.utf8.value {
@@ -638,7 +663,8 @@ async fn recent_pays(
                 },
                 preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
                 msats_requested: Amount::msat(&pay.amount_msat.unwrap()),
-                sats_requested: Amount::msat(&pay.amount_msat.unwrap()) / 1000,
+                sats_requested: ((Amount::msat(&pay.amount_msat.unwrap()) as f64) / 1_000.0).round()
+                    as u64,
                 fee_msats: pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat(),
             })
         }
@@ -794,7 +820,10 @@ async fn recent_invoices(
                         )?,
                         label: invoice.label,
                         msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
-                        sats_received: Amount::msat(&invoice.amount_received_msat.unwrap()) / 1000,
+                        sats_received: ((Amount::msat(&invoice.amount_received_msat.unwrap())
+                            as f64)
+                            / 1_000.0)
+                            .round() as u64,
                         description: if let Some(desc) = invoice.description {
                             desc
                         } else {
@@ -905,7 +934,10 @@ fn format_invoices(
             } else {
                 "s"
             },
-            u64_to_sat_string(config, filter_stats.filter_amt_sum_msat / 1000)?
+            u64_to_sat_string(
+                config,
+                ((filter_stats.filter_amt_sum_msat as f64) / 1_000.0).round() as u64
+            )?
         );
         invoicestable.with(Panel::footer(filter_sum_result));
     }
@@ -959,15 +991,16 @@ fn chan_to_summary(
 
     Ok(Summary {
         graph_sats: draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat),
-        out_sats: to_us_msat / 1_000,
-        in_sats: (total_msat - to_us_msat) / 1_000,
+        out_sats: ((to_us_msat as f64) / 1_000.0).round() as u64,
+        in_sats: (((total_msat - to_us_msat) as f64) / 1_000.0).round() as u64,
         scid_raw: scid,
         scid: if scidsortdummy == scid {
             "PENDING".to_string()
         } else {
             scid.to_string()
         },
-        max_htlc: Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) / 1_000,
+        max_htlc: ((Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) as f64) / 1_000.0).round()
+            as u64,
         flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected),
         private: chan.private.unwrap(),
         offline: !chan.peer_connected,
