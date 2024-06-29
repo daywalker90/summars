@@ -943,6 +943,12 @@ fn format_invoices(
             |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
         )),
     );
+    invoicestable.with(Modify::new(ByColumnName::new("msats_received")).with(Alignment::right()));
+    invoicestable.with(
+        Modify::new(ByColumnName::new("msats_received").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
 
     invoicestable.with(Panel::header("invoices"));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));

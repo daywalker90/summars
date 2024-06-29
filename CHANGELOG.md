@@ -1,12 +1,13 @@
 # Changelog
 
-## [3.3.1] 2024-06-28
+## [3.3.1] 2024-06-29
 
 ### Added
 
 - ``summars-exclude-states``: added `ONLINE,OFFLINE` states to filter by connection status
 - ``summars-forwards-columns``: added ``fee_sats``, ``in_msats``, ``out_msats`` as non-default columns
 - ``summars-pays-columns``: added ``fee_sats`` as a new default column and ``msats_requested``, ``msats_sent`` as non-default columns
+- ``summars-invoices-columns``: added ``msats_received`` as non-default column
 
 ### Changed
 
