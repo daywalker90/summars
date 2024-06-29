@@ -18,14 +18,6 @@ use struct_field_names_as_array::FieldNamesAsArray;
 use sys_locale::get_locales;
 use tabled::{settings::Style, Table, Tabled};
 
-use crate::{
-    OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS, OPT_EXCLUDE_CHANNEL_STATES,
-    OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS, OPT_FORWARDS_COLUMNS,
-    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES, OPT_INVOICES_COLUMNS,
-    OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH,
-    OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
-};
-
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 
@@ -60,7 +52,6 @@ impl Config {
     pub fn new() -> Config {
         Config {
             columns: DynamicConfigOption {
-                name: OPT_COLUMNS,
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
@@ -70,23 +61,17 @@ impl Config {
                 },
             },
             sort_by: DynamicConfigOption {
-                name: OPT_SORT_BY,
                 value: "SCID".to_string(),
             },
             exclude_channel_states: DynamicConfigOption {
-                name: OPT_EXCLUDE_CHANNEL_STATES,
                 value: ExcludeStates {
                     channel_states: Vec::new(),
                     channel_visibility: None,
                     connection_status: None,
                 },
             },
-            forwards: DynamicConfigOption {
-                name: OPT_FORWARDS,
-                value: 0,
-            },
+            forwards: DynamicConfigOption { value: 0 },
             forwards_columns: DynamicConfigOption {
-                name: OPT_FORWARDS_COLUMNS,
                 value: {
                     Forwards::FIELD_NAMES_AS_ARRAY
                         .into_iter()
@@ -100,24 +85,11 @@ impl Config {
                         .collect::<Vec<String>>()
                 },
             },
-            forwards_filter_amt_msat: DynamicConfigOption {
-                name: OPT_FORWARDS_FILTER_AMT,
-                value: -1,
-            },
-            forwards_filter_fee_msat: DynamicConfigOption {
-                name: OPT_FORWARDS_FILTER_FEE,
-                value: -1,
-            },
-            forwards_alias: DynamicConfigOption {
-                name: OPT_FORWARDS_ALIAS,
-                value: true,
-            },
-            pays: DynamicConfigOption {
-                name: OPT_PAYS,
-                value: 0,
-            },
+            forwards_filter_amt_msat: DynamicConfigOption { value: -1 },
+            forwards_filter_fee_msat: DynamicConfigOption { value: -1 },
+            forwards_alias: DynamicConfigOption { value: true },
+            pays: DynamicConfigOption { value: 0 },
             pays_columns: DynamicConfigOption {
-                name: OPT_PAYS_COLUMNS,
                 value: {
                     Pays::FIELD_NAMES_AS_ARRAY
                         .into_iter()
@@ -133,16 +105,9 @@ impl Config {
                         .collect::<Vec<String>>()
                 },
             },
-            max_desc_length: DynamicConfigOption {
-                name: OPT_MAX_DESC_LENGTH,
-                value: 30,
-            },
-            invoices: DynamicConfigOption {
-                name: OPT_INVOICES,
-                value: 0,
-            },
+            max_desc_length: DynamicConfigOption { value: 30 },
+            invoices: DynamicConfigOption { value: 0 },
             invoices_columns: DynamicConfigOption {
-                name: OPT_INVOICES_COLUMNS,
                 value: {
                     Invoices::FIELD_NAMES_AS_ARRAY
                         .into_iter()
@@ -153,16 +118,9 @@ impl Config {
                         .collect::<Vec<String>>()
                 },
             },
-            max_label_length: DynamicConfigOption {
-                name: OPT_MAX_DESC_LENGTH,
-                value: 30,
-            },
-            invoices_filter_amt_msat: DynamicConfigOption {
-                name: OPT_INVOICES_FILTER_AMT,
-                value: -1,
-            },
+            max_label_length: DynamicConfigOption { value: 30 },
+            invoices_filter_amt_msat: DynamicConfigOption { value: -1 },
             locale: DynamicConfigOption {
-                name: OPT_LOCALE,
                 value: {
                     let mut valid_locale = None;
                     for loc in get_locales() {
@@ -178,45 +136,24 @@ impl Config {
                     }
                 },
             },
-            refresh_alias: DynamicConfigOption {
-                name: OPT_REFRESH_ALIAS,
-                value: 24,
-            },
-            max_alias_length: DynamicConfigOption {
-                name: OPT_MAX_ALIAS_LENGTH,
-                value: 20,
-            },
-            availability_interval: DynamicConfigOption {
-                name: OPT_AVAILABILITY_INTERVAL,
-                value: 300,
-            },
-            availability_window: DynamicConfigOption {
-                name: OPT_AVAILABILITY_WINDOW,
-                value: 72,
-            },
-            utf8: DynamicConfigOption {
-                name: OPT_UTF8,
-                value: true,
-            },
+            refresh_alias: DynamicConfigOption { value: 24 },
+            max_alias_length: DynamicConfigOption { value: 20 },
+            availability_interval: DynamicConfigOption { value: 300 },
+            availability_window: DynamicConfigOption { value: 72 },
+            utf8: DynamicConfigOption { value: true },
             style: DynamicConfigOption {
-                name: OPT_STYLE,
                 value: Styles::Psql,
             },
             flow_style: DynamicConfigOption {
-                name: OPT_FLOW_STYLE,
                 value: Styles::Blank,
             },
-            json: DynamicConfigOption {
-                name: OPT_JSON,
-                value: false,
-            },
+            json: DynamicConfigOption { value: false },
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct DynamicConfigOption<T> {
-    pub name: &'static str,
     pub value: T,
 }
 
