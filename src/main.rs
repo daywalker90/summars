@@ -106,8 +106,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_pays_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_PAYS_COLUMNS,
         "Enabled columns in the pays table. Available columns are: \
-            `completed_at, payment_hash, sats_requested, sats_sent, fee_msats, destination, description, preimage` \
-            Default is `completed_at, payment_hash, sats_sent, destination`",
+        `completed_at, payment_hash, sats_requested, msats_requested, sats_sent, msats_sent, \
+        fee_sats, fee_msats, destination, description, preimage` \
+        Default is `completed_at, payment_hash, sats_sent, fee_sats, destination`",
     )
     .dynamic();
     let opt_max_desc_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
@@ -123,8 +124,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_INVOICES_COLUMNS,
         "Enabled columns in the invoices table. Available columns are: \
-            `paid_at, label, description, sats_received, payment_hash, preimage` \
-            Default is `paid_at, label, sats_received, payment_hash`",
+        `paid_at, label, description, sats_received, payment_hash, preimage` \
+        Default is `paid_at, label, sats_received, payment_hash`",
     )
     .dynamic();
     let opt_max_label_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
@@ -140,7 +141,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_locale: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_LOCALE,
         "Set locale used for thousand delimiter etc.. Default is the system's \
-            locale and as fallback `en-US` if none is found.",
+        locale and as fallback `en-US` if none is found.",
     )
     .dynamic();
     let opt_refresh_alias: IntegerConfigOption = ConfigOption::new_i64_no_default(
