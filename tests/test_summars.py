@@ -81,7 +81,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-columns": 1})
 
     with pytest.raises(
-        RpcError, match="`TEST` not found in " "valid column names"
+        RpcError, match="`test` not found in valid summars-columns names"
     ):
         node.rpc.call("summars", {"summars-columns": "TEST"})
 
@@ -118,6 +118,11 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         for col2 in columns:
             if col != col2:
                 assert col2 not in result["result"]
+        result = node.rpc.call("summars", {"summars-columns": col.lower()})
+        assert col in result["result"]
+        for col2 in columns:
+            if col != col2:
+                assert col2 not in result["result"]
     result = node.rpc.call(
         "summars",
         {"summars-columns": "PPM,PEER_ID,IN_SATS,SCID"},
@@ -135,6 +140,13 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     for col in pay_columns:
         result = node.rpc.call(
             "summars", {"summars-pays": 1, "summars-pays-columns": col}
+        )
+        assert col in result["result"]
+        for col2 in pay_columns:
+            if col != col2:
+                assert col2 not in result["result"]
+        result = node.rpc.call(
+            "summars", {"summars-pays": 1, "summars-pays-columns": col.upper()}
         )
         assert col in result["result"]
         for col2 in pay_columns:
@@ -169,6 +181,14 @@ def test_options(node_factory, get_plugin):  # noqa: F811
         for col2 in invoice_columns:
             if col != col2:
                 assert col2 not in result["result"]
+        result = node.rpc.call(
+            "summars",
+            {"summars-invoices": 1, "summars-invoices-columns": col.upper()},
+        )
+        assert col in result["result"]
+        for col2 in invoice_columns:
+            if col != col2:
+                assert col2 not in result["result"]
 
     result = node.rpc.call(
         "summars",
@@ -192,6 +212,14 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     for col in forwards_columns:
         result = node.rpc.call(
             "summars", {"summars-forwards": 1, "summars-forwards-columns": col}
+        )
+        assert col in result["result"]
+        for col2 in forwards_columns:
+            if col != col2:
+                assert col2 not in result["result"]
+        result = node.rpc.call(
+            "summars",
+            {"summars-forwards": 1, "summars-forwards-columns": col.upper()},
         )
         assert col in result["result"]
         for col2 in forwards_columns:
@@ -224,14 +252,41 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
     for col in columns:
         if col == "GRAPH_SATS":
-            continue
-        result = node.rpc.call(
-            "summars",
-            {"summars-columns": ",".join(columns), "summars-sort-by": col},
-        )
-        assert col in result["result"]
+            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`!"):
+                node.rpc.call(
+                    "summars",
+                    {
+                        "summars-columns": ",".join(columns),
+                        "summars-sort-by": col,
+                    },
+                )
+        else:
+            result = node.rpc.call(
+                "summars",
+                {"summars-columns": ",".join(columns), "summars-sort-by": col},
+            )
+            assert col in result["result"]
+        if col == "GRAPH_SATS":
+            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`!"):
+                node.rpc.call(
+                    "summars",
+                    {
+                        "summars-columns": ",".join(columns),
+                        "summars-sort-by": col.lower(),
+                    },
+                )
+        else:
+            result = node.rpc.call(
+                "summars",
+                {
+                    "summars-columns": ",".join(columns),
+                    "summars-sort-by": col.lower(),
+                },
+            )
+            assert col in result["result"]
 
     result = node.rpc.call("summars", {"summars-exclude-states": "OK"})
+    assert "OK" not in result["result"]
 
     result = node.rpc.call("summars", {"summars-forwards": 1})
     assert "forwards" in result["result"]
@@ -308,17 +363,23 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin})
 
-    with pytest.raises(RpcError, match="not found in valid column names"):
+    with pytest.raises(
+        RpcError, match="not found in valid summars-columns names"
+    ):
         node.rpc.call("summars", {"summars-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
         node.rpc.call("summars", {"summars-columns": "IN_SATS,IN_SATS"})
-    with pytest.raises(RpcError, match="not found in valid column names"):
+    with pytest.raises(
+        RpcError, match="not found in valid summars-columns names"
+    ):
         node.rpc.call("summars", {"summars-columns": "PRIVATE"})
-    with pytest.raises(RpcError, match="not found in valid column names"):
+    with pytest.raises(
+        RpcError, match="not found in valid summars-columns names"
+    ):
         node.rpc.call("summars", {"summars-columns": "OFFLINE"})
 
     with pytest.raises(
-        RpcError, match="not found in valid forwards column names"
+        RpcError, match="not found in valid summars-forwards-columns names"
     ):
         node.rpc.call("summars", {"summars-forwards-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
@@ -326,7 +387,9 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
             "summars", {"summars-forwards-columns": "in_channel,in_channel"}
         )
 
-    with pytest.raises(RpcError, match="not found in valid pays column names"):
+    with pytest.raises(
+        RpcError, match="not found in valid summars-pays-columns names"
+    ):
         node.rpc.call("summars", {"summars-pays-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
         node.rpc.call(
@@ -334,7 +397,7 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         )
 
     with pytest.raises(
-        RpcError, match="not found in valid invoices column names"
+        RpcError, match="not found in valid summars-invoices-columns names"
     ):
         node.rpc.call("summars", {"summars-invoices-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
@@ -355,8 +418,6 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-sort-by": 1})
     with pytest.raises(RpcError, match="Not a valid column name"):
         node.rpc.call("summars", {"summars-sort-by": "TEST"})
-    with pytest.raises(RpcError, match="Not a valid column name"):
-        node.rpc.call("summars", {"summars-sort-by": "GRAPH_SATS"})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards": "TEST"})
@@ -541,6 +602,22 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "_]" not in result["result"]
     assert "2 channels filtered" in result["result"]
 
+    result = l1.rpc.call("summars", {"summars-exclude-states": "ok"})
+    assert "OK" not in result["result"]
+    assert "2 channels filtered" in result["result"]
+
+    result = l1.rpc.call("summars", {"summars-exclude-states": "private"})
+    assert "[P" not in result["result"]
+    assert "1 channel filtered" in result["result"]
+
+    result = l1.rpc.call("summars", {"summars-exclude-states": "public"})
+    assert "[_" not in result["result"]
+    assert "1 channel filtered" in result["result"]
+
+    result = l1.rpc.call("summars", {"summars-exclude-states": "online"})
+    assert "_]" not in result["result"]
+    assert "2 channels filtered" in result["result"]
+
     l3.stop()
 
     wait_for(
@@ -549,6 +626,10 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
         )["peer_connected"]
     )
     result = l1.rpc.call("summars", {"summars-exclude-states": "OFFLINE"})
+    assert "O]" not in result["result"]
+    assert "1 channel filtered" in result["result"]
+
+    result = l1.rpc.call("summars", {"summars-exclude-states": "offline"})
     assert "O]" not in result["result"]
     assert "1 channel filtered" in result["result"]
 

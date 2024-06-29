@@ -1167,7 +1167,9 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.value.apply(sumtable);
     for head in Summary::FIELD_NAMES_AS_ARRAY {
         if !config.columns.value.contains(&head.to_string()) {
-            sumtable.with(Disable::column(ByColumnName::new(head)));
+            sumtable.with(Disable::column(ByColumnName::new(
+                head.to_ascii_uppercase(),
+            )));
         }
     }
 

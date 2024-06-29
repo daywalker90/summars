@@ -109,36 +109,11 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
     }
 }
 
-fn validate_columns_input(input: &str) -> Result<Vec<String>, Error> {
-    let cleaned_input: String = input
-        .chars()
-        .filter(|&c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_uppercase();
-    let split_input: Vec<&str> = cleaned_input.split(',').collect();
-
-    let mut uniq = HashSet::new();
-    for i in &split_input {
-        if !uniq.insert(i) {
-            return Err(anyhow!(
-                "Duplicate entry detected in {}: {}",
-                OPT_COLUMNS,
-                i
-            ));
-        }
-    }
-
-    for i in &split_input {
-        if !Summary::FIELD_NAMES_AS_ARRAY.contains(i) {
-            return Err(anyhow!("`{}` not found in valid column names!", i));
-        }
-    }
-
-    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
-    Ok(cleaned_strings)
-}
-
-fn validate_forwards_columns_input(input: &str) -> Result<Vec<String>, Error> {
+fn validate_columns_input(
+    input: &str,
+    column_name: &str,
+    columns: &[&'static str],
+) -> Result<Vec<String>, Error> {
     let cleaned_input: String = input
         .chars()
         .filter(|&c| !c.is_whitespace())
@@ -151,73 +126,15 @@ fn validate_forwards_columns_input(input: &str) -> Result<Vec<String>, Error> {
         if !uniq.insert(i) {
             return Err(anyhow!(
                 "Duplicate entry detected in {}: {}",
-                OPT_FORWARDS_COLUMNS,
+                column_name,
                 i
             ));
         }
     }
 
     for i in &split_input {
-        if !Forwards::FIELD_NAMES_AS_ARRAY.contains(i) {
-            return Err(anyhow!("`{}` not found in valid forwards column names!", i));
-        }
-    }
-
-    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
-    Ok(cleaned_strings)
-}
-
-fn validate_pays_columns_input(input: &str) -> Result<Vec<String>, Error> {
-    let cleaned_input: String = input
-        .chars()
-        .filter(|&c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let split_input: Vec<&str> = cleaned_input.split(',').collect();
-
-    let mut uniq = HashSet::new();
-    for i in &split_input {
-        if !uniq.insert(i) {
-            return Err(anyhow!(
-                "Duplicate entry detected in {}: {}",
-                OPT_PAYS_COLUMNS,
-                i
-            ));
-        }
-    }
-
-    for i in &split_input {
-        if !Pays::FIELD_NAMES_AS_ARRAY.contains(i) {
-            return Err(anyhow!("`{}` not found in valid pays column names!", i));
-        }
-    }
-
-    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
-    Ok(cleaned_strings)
-}
-
-fn validate_invoices_columns_input(input: &str) -> Result<Vec<String>, Error> {
-    let cleaned_input: String = input
-        .chars()
-        .filter(|&c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let split_input: Vec<&str> = cleaned_input.split(',').collect();
-
-    let mut uniq = HashSet::new();
-    for i in &split_input {
-        if !uniq.insert(i) {
-            return Err(anyhow!(
-                "Duplicate entry detected in {}: {}",
-                OPT_INVOICES_COLUMNS,
-                i
-            ));
-        }
-    }
-
-    for i in &split_input {
-        if !Invoices::FIELD_NAMES_AS_ARRAY.contains(i) {
-            return Err(anyhow!("`{}` not found in valid invoices column names!", i));
+        if !columns.contains(i) {
+            return Err(anyhow!("`{}` not found in valid {} names!", i, column_name));
         }
     }
 
@@ -230,11 +147,16 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
 
     let sortable_columns = Summary::FIELD_NAMES_AS_ARRAY
         .into_iter()
-        .filter(|t| t != &"GRAPH_SATS")
-        .collect::<Vec<&str>>();
+        .filter(|t| t != &"graph_sats")
+        .map(|s| s.to_string())
+        .collect::<Vec<String>>();
 
-    if reverse && sortable_columns.contains(&&input[1..]) || sortable_columns.contains(&input) {
-        Ok(input.to_string())
+    if reverse && sortable_columns.contains(&(input[1..].to_ascii_lowercase()))
+        || sortable_columns.contains(&input.to_ascii_lowercase())
+    {
+        Ok(input.to_ascii_uppercase())
+    } else if input.to_ascii_lowercase().contains("graph_sats") {
+        Err(anyhow!("Can not sort by `GRAPH_SATS`!"))
     } else {
         Err(anyhow!(
             "Not a valid column name: `{}`. Must be one of: {}",
@@ -245,7 +167,11 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
 }
 
 fn validate_exclude_states_input(input: &str) -> Result<ExcludeStates, Error> {
-    let cleaned_input: String = input.chars().filter(|&c| !c.is_whitespace()).collect();
+    let cleaned_input: String = input
+        .chars()
+        .filter(|&c| !c.is_whitespace())
+        .collect::<String>()
+        .to_ascii_uppercase();
     let split_input: Vec<&str> = cleaned_input.split(',').collect();
     if split_input.contains(&"PUBLIC") && split_input.contains(&"PRIVATE") {
         return Err(anyhow!("Can only filter `PUBLIC` OR `PRIVATE`, not both."));
@@ -539,7 +465,11 @@ pub fn get_startup_options(
 fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Result<(), Error> {
     match name {
         n if n.eq(OPT_COLUMNS) => {
-            config.columns.value = validate_columns_input(value.as_str().unwrap())?;
+            config.columns.value = validate_columns_input(
+                value.as_str().unwrap(),
+                OPT_COLUMNS,
+                &Summary::FIELD_NAMES_AS_ARRAY,
+            )?;
         }
         n if n.eq(OPT_SORT_BY) => {
             config.sort_by.value = validate_sort_input(value.as_str().unwrap())?
@@ -553,8 +483,11 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
         }
         n if n.eq(OPT_FORWARDS_COLUMNS) => {
-            config.forwards_columns.value =
-                validate_forwards_columns_input(value.as_str().unwrap())?;
+            config.forwards_columns.value = validate_columns_input(
+                value.as_str().unwrap(),
+                OPT_FORWARDS_COLUMNS,
+                &Forwards::FIELD_NAMES_AS_ARRAY,
+            )?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
             config.forwards_filter_amt_msat.value =
@@ -571,7 +504,11 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
             config.pays.value = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
         }
         n if n.eq(OPT_PAYS_COLUMNS) => {
-            config.pays_columns.value = validate_pays_columns_input(value.as_str().unwrap())?;
+            config.pays_columns.value = validate_columns_input(
+                value.as_str().unwrap(),
+                OPT_PAYS_COLUMNS,
+                &Pays::FIELD_NAMES_AS_ARRAY,
+            )?;
         }
         n if n.eq(OPT_MAX_DESC_LENGTH) => {
             config.max_desc_length.value =
@@ -582,8 +519,11 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
         }
         n if n.eq(OPT_INVOICES_COLUMNS) => {
-            config.invoices_columns.value =
-                validate_invoices_columns_input(value.as_str().unwrap())?;
+            config.invoices_columns.value = validate_columns_input(
+                value.as_str().unwrap(),
+                OPT_INVOICES_COLUMNS,
+                &Invoices::FIELD_NAMES_AS_ARRAY,
+            )?;
         }
         n if n.eq(OPT_MAX_LABEL_LENGTH) => {
             config.max_label_length.value =
