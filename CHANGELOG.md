@@ -13,6 +13,10 @@
 
 - sats values are rounded to the closest integer instead of rounded down
 
+### Fixed
+
+- column names and states are now case insensitive
+
 ## [3.3.0] 2024-06-05
 
 ### Added

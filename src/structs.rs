@@ -64,7 +64,7 @@ impl Config {
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"GRAPH_SATS")
+                        .filter(|t| t != &"graph_sats")
                         .map(ToString::to_string)
                         .collect::<Vec<String>>()
                 },
@@ -267,7 +267,6 @@ pub struct PeerAvailability {
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
-#[field_names_as_array(rename_all = "SCREAMING_SNAKE_CASE")]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
     #[serde(skip_serializing)]
