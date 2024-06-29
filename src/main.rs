@@ -124,7 +124,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_INVOICES_COLUMNS,
         "Enabled columns in the invoices table. Available columns are: \
-        `paid_at, label, description, sats_received, payment_hash, preimage` \
+        `paid_at, label, description, sats_received, msats_received, payment_hash, preimage` \
         Default is `paid_at, label, sats_received, payment_hash`",
     )
     .dynamic();

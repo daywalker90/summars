@@ -146,7 +146,9 @@ impl Config {
                 value: {
                     Invoices::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"description" && t != &"preimage")
+                        .filter(|t| {
+                            t != &"description" && t != &"preimage" && t != &"msats_received"
+                        })
                         .map(|s| s.to_string())
                         .collect::<Vec<String>>()
                 },
@@ -388,8 +390,6 @@ pub struct Invoices {
     pub label: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
-    #[tabled(skip)]
-    #[field_names_as_array(skip)]
     pub msats_received: u64,
     #[serde(skip_serializing)]
     pub sats_received: u64,
