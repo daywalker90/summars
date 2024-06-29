@@ -846,11 +846,7 @@ async fn recent_invoices(
                             as f64)
                             / 1_000.0)
                             .round() as u64,
-                        description: if let Some(desc) = invoice.description {
-                            desc
-                        } else {
-                            String::new()
-                        },
+                        description: invoice.description.unwrap_or_default(),
                         payment_hash: invoice.payment_hash.to_string(),
                         preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
                     });
