@@ -666,6 +666,10 @@ async fn recent_pays(
                 sats_requested: ((Amount::msat(&pay.amount_msat.unwrap()) as f64) / 1_000.0).round()
                     as u64,
                 fee_msats: pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat(),
+                fee_sats: (((pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat())
+                    as f64)
+                    / 1_000.0)
+                    .round() as u64,
             })
         }
     }
@@ -722,6 +726,12 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
     );
+    paystable.with(Modify::new(ByColumnName::new("msats_sent")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("msats_sent").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
 
     paystable.with(Modify::new(ByColumnName::new("sats_requested")).with(Alignment::right()));
     paystable.with(
@@ -729,7 +739,19 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
             |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
         )),
     );
+    paystable.with(Modify::new(ByColumnName::new("msats_requested")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("msats_requested").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
 
+    paystable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
     paystable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {

@@ -6,6 +6,7 @@
 
 - ``summars-exclude-states``: added `ONLINE,OFFLINE` states to filter by connection status
 - ``summars-forwards-columns``: added ``fee_sats``, ``in_msats``, ``out_msats`` as non-default columns
+- ``summars-pays-columns``: added ``fee_sats`` as a new default column and ``msats_requested``, ``msats_sent`` as non-default columns
 
 ### Changed
 
