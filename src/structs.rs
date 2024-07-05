@@ -55,7 +55,7 @@ impl Config {
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"graph_sats")
+                        .filter(|t| t != &"graph_sats" && t != &"perc_us")
                         .map(ToString::to_string)
                         .collect::<Vec<String>>()
                 },
@@ -231,6 +231,7 @@ pub struct Summary {
     pub uptime: f64,
     pub htlcs: usize,
     pub state: String,
+    pub perc_us: f64,
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]

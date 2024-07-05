@@ -1039,6 +1039,7 @@ fn chan_to_summary(
         uptime: avail * 100.0,
         htlcs: chan.htlcs.clone().unwrap_or_default().len(),
         state: statestr.to_string(),
+        perc_us: (to_us_msat as f64 / total_msat as f64) * 100.0,
     })
 }
 
@@ -1149,6 +1150,21 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| x.state.clone())
             }
         }
+        col if col.eq("PERC_US") => {
+            if reverse {
+                table.sort_by(|x, y| {
+                    y.perc_us
+                        .partial_cmp(&x.perc_us)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            } else {
+                table.sort_by(|x, y| {
+                    x.perc_us
+                        .partial_cmp(&y.perc_us)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                })
+            }
+        }
         _ => {
             if reverse {
                 table.sort_by_key(|x| Reverse(x.scid_raw))
@@ -1207,6 +1223,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     sumtable.with(Modify::new(ByColumnName::new("BASE")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("PPM")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("UPTIME")).with(Alignment::right()));
+    sumtable.with(Modify::new(ByColumnName::new("PERC_US")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("HTLCS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("STATE")).with(Alignment::center()));
 
@@ -1217,6 +1234,16 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
                 "N/A".to_string()
             } else {
                 format!("{}%", av.round())
+            }
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("PERC_US").not(Rows::first())).with(Format::content(|s| {
+            let av = s.parse::<f64>().unwrap_or(-1.0);
+            if av < 0.0 {
+                "N/A".to_string()
+            } else {
+                format!("{:.1}%", av)
             }
         })),
     );
