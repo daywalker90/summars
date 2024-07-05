@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- New column for the main channels table: ``PERC_US``: the percentage of funds in the channel that belong to us.
+
 ## [3.3.1] 2024-06-29
 
 ### Added

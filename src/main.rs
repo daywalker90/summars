@@ -53,8 +53,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_COLUMNS,
         "Enabled columns in the channel table. Available columns are: \
-        `GRAPH_SATS,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE` \
-        Default is `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
+        `GRAPH_SATS,PERC_US,OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,\
+        HTLCS,STATE` Default is `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,\
+        UPTIME,HTLCS,STATE`",
     )
     .dynamic();
     let opt_sort_by: StringConfigOption = ConfigOption::new_str_no_default(

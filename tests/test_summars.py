@@ -21,6 +21,7 @@ columns = [
     "UPTIME",
     "HTLCS",
     "STATE",
+    "PERC_US",
 ]
 
 forwards_columns = [
@@ -69,7 +70,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
     assert "avail_out=0.00000000 BTC" in result["result"]
     assert "avail_in=0.00000000 BTC" in result["result"]
 
-    expected_columns = [x for x in columns if x != "GRAPH_SATS"]
+    expected_columns = [x for x in columns if x != "GRAPH_SATS" and x != "PERC_US"]
     for column in expected_columns:
         assert column in result["result"]
 
@@ -168,9 +169,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     assert sats_sent != -1
     assert preimage != -1
     assert (
-        description < destination
-        and destination < sats_sent
-        and sats_sent < preimage
+        description < destination and destination < sats_sent and sats_sent < preimage
     )
 
     for col in invoice_columns:
@@ -205,9 +204,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     assert description != -1
     assert label != -1
     assert paid_at != -1
-    assert (
-        sats_received < description and description < label and label < paid_at
-    )
+    assert sats_received < description and description < label and label < paid_at
 
     for col in forwards_columns:
         result = node.rpc.call(
@@ -363,19 +360,13 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin})
 
-    with pytest.raises(
-        RpcError, match="not found in valid summars-columns names"
-    ):
+    with pytest.raises(RpcError, match="not found in valid summars-columns names"):
         node.rpc.call("summars", {"summars-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
         node.rpc.call("summars", {"summars-columns": "IN_SATS,IN_SATS"})
-    with pytest.raises(
-        RpcError, match="not found in valid summars-columns names"
-    ):
+    with pytest.raises(RpcError, match="not found in valid summars-columns names"):
         node.rpc.call("summars", {"summars-columns": "PRIVATE"})
-    with pytest.raises(
-        RpcError, match="not found in valid summars-columns names"
-    ):
+    with pytest.raises(RpcError, match="not found in valid summars-columns names"):
         node.rpc.call("summars", {"summars-columns": "OFFLINE"})
 
     with pytest.raises(
@@ -383,18 +374,12 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
     ):
         node.rpc.call("summars", {"summars-forwards-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
-        node.rpc.call(
-            "summars", {"summars-forwards-columns": "in_channel,in_channel"}
-        )
+        node.rpc.call("summars", {"summars-forwards-columns": "in_channel,in_channel"})
 
-    with pytest.raises(
-        RpcError, match="not found in valid summars-pays-columns names"
-    ):
+    with pytest.raises(RpcError, match="not found in valid summars-pays-columns names"):
         node.rpc.call("summars", {"summars-pays-columns": "test"})
     with pytest.raises(RpcError, match="Duplicate entry"):
-        node.rpc.call(
-            "summars", {"summars-pays-columns": "description,description"}
-        )
+        node.rpc.call("summars", {"summars-pays-columns": "description,description"})
 
     with pytest.raises(
         RpcError, match="not found in valid summars-invoices-columns names"
@@ -425,9 +410,7 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-forwards": -1})
 
     with pytest.raises(RpcError, match="not a valid integer"):
-        node.rpc.call(
-            "summars", {"summars-forwards-filter-amount-msat": "TEST"}
-        )
+        node.rpc.call("summars", {"summars-forwards-filter-amount-msat": "TEST"})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards-filter-fee-msat": "TEST"})
@@ -448,9 +431,7 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-invoices": -1})
 
     with pytest.raises(RpcError, match="not a valid integer"):
-        node.rpc.call(
-            "summars", {"summars-invoices-filter-amount-msat": "TEST"}
-        )
+        node.rpc.call("summars", {"summars-invoices-filter-amount-msat": "TEST"})
 
     with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-locale": -1})
@@ -539,24 +520,18 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
     assert err.value.error["message"] == "summars-utf8 is not a valid boolean!"
     assert err.value.error["code"] == -32602
     assert (
-        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"][
-            "value_bool"
-        ]
+        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"]["value_bool"]
         != "test"
     )
     node.rpc.setconfig("summars-utf8", False)
     assert (
-        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"][
-            "value_bool"
-        ]
+        node.rpc.listconfigs("summars-utf8")["configs"]["summars-utf8"]["value_bool"]
         is False
     )
 
 
 def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
-    l1, l2, l3 = node_factory.get_nodes(
-        3, opts=[{"plugin": get_plugin}, {}, {}]
-    )
+    l1, l2, l3 = node_factory.get_nodes(3, opts=[{"plugin": get_plugin}, {}, {}])
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
     l1.rpc.fundchannel(
@@ -621,9 +596,9 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     l3.stop()
 
     wait_for(
-        lambda: not only_one(
-            l1.rpc.listpeerchannels(l3.info["id"])["channels"]
-        )["peer_connected"]
+        lambda: not only_one(l1.rpc.listpeerchannels(l3.info["id"])["channels"])[
+            "peer_connected"
+        ]
     )
     result = l1.rpc.call("summars", {"summars-exclude-states": "OFFLINE"})
     assert "O]" not in result["result"]
@@ -636,9 +611,7 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.rpc.close(chans[0]["short_channel_id"])
 
     wait_for(
-        lambda: only_one(l1.rpc.listpeerchannels(l2.info["id"])["channels"])[
-            "state"
-        ]
+        lambda: only_one(l1.rpc.listpeerchannels(l2.info["id"])["channels"])["state"]
         == "CLOSINGD_COMPLETE"
     )
     result = l1.rpc.call("summars")
@@ -653,22 +626,14 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.rpc.connect(l2.info["id"], "localhost", l2.port)
     l2.rpc.connect(l3.info["id"], "localhost", l3.port)
     l1.rpc.connect(l3.info["id"], "localhost", l3.port)
-    l1.rpc.fundchannel(
-        l2.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1
-    )
-    l2.rpc.fundchannel(
-        l3.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1
-    )
+    l1.rpc.fundchannel(l2.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1)
+    l2.rpc.fundchannel(l3.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1)
 
     bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
 
-    cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0][
-        "short_channel_id"
-    ]
-    cl2 = l2.rpc.listpeerchannels(l3.info["id"])["channels"][0][
-        "short_channel_id"
-    ]
+    cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0]["short_channel_id"]
+    cl2 = l2.rpc.listpeerchannels(l3.info["id"])["channels"][0]["short_channel_id"]
     l2.wait_channel_active(cl1)
     l2.wait_channel_active(cl2)
 
