@@ -13,6 +13,7 @@ columns = [
     "IN_SATS",
     "TOTAL_SATS",
     "SCID",
+    "MIN_HTLC",
     "MAX_HTLC",
     "FLAG",
     "BASE",
@@ -72,7 +73,12 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
     assert "avail_in=0.00000000 BTC" in result["result"]
 
     expected_columns = [
-        x for x in columns if x != "GRAPH_SATS" and x != "PERC_US" and x != "TOTAL_SATS"
+        x
+        for x in columns
+        if x != "GRAPH_SATS"
+        and x != "PERC_US"
+        and x != "TOTAL_SATS"
+        and x != "MIN_HTLC"
     ]
     for column in expected_columns:
         assert column in result["result"]
