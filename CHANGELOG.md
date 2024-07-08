@@ -10,6 +10,10 @@
 - New column ``IN_BASE``: the base fee in msats set by the channel's peer
 - New column ``IN_PPM``: the ppm fee set by the channel's peer
 
+### Changed
+
+- Can only sort by enabled columns, since we don't collect data on some disabled columns for performance reasons
+
 ## [3.3.1] 2024-06-29
 
 ### Added

@@ -414,8 +414,10 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
 
     with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-sort-by": 1})
-    with pytest.raises(RpcError, match="Not a valid column name"):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
         node.rpc.call("summars", {"summars-sort-by": "TEST"})
+    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
+        node.rpc.call("summars", {"summars-sort-by": "IN_PPM"})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards": "TEST"})
@@ -520,9 +522,9 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
     assert "PEER_ID" not in result["result"]
     assert "STATE" not in result["result"]
 
-    with pytest.raises(RpcError, match="Not a valid column name"):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
         node.rpc.setconfig("summars-sort-by", 1)
-    with pytest.raises(RpcError, match="Not a valid column name"):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
         node.rpc.setconfig("summars-sort-by", "TEST")
 
     with pytest.raises(RpcError, match="not a valid integer"):
