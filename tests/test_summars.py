@@ -17,7 +17,9 @@ columns = [
     "MAX_HTLC",
     "FLAG",
     "BASE",
+    "IN_BASE",
     "PPM",
+    "IN_PPM",
     "ALIAS",
     "PEER_ID",
     "UPTIME",
@@ -79,6 +81,8 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
         and x != "PERC_US"
         and x != "TOTAL_SATS"
         and x != "MIN_HTLC"
+        and x != "IN_BASE"
+        and x != "IN_PPM"
     ]
     for column in expected_columns:
         assert column in result["result"]
@@ -124,15 +128,15 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
     for col in columns:
         result = node.rpc.call("summars", {"summars-columns": col})
-        assert col in result["result"]
+        assert " " + col + " " in result["result"]
         for col2 in columns:
             if col != col2:
-                assert col2 not in result["result"]
+                assert " " + col2 + " " not in result["result"]
         result = node.rpc.call("summars", {"summars-columns": col.lower()})
-        assert col in result["result"]
+        assert " " + col in result["result"]
         for col2 in columns:
             if col != col2:
-                assert col2 not in result["result"]
+                assert " " + col2 + " " not in result["result"]
     result = node.rpc.call(
         "summars",
         {"summars-columns": "PPM,PEER_ID,IN_SATS,SCID"},

@@ -12,6 +12,7 @@ use cln_rpc::{
 use log::debug;
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use std::str::FromStr;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
@@ -32,8 +33,9 @@ use crate::structs::{
     NODE_GOSSIP_MISS, NO_ALIAS_SET,
 };
 use crate::util::{
-    draw_chans_graph, hex_encode, is_active_state, make_channel_flags, make_rpc_path, sort_columns,
-    timestamp_to_localized_datetime_string, u64_to_btc_string, u64_to_sat_string,
+    at_or_above_version, draw_chans_graph, hex_encode, is_active_state, make_channel_flags,
+    make_rpc_path, sort_columns, timestamp_to_localized_datetime_string, u64_to_btc_string,
+    u64_to_sat_string,
 };
 
 pub async fn summary(
@@ -186,14 +188,15 @@ pub async fn summary(
         };
 
         let summary = chan_to_summary(
+            &rpc_path,
             &config,
+            &getinfo.version,
             chan,
             alias,
             avail,
-            to_us_msat,
-            total_msat,
             graph_max_chan_side_msat,
-        )?;
+        )
+        .await?;
         table.push(summary);
 
         if is_active_state(chan) {
@@ -996,13 +999,13 @@ async fn get_alias(
     Ok(alias)
 }
 
-fn chan_to_summary(
+async fn chan_to_summary(
+    rpc_path: &PathBuf,
     config: &Config,
+    version: &str,
     chan: &ListpeerchannelsChannels,
     alias: String,
     avail: f64,
-    to_us_msat: u64,
-    total_msat: u64,
     graph_max_chan_side_msat: u64,
 ) -> Result<Summary, Error> {
     let statestr = ShortChannelState(chan.state);
@@ -1012,6 +1015,46 @@ fn chan_to_summary(
         Some(scid) => scid,
         None => scidsortdummy,
     };
+
+    let to_us_msat = Amount::msat(
+        &chan
+            .to_us_msat
+            .ok_or(anyhow!("Channel with {} has no msats to us!", chan.peer_id))?,
+    );
+    let total_msat = Amount::msat(&chan.total_msat.ok_or(anyhow!(
+        "Channel with {} has no total amount!",
+        chan.peer_id
+    ))?);
+
+    let mut in_base = "N/A".to_string();
+    let mut in_ppm = "N/A".to_string();
+    if config.columns.value.contains(&"in_base".to_string())
+        || config.columns.value.contains(&"in_ppm".to_string())
+    {
+        if at_or_above_version(version, "24.02")? {
+            if let Some(upd) = &chan.updates {
+                if let Some(rem) = &upd.remote {
+                    in_base = rem.fee_base_msat.msat().to_string();
+                    in_ppm = rem.fee_proportional_millionths.to_string();
+                }
+            }
+        } else {
+            let mut rpc = ClnRpc::new(&rpc_path).await?;
+            let mut chan_gossip = rpc
+                .call_typed(&ListchannelsRequest {
+                    destination: None,
+                    short_channel_id: Some(chan.short_channel_id.unwrap()),
+                    source: None,
+                })
+                .await?
+                .channels;
+            chan_gossip.retain(|x| x.source == chan.peer_id);
+            if let Some(their_goss) = chan_gossip.first() {
+                in_base = their_goss.base_fee_millisatoshi.to_string();
+                in_ppm = their_goss.fee_per_millionth.to_string();
+            }
+        }
+    }
 
     Ok(Summary {
         graph_sats: draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat),
@@ -1032,7 +1075,9 @@ fn chan_to_summary(
         private: chan.private.unwrap(),
         offline: !chan.peer_connected,
         base: Amount::msat(&chan.fee_base_msat.unwrap()),
+        in_base,
         ppm: chan.fee_proportional_millionths.unwrap(),
+        in_ppm,
         alias: if config.utf8.value {
             alias.to_string()
         } else {
@@ -1103,11 +1148,49 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| x.base)
             }
         }
+        col if col.eq("IN_BASE") => {
+            if reverse {
+                table.sort_by_key(|x| {
+                    Reverse(if let Ok(v) = x.in_base.parse::<u64>() {
+                        v
+                    } else {
+                        u64::MAX
+                    })
+                })
+            } else {
+                table.sort_by_key(|x| {
+                    if let Ok(v) = x.in_base.parse::<u64>() {
+                        v
+                    } else {
+                        u64::MAX
+                    }
+                })
+            }
+        }
         col if col.eq("PPM") => {
             if reverse {
                 table.sort_by_key(|x| Reverse(x.ppm))
             } else {
                 table.sort_by_key(|x| x.ppm)
+            }
+        }
+        col if col.eq("IN_PPM") => {
+            if reverse {
+                table.sort_by_key(|x| {
+                    Reverse(if let Ok(v) = x.in_ppm.parse::<u64>() {
+                        v
+                    } else {
+                        u64::MAX
+                    })
+                })
+            } else {
+                table.sort_by_key(|x| {
+                    if let Ok(v) = x.in_ppm.parse::<u64>() {
+                        v
+                    } else {
+                        u64::MAX
+                    }
+                })
             }
         }
         col if col.eq("ALIAS") => {
@@ -1240,7 +1323,9 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     sumtable.with(Modify::new(ByColumnName::new("MAX_HTLC")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("FLAG")).with(Alignment::center()));
     sumtable.with(Modify::new(ByColumnName::new("BASE")).with(Alignment::right()));
+    sumtable.with(Modify::new(ByColumnName::new("IN_BASE")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("PPM")).with(Alignment::right()));
+    sumtable.with(Modify::new(ByColumnName::new("IN_PPM")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("UPTIME")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("PERC_US")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("HTLCS")).with(Alignment::right()));
@@ -1297,8 +1382,26 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         })),
     );
     sumtable.with(
+        Modify::new(ByColumnName::new("IN_BASE").not(Rows::first())).with(Format::content(|s| {
+            if let Ok(b) = s.parse::<u64>() {
+                u64_to_sat_string(config, b).unwrap()
+            } else {
+                s.to_string()
+            }
+        })),
+    );
+    sumtable.with(
         Modify::new(ByColumnName::new("PPM").not(Rows::first())).with(Format::content(|s| {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("IN_PPM").not(Rows::first())).with(Format::content(|s| {
+            if let Ok(b) = s.parse::<u64>() {
+                u64_to_sat_string(config, b).unwrap()
+            } else {
+                s.to_string()
+            }
         })),
     );
 
