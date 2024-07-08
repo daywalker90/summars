@@ -142,11 +142,11 @@ fn validate_columns_input(
     Ok(cleaned_strings)
 }
 
-fn validate_sort_input(input: &str) -> Result<String, Error> {
+fn validate_sort_input(columns: &[String], input: &str) -> Result<String, Error> {
     let reverse = input.starts_with('-');
 
-    let sortable_columns = Summary::FIELD_NAMES_AS_ARRAY
-        .into_iter()
+    let sortable_columns = columns
+        .iter()
         .filter(|t| t != &"graph_sats")
         .map(|s| s.to_string())
         .collect::<Vec<String>>();
@@ -159,8 +159,8 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
         Err(anyhow!("Can not sort by `GRAPH_SATS`!"))
     } else {
         Err(anyhow!(
-            "Not a valid column name: `{}`. Must be one of: {}",
-            input,
+            "`{}` is invalid. Can only sort by enabled columns. Must be one of: {}",
+            input.to_ascii_lowercase(),
             sortable_columns.join(", ")
         ))
     }
@@ -471,7 +471,9 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 &Summary::FIELD_NAMES_AS_ARRAY,
             )?;
         }
-        n if n.eq(OPT_SORT_BY) => config.sort_by = validate_sort_input(value.as_str().unwrap())?,
+        n if n.eq(OPT_SORT_BY) => {
+            config.sort_by = validate_sort_input(&config.columns, value.as_str().unwrap())?
+        }
         n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
             config.exclude_channel_states = validate_exclude_states_input(value.as_str().unwrap())?;
         }
