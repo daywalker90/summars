@@ -88,8 +88,8 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     let summary_availability_interval: f64;
     {
         let config = plugin.state().config.lock();
-        summary_availability_window = config.availability_window.value as f64;
-        summary_availability_interval = config.availability_interval.value as f64;
+        summary_availability_window = config.availability_window as f64;
+        summary_availability_interval = config.availability_interval as f64;
     }
 
     let avail_window = 60.0 * 60.0 * summary_availability_window;

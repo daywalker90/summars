@@ -465,76 +465,71 @@ pub fn get_startup_options(
 fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Result<(), Error> {
     match name {
         n if n.eq(OPT_COLUMNS) => {
-            config.columns.value = validate_columns_input(
+            config.columns = validate_columns_input(
                 value.as_str().unwrap(),
                 OPT_COLUMNS,
                 &Summary::FIELD_NAMES_AS_ARRAY,
             )?;
         }
-        n if n.eq(OPT_SORT_BY) => {
-            config.sort_by.value = validate_sort_input(value.as_str().unwrap())?
-        }
+        n if n.eq(OPT_SORT_BY) => config.sort_by = validate_sort_input(value.as_str().unwrap())?,
         n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
-            config.exclude_channel_states.value =
-                validate_exclude_states_input(value.as_str().unwrap())?;
+            config.exclude_channel_states = validate_exclude_states_input(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS) => {
-            config.forwards.value =
-                options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
+            config.forwards = options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
         }
         n if n.eq(OPT_FORWARDS_COLUMNS) => {
-            config.forwards_columns.value = validate_columns_input(
+            config.forwards_columns = validate_columns_input(
                 value.as_str().unwrap(),
                 OPT_FORWARDS_COLUMNS,
                 &Forwards::FIELD_NAMES_AS_ARRAY,
             )?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
-            config.forwards_filter_amt_msat.value =
+            config.forwards_filter_amt_msat =
                 validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_AMT, -1)?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_FEE) => {
-            config.forwards_filter_fee_msat.value =
+            config.forwards_filter_fee_msat =
                 validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_FEE, -1)?;
         }
         n if n.eq(OPT_FORWARDS_ALIAS) => {
-            config.forwards_alias.value = value.as_bool().unwrap();
+            config.forwards_alias = value.as_bool().unwrap();
         }
         n if n.eq(OPT_PAYS) => {
-            config.pays.value = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
+            config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
         }
         n if n.eq(OPT_PAYS_COLUMNS) => {
-            config.pays_columns.value = validate_columns_input(
+            config.pays_columns = validate_columns_input(
                 value.as_str().unwrap(),
                 OPT_PAYS_COLUMNS,
                 &Pays::FIELD_NAMES_AS_ARRAY,
             )?;
         }
         n if n.eq(OPT_MAX_DESC_LENGTH) => {
-            config.max_desc_length.value =
+            config.max_desc_length =
                 validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_DESC_LENGTH, 5)?
         }
         n if n.eq(OPT_INVOICES) => {
-            config.invoices.value =
-                options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
+            config.invoices = options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
         }
         n if n.eq(OPT_INVOICES_COLUMNS) => {
-            config.invoices_columns.value = validate_columns_input(
+            config.invoices_columns = validate_columns_input(
                 value.as_str().unwrap(),
                 OPT_INVOICES_COLUMNS,
                 &Invoices::FIELD_NAMES_AS_ARRAY,
             )?;
         }
         n if n.eq(OPT_MAX_LABEL_LENGTH) => {
-            config.max_label_length.value =
+            config.max_label_length =
                 validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?
         }
         n if n.eq(OPT_INVOICES_FILTER_AMT) => {
-            config.invoices_filter_amt_msat.value =
+            config.invoices_filter_amt_msat =
                 validate_i64_input(value.as_i64().unwrap(), OPT_INVOICES_FILTER_AMT, -1)?
         }
         n if n.eq(OPT_LOCALE) => {
-            config.locale.value = match Locale::from_str(value.as_str().unwrap()) {
+            config.locale = match Locale::from_str(value.as_str().unwrap()) {
                 Ok(l) => l,
                 Err(e) => {
                     return Err(anyhow!(
@@ -546,27 +541,25 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
             }
         }
         n if n.eq(OPT_REFRESH_ALIAS) => {
-            config.refresh_alias.value =
+            config.refresh_alias =
                 options_value_to_u64(OPT_REFRESH_ALIAS, value.as_i64().unwrap(), 1, false)?
         }
         n if n.eq(OPT_MAX_ALIAS_LENGTH) => {
-            config.max_alias_length.value =
+            config.max_alias_length =
                 validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_ALIAS_LENGTH, 5)?
         }
         n if n.eq(OPT_AVAILABILITY_INTERVAL) => {
-            config.availability_interval.value =
+            config.availability_interval =
                 options_value_to_u64(OPT_AVAILABILITY_INTERVAL, value.as_i64().unwrap(), 1, false)?
         }
         n if n.eq(OPT_AVAILABILITY_WINDOW) => {
-            config.availability_window.value =
+            config.availability_window =
                 options_value_to_u64(OPT_AVAILABILITY_WINDOW, value.as_i64().unwrap(), 1, false)?
         }
-        n if n.eq(OPT_UTF8) => config.utf8.value = value.as_bool().unwrap(),
-        n if n.eq(OPT_STYLE) => config.style.value = Styles::from_str(value.as_str().unwrap())?,
-        n if n.eq(OPT_FLOW_STYLE) => {
-            config.flow_style.value = Styles::from_str(value.as_str().unwrap())?
-        }
-        n if n.eq(OPT_JSON) => config.json.value = value.as_bool().unwrap(),
+        n if n.eq(OPT_UTF8) => config.utf8 = value.as_bool().unwrap(),
+        n if n.eq(OPT_STYLE) => config.style = Styles::from_str(value.as_str().unwrap())?,
+        n if n.eq(OPT_FLOW_STYLE) => config.flow_style = Styles::from_str(value.as_str().unwrap())?,
+        n if n.eq(OPT_JSON) => config.json = value.as_bool().unwrap(),
         _ => return Err(anyhow!("Unknown option: {}", name)),
     }
     Ok(())

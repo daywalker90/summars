@@ -23,145 +23,116 @@ pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub columns: DynamicConfigOption<Vec<String>>,
-    pub sort_by: DynamicConfigOption<String>,
-    pub exclude_channel_states: DynamicConfigOption<ExcludeStates>,
-    pub forwards: DynamicConfigOption<u64>,
-    pub forwards_columns: DynamicConfigOption<Vec<String>>,
-    pub forwards_filter_amt_msat: DynamicConfigOption<i64>,
-    pub forwards_filter_fee_msat: DynamicConfigOption<i64>,
-    pub forwards_alias: DynamicConfigOption<bool>,
-    pub pays: DynamicConfigOption<u64>,
-    pub pays_columns: DynamicConfigOption<Vec<String>>,
-    pub max_desc_length: DynamicConfigOption<i64>,
-    pub invoices: DynamicConfigOption<u64>,
-    pub invoices_columns: DynamicConfigOption<Vec<String>>,
-    pub max_label_length: DynamicConfigOption<i64>,
-    pub invoices_filter_amt_msat: DynamicConfigOption<i64>,
-    pub locale: DynamicConfigOption<Locale>,
-    pub refresh_alias: DynamicConfigOption<u64>,
-    pub max_alias_length: DynamicConfigOption<i64>,
-    pub availability_interval: DynamicConfigOption<u64>,
-    pub availability_window: DynamicConfigOption<u64>,
-    pub utf8: DynamicConfigOption<bool>,
-    pub style: DynamicConfigOption<Styles>,
-    pub flow_style: DynamicConfigOption<Styles>,
-    pub json: DynamicConfigOption<bool>,
+    pub columns: Vec<String>,
+    pub sort_by: String,
+    pub exclude_channel_states: ExcludeStates,
+    pub forwards: u64,
+    pub forwards_columns: Vec<String>,
+    pub forwards_filter_amt_msat: i64,
+    pub forwards_filter_fee_msat: i64,
+    pub forwards_alias: bool,
+    pub pays: u64,
+    pub pays_columns: Vec<String>,
+    pub max_desc_length: i64,
+    pub invoices: u64,
+    pub invoices_columns: Vec<String>,
+    pub max_label_length: i64,
+    pub invoices_filter_amt_msat: i64,
+    pub locale: Locale,
+    pub refresh_alias: u64,
+    pub max_alias_length: i64,
+    pub availability_interval: u64,
+    pub availability_window: u64,
+    pub utf8: bool,
+    pub style: Styles,
+    pub flow_style: Styles,
+    pub json: bool,
 }
 impl Config {
     pub fn new() -> Config {
         Config {
-            columns: DynamicConfigOption {
-                value: {
-                    Summary::FIELD_NAMES_AS_ARRAY
-                        .into_iter()
-                        .filter(|t| {
-                            t != &"graph_sats"
-                                && t != &"perc_us"
-                                && t != &"total_sats"
-                                && t != &"min_htlc"
-                                && t != &"in_base"
-                                && t != &"in_ppm"
-                        })
-                        .map(ToString::to_string)
-                        .collect::<Vec<String>>()
-                },
+            columns: {
+                Summary::FIELD_NAMES_AS_ARRAY
+                    .into_iter()
+                    .filter(|t| {
+                        t != &"graph_sats"
+                            && t != &"perc_us"
+                            && t != &"total_sats"
+                            && t != &"min_htlc"
+                            && t != &"in_base"
+                            && t != &"in_ppm"
+                    })
+                    .map(ToString::to_string)
+                    .collect::<Vec<String>>()
             },
-            sort_by: DynamicConfigOption {
-                value: "SCID".to_string(),
+            sort_by: "SCID".to_string(),
+            exclude_channel_states: ExcludeStates {
+                channel_states: Vec::new(),
+                channel_visibility: None,
+                connection_status: None,
             },
-            exclude_channel_states: DynamicConfigOption {
-                value: ExcludeStates {
-                    channel_states: Vec::new(),
-                    channel_visibility: None,
-                    connection_status: None,
-                },
-            },
-            forwards: DynamicConfigOption { value: 0 },
-            forwards_columns: DynamicConfigOption {
-                value: {
-                    Forwards::FIELD_NAMES_AS_ARRAY
-                        .into_iter()
-                        .filter(|t| {
-                            t != &"received_time"
-                                && t != &"in_msats"
-                                && t != &"out_msats"
-                                && t != &"fee_sats"
-                        })
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>()
-                },
-            },
-            forwards_filter_amt_msat: DynamicConfigOption { value: -1 },
-            forwards_filter_fee_msat: DynamicConfigOption { value: -1 },
-            forwards_alias: DynamicConfigOption { value: true },
-            pays: DynamicConfigOption { value: 0 },
-            pays_columns: DynamicConfigOption {
-                value: {
-                    Pays::FIELD_NAMES_AS_ARRAY
-                        .into_iter()
-                        .filter(|t| {
-                            t != &"description"
-                                && t != &"preimage"
-                                && t != &"sats_requested"
-                                && t != &"msats_requested"
-                                && t != &"msats_sent"
-                                && t != &"fee_msats"
-                        })
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>()
-                },
-            },
-            max_desc_length: DynamicConfigOption { value: 30 },
-            invoices: DynamicConfigOption { value: 0 },
-            invoices_columns: DynamicConfigOption {
-                value: {
-                    Invoices::FIELD_NAMES_AS_ARRAY
-                        .into_iter()
-                        .filter(|t| {
-                            t != &"description" && t != &"preimage" && t != &"msats_received"
-                        })
-                        .map(|s| s.to_string())
-                        .collect::<Vec<String>>()
-                },
-            },
-            max_label_length: DynamicConfigOption { value: 30 },
-            invoices_filter_amt_msat: DynamicConfigOption { value: -1 },
-            locale: DynamicConfigOption {
-                value: {
-                    let mut valid_locale = None;
-                    for loc in get_locales() {
-                        if let Ok(sl) = Locale::from_str(&loc) {
-                            valid_locale = Some(sl);
-                            break;
-                        }
+            forwards: 0,
+            forwards_columns: Forwards::FIELD_NAMES_AS_ARRAY
+                .into_iter()
+                .filter(|t| {
+                    t != &"received_time"
+                        && t != &"in_msats"
+                        && t != &"out_msats"
+                        && t != &"fee_sats"
+                })
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>(),
+            forwards_filter_amt_msat: -1,
+            forwards_filter_fee_msat: -1,
+            forwards_alias: true,
+            pays: 0,
+            pays_columns: Pays::FIELD_NAMES_AS_ARRAY
+                .into_iter()
+                .filter(|t| {
+                    t != &"description"
+                        && t != &"preimage"
+                        && t != &"sats_requested"
+                        && t != &"msats_requested"
+                        && t != &"msats_sent"
+                        && t != &"fee_msats"
+                })
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>(),
+            max_desc_length: 30,
+            invoices: 0,
+            invoices_columns: Invoices::FIELD_NAMES_AS_ARRAY
+                .into_iter()
+                .filter(|t| t != &"description" && t != &"preimage" && t != &"msats_received")
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>(),
+            max_label_length: 30,
+            invoices_filter_amt_msat: -1,
+            locale: {
+                let mut valid_locale = None;
+                for loc in get_locales() {
+                    if let Ok(sl) = Locale::from_str(&loc) {
+                        valid_locale = Some(sl);
+                        break;
                     }
-                    if let Some(vsl) = valid_locale {
-                        vsl
-                    } else {
-                        Locale::from_str("en-US").unwrap()
-                    }
-                },
+                }
+                if let Some(vsl) = valid_locale {
+                    vsl
+                } else {
+                    Locale::from_str("en-US").unwrap()
+                }
             },
-            refresh_alias: DynamicConfigOption { value: 24 },
-            max_alias_length: DynamicConfigOption { value: 20 },
-            availability_interval: DynamicConfigOption { value: 300 },
-            availability_window: DynamicConfigOption { value: 72 },
-            utf8: DynamicConfigOption { value: true },
-            style: DynamicConfigOption {
-                value: Styles::Psql,
-            },
-            flow_style: DynamicConfigOption {
-                value: Styles::Blank,
-            },
-            json: DynamicConfigOption { value: false },
+            refresh_alias: 24,
+            max_alias_length: 20,
+            availability_interval: 300,
+            availability_window: 72,
+            utf8: true,
+            style: Styles::Psql,
+
+            flow_style: Styles::Blank,
+
+            json: false,
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct DynamicConfigOption<T> {
-    pub value: T,
 }
 
 #[derive(Clone, Debug)]

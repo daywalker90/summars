@@ -246,7 +246,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
         info!("starting refresh alias task");
         let aliasclone = plugin.clone();
-        let alias_refresh_freq = plugin.state().config.lock().refresh_alias.value;
+        let alias_refresh_freq = plugin.state().config.lock().refresh_alias;
         tokio::spawn(async move {
             loop {
                 match tasks::refresh_alias(aliasclone.clone()).await {
