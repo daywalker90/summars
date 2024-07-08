@@ -1024,6 +1024,8 @@ fn chan_to_summary(
         } else {
             scid.to_string()
         },
+        min_htlc: ((Amount::msat(&chan.minimum_htlc_out_msat.unwrap()) as f64) / 1_000.0).round()
+            as u64,
         max_htlc: ((Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) as f64) / 1_000.0).round()
             as u64,
         flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected),
@@ -1071,6 +1073,13 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| Reverse(x.total_sats))
             } else {
                 table.sort_by_key(|x| x.total_sats)
+            }
+        }
+        col if col.eq("MIN_HTLC") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.min_htlc))
+            } else {
+                table.sort_by_key(|x| x.min_htlc)
             }
         }
         col if col.eq("MAX_HTLC") => {
@@ -1227,6 +1236,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("TOTAL_SATS")).with(Alignment::right()));
+    sumtable.with(Modify::new(ByColumnName::new("MIN_HTLC")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("MAX_HTLC")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("FLAG")).with(Alignment::center()));
     sumtable.with(Modify::new(ByColumnName::new("BASE")).with(Alignment::right()));
@@ -1270,6 +1280,11 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new("TOTAL_SATS").not(Rows::first())).with(Format::content(
             |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
         )),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("MIN_HTLC").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("MAX_HTLC").not(Rows::first())).with(Format::content(|s| {

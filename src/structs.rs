@@ -55,7 +55,12 @@ impl Config {
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"graph_sats" && t != &"perc_us" && t != &"total_sats")
+                        .filter(|t| {
+                            t != &"graph_sats"
+                                && t != &"perc_us"
+                                && t != &"total_sats"
+                                && t != &"min_htlc"
+                        })
                         .map(ToString::to_string)
                         .collect::<Vec<String>>()
                 },
@@ -217,6 +222,7 @@ pub struct Summary {
     pub scid_raw: ShortChannelId,
     pub scid: String,
     pub max_htlc: u64,
+    pub min_htlc: u64,
     #[serde(skip_serializing)]
     pub flag: String,
     #[tabled(skip)]
