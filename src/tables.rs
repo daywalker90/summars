@@ -125,10 +125,9 @@ pub async fn summary(
     for chan in &peer_channels {
         if config
             .exclude_channel_states
-            .value
             .channel_states
             .contains(&ShortChannelState(chan.state))
-            || if let Some(excl_vis) = &config.exclude_channel_states.value.channel_visibility {
+            || if let Some(excl_vis) = &config.exclude_channel_states.channel_visibility {
                 match excl_vis {
                     ChannelVisibility::Private => chan.private.unwrap(),
                     ChannelVisibility::Public => !chan.private.unwrap(),
@@ -136,7 +135,7 @@ pub async fn summary(
             } else {
                 false
             }
-            || if let Some(excl_conn) = &config.exclude_channel_states.value.connection_status {
+            || if let Some(excl_conn) = &config.exclude_channel_states.connection_status {
                 match excl_conn {
                     ConnectionStatus::Online => chan.peer_connected,
                     ConnectionStatus::Offline => !chan.peer_connected,
@@ -219,7 +218,7 @@ pub async fn summary(
 
     let forwards;
     let forwards_filter_stats;
-    if config.forwards.value > 0 {
+    if config.forwards > 0 {
         (forwards, forwards_filter_stats) =
             recent_forwards(&mut rpc, &peer_channels, p.clone(), &config, now).await?;
         debug!(
@@ -232,7 +231,7 @@ pub async fn summary(
     }
 
     let pays;
-    if config.pays.value > 0 {
+    if config.pays > 0 {
         pays = recent_pays(&mut rpc, p.clone(), &config, now, getinfo.id).await?;
         debug!(
             "End of pays table. Total: {}ms",
@@ -244,7 +243,7 @@ pub async fn summary(
 
     let invoices;
     let invoices_filter_stats;
-    if config.invoices.value > 0 {
+    if config.invoices > 0 {
         (invoices, invoices_filter_stats) =
             recent_invoices(p.clone(), &mut rpc, &config, now).await?;
         debug!(
@@ -258,7 +257,7 @@ pub async fn summary(
 
     let addr_str = get_addrstr(&getinfo);
 
-    if config.json.value {
+    if config.json {
         Ok(json!({"info":{
             "address":addr_str,
             "num_utxos":funds.outputs.len(),
@@ -293,14 +292,14 @@ pub async fn summary(
         }
 
         let mut result = sumtable.to_string();
-        if config.forwards.value > 0 {
+        if config.forwards > 0 {
             result +=
                 &("\n\n".to_owned() + &format_forwards(forwards, &config, forwards_filter_stats)?);
         }
-        if config.pays.value > 0 {
+        if config.pays > 0 {
             result += &("\n\n".to_owned() + &format_pays(pays, &config)?);
         }
-        if config.invoices.value > 0 {
+        if config.invoices > 0 {
             result +=
                 &("\n\n".to_owned() + &format_invoices(invoices, &config, invoices_filter_stats)?);
         }
@@ -340,7 +339,7 @@ async fn recent_forwards(
 ) -> Result<(Vec<Forwards>, ForwardsFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
-        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards.value * 60 * 60 {
+        if plugin.state().fw_index.lock().timestamp > now_utc - config.forwards * 60 * 60 {
             *plugin.state().fw_index.lock() = PagingIndex::new();
             debug!("fw_index: forwards-age increased, resetting index");
         }
@@ -380,13 +379,12 @@ async fn recent_forwards(
     let mut filter_count = 0;
     let mut new_fw_index = PagingIndex {
         start: u64::MAX,
-        timestamp: now_utc - config.forwards.value * 60 * 60,
+        timestamp: now_utc - config.forwards * 60 * 60,
     };
     for forward in forwards {
-        if forward.received_time as u64 > now_utc - config.forwards.value * 60 * 60 {
+        if forward.received_time as u64 > now_utc - config.forwards * 60 * 60 {
             let inchan = config
                 .forwards_alias
-                .value
                 .then(|| {
                     chanmap.get(&forward.in_channel).and_then(|chan| {
                         alias_map
@@ -401,7 +399,6 @@ async fn recent_forwards(
             let fw_outchan = forward.out_channel.unwrap();
             let outchan = config
                 .forwards_alias
-                .value
                 .then(|| {
                     chanmap.get(&fw_outchan).and_then(|chan| {
                         alias_map
@@ -414,10 +411,10 @@ async fn recent_forwards(
                 .unwrap_or_else(|| fw_outchan.to_string());
 
             let mut should_filter = false;
-            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat.value {
+            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat {
                 should_filter = true;
             }
-            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat.value {
+            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat {
                 should_filter = true;
             }
 
@@ -437,13 +434,13 @@ async fn recent_forwards(
                         config,
                         forward.resolved_time.unwrap() as u64,
                     )?,
-                    in_channel_alias: if config.utf8.value {
+                    in_channel_alias: if config.utf8 {
                         inchan
                     } else {
                         inchan.replace(|c: char| !c.is_ascii(), "?")
                     },
                     in_channel: forward.in_channel,
-                    out_channel_alias: if config.utf8.value {
+                    out_channel_alias: if config.utf8 {
                         outchan
                     } else {
                         outchan.replace(|c: char| !c.is_ascii(), "?")
@@ -491,9 +488,9 @@ fn format_forwards(
     filter_stats: ForwardsFilterStats,
 ) -> Result<String, Error> {
     let mut fwtable = Table::new(table);
-    config.flow_style.value.apply(&mut fwtable);
+    config.flow_style.apply(&mut fwtable);
     for head in Forwards::FIELD_NAMES_AS_ARRAY {
-        if !config.forwards_columns.value.contains(&head.to_string()) {
+        if !config.forwards_columns.contains(&head.to_string()) {
             fwtable.with(Disable::column(ByColumnName::new(head)));
         }
     }
@@ -506,38 +503,36 @@ fn format_forwards(
         .map(|s| s.text().to_string())
         .collect::<Vec<String>>();
     let records = fwtable.get_records_mut();
-    if headers.len() != config.forwards_columns.value.len() {
+    if headers.len() != config.forwards_columns.len() {
         return Err(anyhow!(
             "Error formatting forwards! Length difference detected: {} {}",
             headers.join(","),
-            config.forwards_columns.value.join(",")
+            config.forwards_columns.join(",")
         ));
     }
-    sort_columns(records, &headers, &config.forwards_columns.value);
+    sort_columns(records, &headers, &config.forwards_columns);
 
-    if config.max_alias_length.value < 0 {
+    if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_channel")).with(
-                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("in_channel"))
+                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         fwtable.with(
             Modify::new(ByColumnName::new("in_channel"))
-                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
-    if config.max_alias_length.value < 0 {
+    if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_channel")).with(
-                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("out_channel"))
+                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         fwtable.with(
             Modify::new(ByColumnName::new("out_channel"))
-                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
@@ -622,7 +617,7 @@ async fn recent_pays(
     );
     let mut table = Vec::new();
     for pay in pays {
-        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays.value * 60 * 60
+        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config.pays * 60 * 60
             && pay.destination.unwrap() != mypubkey
         {
             let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
@@ -638,16 +633,13 @@ async fn recent_pays(
                     as u64,
                 destination: if destination == NODE_GOSSIP_MISS {
                     pay.destination.unwrap().to_string()
-                } else if config.utf8.value {
+                } else if config.utf8 {
                     destination
                 } else {
                     destination.replace(|c: char| !c.is_ascii(), "?")
                 },
-                description: if config
-                    .pays_columns
-                    .value
-                    .contains(&"description".to_string())
-                    && !config.json.value
+                description: if config.pays_columns.contains(&"description".to_string())
+                    && !config.json
                 {
                     if let Some(desc) = pay.description {
                         desc
@@ -686,9 +678,9 @@ async fn recent_pays(
 
 fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
     let mut paystable = Table::new(table);
-    config.flow_style.value.apply(&mut paystable);
+    config.flow_style.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
-        if !config.pays_columns.value.contains(&head.to_string()) {
+        if !config.pays_columns.contains(&head.to_string()) {
             paystable.with(Disable::column(ByColumnName::new(head)));
         }
     }
@@ -701,25 +693,24 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
         .map(|s| s.text().to_string())
         .collect::<Vec<String>>();
     let records = paystable.get_records_mut();
-    if headers.len() != config.pays_columns.value.len() {
+    if headers.len() != config.pays_columns.len() {
         return Err(anyhow!(
             "Error formatting pays! Length difference detected: {} {}",
             headers.join(","),
-            config.pays_columns.value.join(",")
+            config.pays_columns.join(",")
         ));
     }
-    sort_columns(records, &headers, &config.pays_columns.value);
+    sort_columns(records, &headers, &config.pays_columns);
 
-    if config.max_alias_length.value < 0 {
+    if config.max_alias_length < 0 {
         paystable.with(
-            Modify::new(ByColumnName::new("destination")).with(
-                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("destination"))
+                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         paystable.with(
             Modify::new(ByColumnName::new("destination"))
-                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
@@ -762,16 +753,15 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
         })),
     );
 
-    if config.max_desc_length.value < 0 {
+    if config.max_desc_length < 0 {
         paystable.with(
-            Modify::new(ByColumnName::new("description")).with(
-                Width::wrap(config.max_desc_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         paystable.with(
             Modify::new(ByColumnName::new("description"))
-                .with(Width::truncate(config.max_desc_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
     }
 
@@ -789,7 +779,7 @@ async fn recent_invoices(
 ) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
     {
-        if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices.value * 60 * 60 {
+        if plugin.state().inv_index.lock().timestamp > now_utc - config.invoices * 60 * 60 {
             *plugin.state().inv_index.lock() = PagingIndex::new();
             debug!("inv_index: invoices-age increased, resetting index");
         }
@@ -821,7 +811,7 @@ async fn recent_invoices(
     let mut filter_amt_sum_msat = 0;
     let mut new_inv_index = PagingIndex {
         start: u64::MAX,
-        timestamp: now_utc - config.invoices.value * 60 * 60,
+        timestamp: now_utc - config.invoices * 60 * 60,
     };
     for invoice in invoices {
         if let ListinvoicesInvoicesStatus::PAID = invoice.status {
@@ -830,9 +820,9 @@ async fn recent_invoices(
             } else {
                 continue;
             };
-            if inv_paid_at > now_utc - config.invoices.value * 60 * 60 {
+            if inv_paid_at > now_utc - config.invoices * 60 * 60 {
                 if invoice.amount_received_msat.unwrap().msat() as i64
-                    <= config.invoices_filter_amt_msat.value
+                    <= config.invoices_filter_amt_msat
                 {
                     filter_count += 1;
                     filter_amt_sum_msat += invoice.amount_received_msat.unwrap().msat();
@@ -886,9 +876,9 @@ fn format_invoices(
     filter_stats: InvoicesFilterStats,
 ) -> Result<String, Error> {
     let mut invoicestable = Table::new(table);
-    config.flow_style.value.apply(&mut invoicestable);
+    config.flow_style.apply(&mut invoicestable);
     for head in Invoices::FIELD_NAMES_AS_ARRAY {
-        if !config.invoices_columns.value.contains(&head.to_string()) {
+        if !config.invoices_columns.contains(&head.to_string()) {
             invoicestable.with(Disable::column(ByColumnName::new(head)));
         }
     }
@@ -901,38 +891,36 @@ fn format_invoices(
         .map(|s| s.text().to_string())
         .collect::<Vec<String>>();
     let records = invoicestable.get_records_mut();
-    if headers.len() != config.invoices_columns.value.len() {
+    if headers.len() != config.invoices_columns.len() {
         return Err(anyhow!(
             "Error formatting invoices! Length difference detected: {} {}",
             headers.join(","),
-            config.invoices_columns.value.join(",")
+            config.invoices_columns.join(",")
         ));
     }
-    sort_columns(records, &headers, &config.invoices_columns.value);
+    sort_columns(records, &headers, &config.invoices_columns);
 
-    if config.max_desc_length.value < 0 {
+    if config.max_desc_length < 0 {
         invoicestable.with(
-            Modify::new(ByColumnName::new("description")).with(
-                Width::wrap(config.max_desc_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new("description"))
-                .with(Width::truncate(config.max_desc_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
     }
 
-    if config.max_label_length.value < 0 {
+    if config.max_label_length < 0 {
         invoicestable.with(
-            Modify::new(ByColumnName::new("label")).with(
-                Width::wrap(config.max_label_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("label"))
+                .with(Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new("label"))
-                .with(Width::truncate(config.max_label_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_label_length as usize).suffix("[..]")),
         );
     }
 
@@ -1028,8 +1016,8 @@ async fn chan_to_summary(
 
     let mut in_base = "N/A".to_string();
     let mut in_ppm = "N/A".to_string();
-    if config.columns.value.contains(&"in_base".to_string())
-        || config.columns.value.contains(&"in_ppm".to_string())
+    if config.columns.contains(&"in_base".to_string())
+        || config.columns.contains(&"in_ppm".to_string())
     {
         if at_or_above_version(version, "24.02")? {
             if let Some(upd) = &chan.updates {
@@ -1078,7 +1066,7 @@ async fn chan_to_summary(
         in_base,
         ppm: chan.fee_proportional_millionths.unwrap(),
         in_ppm,
-        alias: if config.utf8.value {
+        alias: if config.utf8 {
             alias.to_string()
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
@@ -1092,11 +1080,11 @@ async fn chan_to_summary(
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
-    let reverse = config.sort_by.value.starts_with('-');
+    let reverse = config.sort_by.starts_with('-');
     let sort_by = if reverse {
-        &config.sort_by.value[1..]
+        &config.sort_by[1..]
     } else {
-        &config.sort_by.value
+        &config.sort_by
     };
     match sort_by {
         col if col.eq("OUT_SATS") => {
@@ -1276,9 +1264,9 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 }
 
 fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
-    config.style.value.apply(sumtable);
+    config.style.apply(sumtable);
     for head in Summary::FIELD_NAMES_AS_ARRAY {
-        if !config.columns.value.contains(&head.to_string()) {
+        if !config.columns.contains(&head.to_string()) {
             sumtable.with(Disable::column(ByColumnName::new(
                 head.to_ascii_uppercase(),
             )));
@@ -1294,25 +1282,24 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         .map(|s| s.text().to_string())
         .collect::<Vec<String>>();
     let records = sumtable.get_records_mut();
-    if headers.len() != config.columns.value.len() {
+    if headers.len() != config.columns.len() {
         return Err(anyhow!(
             "Error formatting channels! Length difference detected: {} {}",
             headers.join(","),
-            config.columns.value.join(",")
+            config.columns.join(",")
         ));
     }
-    sort_columns(records, &headers, &config.columns.value);
+    sort_columns(records, &headers, &config.columns);
 
-    if config.max_alias_length.value < 0 {
+    if config.max_alias_length < 0 {
         sumtable.with(
-            Modify::new(ByColumnName::new("ALIAS")).with(
-                Width::wrap(config.max_alias_length.value.unsigned_abs() as usize).keep_words(),
-            ),
+            Modify::new(ByColumnName::new("ALIAS"))
+                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
         );
     } else {
         sumtable.with(
             Modify::new(ByColumnName::new("ALIAS"))
-                .with(Width::truncate(config.max_alias_length.value as usize).suffix("[..]")),
+                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
@@ -1464,11 +1451,7 @@ fn draw_graph_sats_name(
 ) -> Result<(), Error> {
     let draw_utf8 = GraphCharset::new_utf8();
     let draw_ascii = GraphCharset::new_ascii();
-    let draw = if config.utf8.value {
-        &draw_utf8
-    } else {
-        &draw_ascii
-    };
+    let draw = if config.utf8 { &draw_utf8 } else { &draw_ascii };
     let btc_str = u64_to_btc_string(config, graph_max_chan_side_msat)?;
     sumtable.with(
         Modify::new(
