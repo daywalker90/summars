@@ -60,6 +60,8 @@ impl Config {
                                 && t != &"perc_us"
                                 && t != &"total_sats"
                                 && t != &"min_htlc"
+                                && t != &"in_base"
+                                && t != &"in_ppm"
                         })
                         .map(ToString::to_string)
                         .collect::<Vec<String>>()
@@ -232,7 +234,11 @@ pub struct Summary {
     #[field_names_as_array(skip)]
     pub offline: bool,
     pub base: u64,
+    #[serde(skip_serializing)]
+    pub in_base: String,
     pub ppm: u32,
+    #[serde(skip_serializing)]
+    pub in_ppm: String,
     pub alias: String,
     pub peer_id: PublicKey,
     pub uptime: f64,

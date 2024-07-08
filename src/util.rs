@@ -198,6 +198,31 @@ pub fn sort_columns(
     }
 }
 
+pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, Error> {
+    let clean_start_my_version = my_version.trim_start_matches('v');
+    let full_clean_my_version: String = clean_start_my_version
+        .chars()
+        .take_while(|x| x.is_ascii_digit() || *x == '.')
+        .collect();
+
+    let my_version_parts: Vec<&str> = full_clean_my_version.split('.').collect();
+    let min_version_parts: Vec<&str> = min_version.split('.').collect();
+
+    if my_version_parts.len() <= 1 || my_version_parts.len() > 3 {
+        return Err(anyhow!("Version string parse error: {}", my_version));
+    }
+    for (my, min) in my_version_parts.iter().zip(min_version_parts.iter()) {
+        let my_num: u32 = my.parse()?;
+        let min_num: u32 = min.parse()?;
+
+        if my_num != min_num {
+            return Ok(my_num > min_num);
+        }
+    }
+
+    Ok(my_version_parts.len() >= min_version_parts.len())
+}
+
 #[test]
 fn test_flags() {
     assert_eq!(make_channel_flags(false, false), "[__]");
