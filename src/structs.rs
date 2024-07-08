@@ -55,7 +55,7 @@ impl Config {
                 value: {
                     Summary::FIELD_NAMES_AS_ARRAY
                         .into_iter()
-                        .filter(|t| t != &"graph_sats" && t != &"perc_us")
+                        .filter(|t| t != &"graph_sats" && t != &"perc_us" && t != &"total_sats")
                         .map(ToString::to_string)
                         .collect::<Vec<String>>()
                 },
@@ -210,6 +210,7 @@ pub struct Summary {
     pub graph_sats: String,
     pub out_sats: u64,
     pub in_sats: u64,
+    pub total_sats: u64,
     #[tabled(skip)]
     #[serde(skip_serializing)]
     #[field_names_as_array(skip)]
