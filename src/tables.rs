@@ -1017,6 +1017,7 @@ fn chan_to_summary(
         graph_sats: draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat),
         out_sats: ((to_us_msat as f64) / 1_000.0).round() as u64,
         in_sats: (((total_msat - to_us_msat) as f64) / 1_000.0).round() as u64,
+        total_sats: ((total_msat as f64) / 1_000.0).round() as u64,
         scid_raw: scid,
         scid: if scidsortdummy == scid {
             "PENDING".to_string()
@@ -1063,6 +1064,13 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 table.sort_by_key(|x| Reverse(x.in_sats))
             } else {
                 table.sort_by_key(|x| x.in_sats)
+            }
+        }
+        col if col.eq("TOTAL_SATS") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.total_sats))
+            } else {
+                table.sort_by_key(|x| x.total_sats)
             }
         }
         col if col.eq("MAX_HTLC") => {
@@ -1218,6 +1226,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
 
     sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));
+    sumtable.with(Modify::new(ByColumnName::new("TOTAL_SATS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("MAX_HTLC")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("FLAG")).with(Alignment::center()));
     sumtable.with(Modify::new(ByColumnName::new("BASE")).with(Alignment::right()));
@@ -1256,6 +1265,11 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new("IN_SATS").not(Rows::first())).with(Format::content(|s| {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("TOTAL_SATS").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
     );
     sumtable.with(
         Modify::new(ByColumnName::new("MAX_HTLC").not(Rows::first())).with(Format::content(|s| {
