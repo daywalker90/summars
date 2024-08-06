@@ -514,8 +514,9 @@ fn format_forwards(
 
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_channel"))
-                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
+            Modify::new(ByColumnName::new("in_channel")).with(
+                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+            ),
         );
     } else {
         fwtable.with(
@@ -526,8 +527,9 @@ fn format_forwards(
 
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_channel"))
-                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
+            Modify::new(ByColumnName::new("out_channel")).with(
+                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+            ),
         );
     } else {
         fwtable.with(
@@ -704,8 +706,9 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
 
     if config.max_alias_length < 0 {
         paystable.with(
-            Modify::new(ByColumnName::new("destination"))
-                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
+            Modify::new(ByColumnName::new("destination")).with(
+                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+            ),
         );
     } else {
         paystable.with(
@@ -754,10 +757,10 @@ fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
     );
 
     if config.max_desc_length < 0 {
-        paystable.with(
-            Modify::new(ByColumnName::new("description"))
-                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words()),
-        );
+        paystable
+            .with(Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
+            ));
     } else {
         paystable.with(
             Modify::new(ByColumnName::new("description"))
@@ -901,10 +904,10 @@ fn format_invoices(
     sort_columns(records, &headers, &config.invoices_columns);
 
     if config.max_desc_length < 0 {
-        invoicestable.with(
-            Modify::new(ByColumnName::new("description"))
-                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words()),
-        );
+        invoicestable
+            .with(Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
+            ));
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new("description"))
@@ -914,8 +917,9 @@ fn format_invoices(
 
     if config.max_label_length < 0 {
         invoicestable.with(
-            Modify::new(ByColumnName::new("label"))
-                .with(Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words()),
+            Modify::new(ByColumnName::new("label")).with(
+                Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words(true),
+            ),
         );
     } else {
         invoicestable.with(
@@ -1293,8 +1297,9 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
 
     if config.max_alias_length < 0 {
         sumtable.with(
-            Modify::new(ByColumnName::new("ALIAS"))
-                .with(Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words()),
+            Modify::new(ByColumnName::new("ALIAS")).with(
+                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+            ),
         );
     } else {
         sumtable.with(

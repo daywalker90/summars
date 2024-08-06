@@ -11,7 +11,7 @@ use fixed_decimal::{FixedDecimal, FixedInteger};
 use icu_datetime::{options::length, DateTimeFormatter};
 use icu_decimal::FixedDecimalFormatter;
 use tabled::grid::records::{
-    vec_records::{CellInfo, VecRecords},
+    vec_records::{Text, VecRecords},
     Resizable,
 };
 
@@ -164,7 +164,7 @@ pub fn hex_encode(bytes: &[u8]) -> String {
 }
 
 pub fn sort_columns(
-    records: &mut VecRecords<CellInfo<String>>,
+    records: &mut VecRecords<Text<String>>,
     headers: &[String],
     config_columns: &[String],
 ) {
