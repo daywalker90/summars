@@ -161,7 +161,6 @@ pub struct PluginState {
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
     pub fw_index: Arc<Mutex<PagingIndex>>,
     pub inv_index: Arc<Mutex<PagingIndex>>,
-    pub pay_index: Arc<Mutex<PagingIndex>>,
 }
 impl PluginState {
     pub fn new() -> PluginState {
@@ -171,7 +170,6 @@ impl PluginState {
             avail: Arc::new(Mutex::new(BTreeMap::new())),
             fw_index: Arc::new(Mutex::new(PagingIndex::new())),
             inv_index: Arc::new(Mutex::new(PagingIndex::new())),
-            pay_index: Arc::new(Mutex::new(PagingIndex::new())),
         }
     }
 }

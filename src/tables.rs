@@ -232,15 +232,7 @@ pub async fn summary(
 
     let pays;
     if config.pays > 0 {
-        pays = recent_pays(
-            &mut rpc,
-            p.clone(),
-            &config,
-            now,
-            getinfo.id,
-            &getinfo.version,
-        )
-        .await?;
+        pays = recent_pays(&mut rpc, p.clone(), &config, now, getinfo.id).await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -615,55 +607,22 @@ async fn recent_pays(
     config: &Config,
     now: Instant,
     mypubkey: PublicKey,
-    version: &str,
 ) -> Result<Vec<Pays>, Error> {
-    let now_utc = Utc::now().timestamp() as u64;
     let config_pays_sec = config.pays * 60 * 60;
-    {
-        if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
-            *plugin.state().pay_index.lock() = PagingIndex::new();
-            debug!("pay_index: pays-age increased, resetting index");
-        }
-    }
-    let mut pay_index = plugin.state().pay_index.lock().clone();
 
-    let pays = if at_or_above_version(version, "24.08")? {
-        debug!(
-            "pay_index: start:{} timestamp:{}",
-            pay_index.start, pay_index.timestamp
-        );
-        rpc.call_typed(&ListpaysRequest {
+    let pays = rpc
+        .call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
             status: Some(ListpaysStatus::COMPLETE),
-            index: Some(ListpaysIndex::CREATED),
-            limit: None,
-            start: Some(pay_index.start),
         })
         .await?
-        .pays
-    } else {
-        rpc.call_typed(&ListpaysRequest {
-            bolt11: None,
-            payment_hash: None,
-            status: Some(ListpaysStatus::COMPLETE),
-            index: None,
-            limit: None,
-            start: None,
-        })
-        .await?
-        .pays
-    };
+        .pays;
     debug!(
         "List {} pays. Total: {}ms",
         pays.len(),
         now.elapsed().as_millis().to_string()
     );
-
-    pay_index.timestamp = now_utc - config_pays_sec;
-    if let Some(last_pay) = pays.last() {
-        pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
-    }
 
     let mut table = Vec::new();
 
@@ -717,15 +676,7 @@ async fn recent_pays(
                     / 1_000.0)
                     .round() as u64,
             });
-            if let Some(c_index) = pay.created_index {
-                if c_index < pay_index.start {
-                    pay_index.start = c_index;
-                }
-            }
         }
-    }
-    if pay_index.start < u64::MAX {
-        *plugin.state().pay_index.lock() = pay_index;
     }
     debug!(
         "Build pays table. Total: {}ms",
