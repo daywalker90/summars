@@ -15,6 +15,10 @@
 
 - Can only sort by enabled columns, since we don't collect data on some disabled columns for performance reasons
 
+### Fixed
+
+- Improved performance if invoices or forwards tables don't have anything to show in the requested time window
+
 ## [3.3.1] 2024-06-29
 
 ### Added
