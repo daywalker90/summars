@@ -12,9 +12,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
 tokio = { version = "1", features = ["fs","sync","rt-multi-thread"] }
-cln-rpc = "0.1.9"
+cln-rpc = "0.2"
 # cln-rpc = { path="../lightning/cln-rpc/", version = "^0.1" }
-cln-plugin = "0.1.9"
+cln-plugin = "0.2"
 # cln-plugin = { path="../lightning/plugins/", version = "^0.1" }
 
 tabled = "0.16"
