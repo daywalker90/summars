@@ -14,6 +14,7 @@
 ### Changed
 
 - Can only sort by enabled columns, since we don't collect data on some disabled columns for performance reasons
+- updated dependencies
 
 ### Fixed
 
