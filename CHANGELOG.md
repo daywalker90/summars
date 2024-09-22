@@ -4,6 +4,7 @@
 
 ### Added
 
+- nix flake
 - New column for the main channels table: ``PERC_US``: the percentage of funds in the channel that belong to us.
 - New column ``TOTAL_SATS``: the total size of the channel in sats
 - New column ``MIN_HTLC``: the minimum size of an outgoing htlc for that channel in sats
