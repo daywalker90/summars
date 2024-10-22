@@ -324,6 +324,24 @@ pub struct InvoicesFilterStats {
     pub filter_count: u64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct Totals {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_amount_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_amount_sent_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_fees_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub invoices_amount_received_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forwards_amount_in_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forwards_amount_out_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub forwards_fees_msat: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
 pub enum Styles {
     Ascii,

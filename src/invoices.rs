@@ -1,0 +1,214 @@
+use anyhow::{anyhow, Error};
+use chrono::Utc;
+use cln_plugin::Plugin;
+use cln_rpc::ClnRpc;
+use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
+
+use log::debug;
+use struct_field_names_as_array::FieldNamesAsArray;
+use tabled::grid::records::vec_records::Cell;
+use tabled::grid::records::Records;
+use tabled::settings::location::ByColumnName;
+use tabled::settings::object::{Object, Rows};
+use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+
+use tabled::Table;
+use tokio::time::Instant;
+
+use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState};
+use crate::util::{
+    hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
+};
+
+pub async fn recent_invoices(
+    plugin: Plugin<PluginState>,
+    rpc: &mut ClnRpc,
+    config: &Config,
+    now: Instant,
+) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
+    let now_utc = Utc::now().timestamp() as u64;
+    let config_invoices_sec = config.invoices * 60 * 60;
+    {
+        if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
+            *plugin.state().inv_index.lock() = PagingIndex::new();
+            debug!("inv_index: invoices-age increased, resetting index");
+        }
+    }
+    let mut inv_index = plugin.state().inv_index.lock().clone();
+    debug!(
+        "inv_index: start:{} timestamp:{}",
+        inv_index.start, inv_index.timestamp
+    );
+    let invoices = rpc
+        .call_typed(&ListinvoicesRequest {
+            label: None,
+            invstring: None,
+            payment_hash: None,
+            offer_id: None,
+            index: Some(ListinvoicesIndex::CREATED),
+            start: Some(inv_index.start),
+            limit: None,
+        })
+        .await?
+        .invoices;
+    debug!(
+        "List {} invoices. Total: {}ms",
+        invoices.len(),
+        now.elapsed().as_millis().to_string()
+    );
+
+    inv_index.timestamp = now_utc - config_invoices_sec;
+    if let Some(last_inv) = invoices.last() {
+        inv_index.start = last_inv.created_index.unwrap_or(u64::MAX);
+    }
+
+    let mut table = Vec::new();
+    let mut filter_count = 0;
+    let mut filter_amt_sum_msat = 0;
+
+    for invoice in invoices.into_iter() {
+        if let ListinvoicesInvoicesStatus::PAID = invoice.status {
+            let inv_paid_at = if let Some(p_at) = invoice.paid_at {
+                p_at
+            } else {
+                continue;
+            };
+            if inv_paid_at > now_utc - config_invoices_sec {
+                if invoice.amount_received_msat.unwrap().msat() as i64
+                    <= config.invoices_filter_amt_msat
+                {
+                    filter_count += 1;
+                    filter_amt_sum_msat += invoice.amount_received_msat.unwrap().msat();
+                } else {
+                    table.push(Invoices {
+                        paid_at: invoice.paid_at.unwrap(),
+                        paid_at_str: timestamp_to_localized_datetime_string(
+                            config,
+                            invoice.paid_at.unwrap(),
+                        )?,
+                        label: invoice.label,
+                        msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
+                        sats_received: ((Amount::msat(&invoice.amount_received_msat.unwrap())
+                            as f64)
+                            / 1_000.0)
+                            .round() as u64,
+                        description: invoice.description.unwrap_or_default(),
+                        payment_hash: invoice.payment_hash.to_string(),
+                        preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
+                    });
+                }
+                if let Some(c_index) = invoice.created_index {
+                    if c_index < inv_index.start {
+                        inv_index.start = c_index;
+                    }
+                }
+            }
+        }
+    }
+    if inv_index.start < u64::MAX {
+        *plugin.state().inv_index.lock() = inv_index;
+    }
+    debug!(
+        "Build invoices table. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    table.sort_by_key(|x| x.paid_at);
+
+    Ok((
+        table,
+        InvoicesFilterStats {
+            filter_amt_sum_msat,
+            filter_count,
+        },
+    ))
+}
+
+pub fn format_invoices(
+    table: Vec<Invoices>,
+    config: &Config,
+    filter_stats: InvoicesFilterStats,
+) -> Result<String, Error> {
+    let mut invoicestable = Table::new(table);
+    config.flow_style.apply(&mut invoicestable);
+    for head in Invoices::FIELD_NAMES_AS_ARRAY {
+        if !config.invoices_columns.contains(&head.to_string()) {
+            invoicestable.with(Disable::column(ByColumnName::new(head)));
+        }
+    }
+    let headers = invoicestable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = invoicestable.get_records_mut();
+    if headers.len() != config.invoices_columns.len() {
+        return Err(anyhow!(
+            "Error formatting invoices! Length difference detected: {} {}",
+            headers.join(","),
+            config.invoices_columns.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.invoices_columns);
+
+    if config.max_desc_length < 0 {
+        invoicestable
+            .with(Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
+            ));
+    } else {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
+        );
+    }
+
+    if config.max_label_length < 0 {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("label")).with(
+                Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words(true),
+            ),
+        );
+    } else {
+        invoicestable.with(
+            Modify::new(ByColumnName::new("label"))
+                .with(Width::truncate(config.max_label_length as usize).suffix("[..]")),
+        );
+    }
+
+    invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
+    invoicestable.with(
+        Modify::new(ByColumnName::new("sats_received").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+    invoicestable.with(Modify::new(ByColumnName::new("msats_received")).with(Alignment::right()));
+    invoicestable.with(
+        Modify::new(ByColumnName::new("msats_received").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+
+    invoicestable.with(Panel::header("invoices"));
+    invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
+
+    if filter_stats.filter_count > 0 {
+        let filter_sum_result = format!(
+            "\nFiltered {} invoice{} with {} sats total.",
+            filter_stats.filter_count,
+            if filter_stats.filter_count == 1 {
+                ""
+            } else {
+                "s"
+            },
+            u64_to_sat_string(
+                config,
+                ((filter_stats.filter_amt_sum_msat as f64) / 1_000.0).round() as u64
+            )?
+        );
+        invoicestable.with(Panel::footer(filter_sum_result));
+    }
+    Ok(invoicestable.to_string())
+}

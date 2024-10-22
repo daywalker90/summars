@@ -6,7 +6,14 @@ use std::{
 use anyhow::anyhow;
 use chrono::{Datelike, Local, Timelike};
 use cln_plugin::{Error, Plugin};
-use cln_rpc::model::responses::{ListpeerchannelsChannels, ListpeerchannelsChannelsState};
+use cln_rpc::{
+    model::{
+        requests::ListnodesRequest,
+        responses::{ListpeerchannelsChannels, ListpeerchannelsChannelsState},
+    },
+    primitives::PublicKey,
+    ClnRpc,
+};
 use fixed_decimal::{FixedDecimal, FixedInteger};
 use icu_datetime::{options::length, DateTimeFormatter};
 use icu_decimal::FixedDecimalFormatter;
@@ -15,7 +22,7 @@ use tabled::grid::records::{
     Resizable,
 };
 
-use crate::structs::{Config, GraphCharset, PluginState};
+use crate::structs::{Config, GraphCharset, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
@@ -211,6 +218,34 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     }
 
     Ok(my_version_parts.len() >= min_version_parts.len())
+}
+
+pub async fn get_alias(
+    rpc: &mut ClnRpc,
+    p: Plugin<PluginState>,
+    peer_id: PublicKey,
+) -> Result<String, Error> {
+    let alias_map = p.state().alias_map.lock().clone();
+    let alias;
+    match alias_map.get::<PublicKey>(&peer_id) {
+        Some(a) => alias = a.clone(),
+        None => match rpc
+            .call_typed(&ListnodesRequest { id: Some(peer_id) })
+            .await?
+            .nodes
+            .first()
+        {
+            Some(node) => {
+                match &node.alias {
+                    Some(newalias) => alias = newalias.clone(),
+                    None => alias = NO_ALIAS_SET.to_string(),
+                }
+                p.state().alias_map.lock().insert(peer_id, alias.clone());
+            }
+            None => alias = NODE_GOSSIP_MISS.to_string(),
+        },
+    };
+    Ok(alias)
 }
 
 #[test]
