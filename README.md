@@ -145,15 +145,18 @@ You can mix these methods and if you set the same option with different methods,
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING``, ``AWAIT_LOCK``, ``OK``, ``SHUTTING_DOWN``, ``CLOSINGD_SIGEX``, ``CLOSINGD_DONE``, ``AWAIT_UNILATERAL``, ``FUNDING_SPEND``, ``ONCHAIN``, ``DUAL_OPEN``, ``DUAL_COMITTED``, ``DUAL_COMMIT_RDY``, ``DUAL_AWAIT``, ``AWAIT_SPLICE`` and ``PUBLIC``, ``PRIVATE`` to filter channels by their network visibility, aswell as  or `ONLINE,OFFLINE` to filter by connection status.
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-forwards-limit`` Additionally limit the amount of entries shown by ``summars-forwards``. Default is ``0`` (off)
 * ``summars-forwards-columns`` Comma-separated list of enabled columns in the forwards table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``in_msats``, ``out_sats``, ``out_msats``, ``fee_sats``, ``fee_msats``, ``eff_fee_ppm``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
 ### Pays table
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-pays-limit`` Additionally limit the amount of entries shown by ``summars-pays``. Default is ``0`` (off)
 * ``summars-pays-columns`` Comma-separated list of enabled columns in the pays table. Also dictates order of columns. Valid columns: ``completed_at``, ``payment_hash``, ``sats_requested``, ``msats_requested``, ``sats_sent``, ``msats_sent``, ``fee_sats``, ``fee_msats``, ``destination``, ``description``, ``preimage``. Default columns are: ``completed_at``, ``payment_hash``, ``sats_sent``, ``fee_sats``, ``destination``:warning: If you enable the ``description`` field in most cases an extra RPC call is necessary for each displayed payment. This could slow down the response time of ``summars`` if you have alot of payments in your configured time window.
 ### Invoices table
 * ``summars-invoices`` List successfully paid invoices of the last x hours. Default is ``0`` hours (disabled)
+* ``summars-invoices-limit`` Additionally limit the amount of entries shown by ``summars-invoices``. Default is ``0`` (off)
 * ``summars-invoices-columns`` Comma-separated list of enabled columns in the invoices table. Also dictates order of columns. Valid columns: ``paid_at``, ``label``, ``description``, ``sats_received``, ``msats_received``, ``payment_hash``, ``preimage``. Default columns are: ``paid_at``, ``label``, ``sats_received``, ``payment_hash``
 * ``summars-invoices-filter-amount-msat`` Filter invoices where **received** amount is smaller than or equal to x msat and show a summary of those invoices instead. Default is ``-1`` (disabled)
 ### Background tasks
