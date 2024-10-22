@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0] 2024-10-22
+
+### Added
+
+- Total values summary for forwards, pays and invoices table at the bottom in normal view and as ``totals`` object in json mode
+- Show timeframe you are currently looking at for each table of forwards, pays and invoices
+
 ## [3.4.0] 2024-09-22
 
 ### Added

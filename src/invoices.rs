@@ -15,7 +15,7 @@ use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState};
+use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals};
 use crate::util::{
     hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
 };
@@ -24,6 +24,7 @@ pub async fn recent_invoices(
     plugin: Plugin<PluginState>,
     rpc: &mut ClnRpc,
     config: &Config,
+    totals: &mut Totals,
     now: Instant,
 ) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
@@ -74,6 +75,13 @@ pub async fn recent_invoices(
                 continue;
             };
             if inv_paid_at > now_utc - config_invoices_sec {
+                if let Some(inv_amt) = &mut totals.invoices_amount_received_msat {
+                    *inv_amt += invoice.amount_received_msat.unwrap().msat()
+                } else {
+                    totals.invoices_amount_received_msat =
+                        Some(invoice.amount_received_msat.unwrap().msat())
+                }
+
                 if invoice.amount_received_msat.unwrap().msat() as i64
                     <= config.invoices_filter_amt_msat
                 {
@@ -126,6 +134,7 @@ pub async fn recent_invoices(
 pub fn format_invoices(
     table: Vec<Invoices>,
     config: &Config,
+    totals: &Totals,
     filter_stats: InvoicesFilterStats,
 ) -> Result<String, Error> {
     let mut invoicestable = Table::new(table);
@@ -191,7 +200,10 @@ pub fn format_invoices(
         )),
     );
 
-    invoicestable.with(Panel::header("invoices"));
+    invoicestable.with(Panel::header(format!(
+        "invoices (last {}h)",
+        config.invoices
+    )));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     if filter_stats.filter_count > 0 {
@@ -209,6 +221,15 @@ pub fn format_invoices(
             )?
         );
         invoicestable.with(Panel::footer(filter_sum_result));
+    }
+
+    if let Some(inv_total) = totals.invoices_amount_received_msat {
+        let invoices_total = format!(
+            "\nTotal invoices stats in the last {}h: {} sats_received",
+            config.invoices,
+            u64_to_sat_string(config, ((inv_total as f64) / 1000.0).round() as u64)?,
+        );
+        invoicestable.with(Panel::footer(invoices_total));
     }
     Ok(invoicestable.to_string())
 }
