@@ -83,6 +83,7 @@ impl Config {
                         && t != &"in_msats"
                         && t != &"out_msats"
                         && t != &"fee_sats"
+                        && t != &"eff_fee_ppm"
                 })
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>(),
@@ -259,6 +260,7 @@ pub struct Forwards {
     pub fee_msats: u64,
     #[serde(skip_serializing)]
     pub fee_sats: u64,
+    pub eff_fee_ppm: u32,
 }
 
 #[derive(Debug, Clone, Default)]

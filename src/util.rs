@@ -248,6 +248,16 @@ pub async fn get_alias(
     Ok(alias)
 }
 
+pub fn feeppm_effective_from_amts(amount_msat_start: u64, amount_msat_end: u64) -> u32 {
+    if amount_msat_start < amount_msat_end {
+        panic!(
+            "CRITICAL ERROR: amount_msat_start should be greater than or equal to amount_msat_end"
+        )
+    }
+    ((amount_msat_start - amount_msat_end) as f64 / amount_msat_end as f64 * 1_000_000.0).ceil()
+        as u32
+}
+
 #[test]
 fn test_flags() {
     assert_eq!(make_channel_flags(false, false), "[__]");

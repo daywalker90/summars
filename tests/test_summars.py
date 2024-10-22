@@ -36,6 +36,7 @@ forwards_columns = [
     "in_sats",
     "out_sats",
     "fee_msats",
+    "eff_fee_ppm",
 ]
 
 pay_columns = [

@@ -24,7 +24,10 @@ use tokio::time::Instant;
 use crate::structs::{
     Config, Forwards, ForwardsFilterStats, PagingIndex, PluginState, Totals, NO_ALIAS_SET,
 };
-use crate::util::{sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string};
+use crate::util::{
+    feeppm_effective_from_amts, sort_columns, timestamp_to_localized_datetime_string,
+    u64_to_sat_string,
+};
 
 pub async fn recent_forwards(
     rpc: &mut ClnRpc,
@@ -170,6 +173,10 @@ pub async fn recent_forwards(
                         as u64,
                     fee_sats: ((Amount::msat(&forward.fee_msat.unwrap()) as f64) / 1_000.0).round()
                         as u64,
+                    eff_fee_ppm: feeppm_effective_from_amts(
+                        forward.in_msat.msat(),
+                        forward.out_msat.unwrap().msat(),
+                    ),
                 })
             }
 
@@ -293,6 +300,12 @@ pub fn format_forwards(
         Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
             u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
         })),
+    );
+    fwtable.with(Modify::new(ByColumnName::new("eff_fee_ppm")).with(Alignment::right()));
+    fwtable.with(
+        Modify::new(ByColumnName::new("eff_fee_ppm").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
     );
 
     fwtable.with(Panel::header(format!(
