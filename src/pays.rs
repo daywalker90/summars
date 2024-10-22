@@ -1,0 +1,205 @@
+use anyhow::{anyhow, Error};
+use chrono::Utc;
+use cln_plugin::Plugin;
+use cln_rpc::ClnRpc;
+use cln_rpc::{
+    model::requests::*,
+    primitives::{Amount, PublicKey},
+};
+
+use log::debug;
+use struct_field_names_as_array::FieldNamesAsArray;
+use tabled::grid::records::vec_records::Cell;
+use tabled::grid::records::Records;
+use tabled::settings::location::ByColumnName;
+use tabled::settings::object::{Object, Rows};
+use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+
+use tabled::Table;
+use tokio::time::Instant;
+
+use crate::structs::{Config, Pays, PluginState, NODE_GOSSIP_MISS};
+use crate::util::{
+    get_alias, hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
+};
+
+pub async fn recent_pays(
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
+    config: &Config,
+    now: Instant,
+    mypubkey: PublicKey,
+) -> Result<Vec<Pays>, Error> {
+    let config_pays_sec = config.pays * 60 * 60;
+
+    let pays = rpc
+        .call_typed(&ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status: Some(ListpaysStatus::COMPLETE),
+        })
+        .await?
+        .pays;
+    debug!(
+        "List {} pays. Total: {}ms",
+        pays.len(),
+        now.elapsed().as_millis().to_string()
+    );
+
+    let mut table = Vec::new();
+
+    for pay in pays.into_iter() {
+        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config_pays_sec
+            && pay.destination.unwrap() != mypubkey
+        {
+            let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
+            table.push(Pays {
+                completed_at: pay.completed_at.unwrap(),
+                completed_at_str: timestamp_to_localized_datetime_string(
+                    config,
+                    pay.completed_at.unwrap(),
+                )?,
+                payment_hash: pay.payment_hash.to_string(),
+                msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
+                sats_sent: ((Amount::msat(&pay.amount_sent_msat.unwrap()) as f64) / 1_000.0).round()
+                    as u64,
+                destination: if destination == NODE_GOSSIP_MISS {
+                    pay.destination.unwrap().to_string()
+                } else if config.utf8 {
+                    destination
+                } else {
+                    destination.replace(|c: char| !c.is_ascii(), "?")
+                },
+                description: if config.pays_columns.contains(&"description".to_string())
+                    && !config.json
+                {
+                    if let Some(desc) = pay.description {
+                        desc
+                    } else if let Some(b11) = pay.bolt11 {
+                        let invoice = rpc.call_typed(&DecodeRequest { string: b11 }).await?;
+                        invoice.description.unwrap_or_default()
+                    } else {
+                        let b12 = pay
+                            .bolt12
+                            .ok_or_else(|| anyhow!("No description, bolt11 or bolt12 found"))?;
+                        let invoice = rpc.call_typed(&DecodeRequest { string: b12 }).await?;
+                        invoice.offer_description.unwrap_or_default()
+                    }
+                } else {
+                    String::new()
+                },
+                preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
+                msats_requested: Amount::msat(&pay.amount_msat.unwrap()),
+                sats_requested: ((Amount::msat(&pay.amount_msat.unwrap()) as f64) / 1_000.0).round()
+                    as u64,
+                fee_msats: pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat(),
+                fee_sats: (((pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat())
+                    as f64)
+                    / 1_000.0)
+                    .round() as u64,
+            });
+        }
+    }
+    debug!(
+        "Build pays table. Total: {}ms",
+        now.elapsed().as_millis().to_string()
+    );
+    table.sort_by_key(|x| x.completed_at);
+    Ok(table)
+}
+
+pub fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
+    let mut paystable = Table::new(table);
+    config.flow_style.apply(&mut paystable);
+    for head in Pays::FIELD_NAMES_AS_ARRAY {
+        if !config.pays_columns.contains(&head.to_string()) {
+            paystable.with(Disable::column(ByColumnName::new(head)));
+        }
+    }
+    let headers = paystable
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| s.text().to_string())
+        .collect::<Vec<String>>();
+    let records = paystable.get_records_mut();
+    if headers.len() != config.pays_columns.len() {
+        return Err(anyhow!(
+            "Error formatting pays! Length difference detected: {} {}",
+            headers.join(","),
+            config.pays_columns.join(",")
+        ));
+    }
+    sort_columns(records, &headers, &config.pays_columns);
+
+    if config.max_alias_length < 0 {
+        paystable.with(
+            Modify::new(ByColumnName::new("destination")).with(
+                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+            ),
+        );
+    } else {
+        paystable.with(
+            Modify::new(ByColumnName::new("destination"))
+                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
+        );
+    }
+
+    paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+    paystable.with(Modify::new(ByColumnName::new("msats_sent")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("msats_sent").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+
+    paystable.with(Modify::new(ByColumnName::new("sats_requested")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("sats_requested").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+    paystable.with(Modify::new(ByColumnName::new("msats_requested")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("msats_requested").not(Rows::first())).with(Format::content(
+            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+        )),
+    );
+
+    paystable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+    paystable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
+    paystable.with(
+        Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
+            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+        })),
+    );
+
+    if config.max_desc_length < 0 {
+        paystable
+            .with(Modify::new(ByColumnName::new("description")).with(
+                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
+            ));
+    } else {
+        paystable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
+        );
+    }
+
+    paystable.with(Panel::header("pays"));
+    paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
+
+    Ok(paystable.to_string())
+}
