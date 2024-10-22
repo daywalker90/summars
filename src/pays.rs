@@ -120,6 +120,9 @@ pub async fn recent_pays(
         "Build pays table. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
+    if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
+        table = table.split_off(table.len() - (config.pays_limit as usize))
+    }
     table.sort_by_key(|x| x.completed_at);
     Ok(table)
 }
@@ -214,7 +217,15 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         );
     }
 
-    paystable.with(Panel::header(format!("pays (last {}h)", config.pays)));
+    paystable.with(Panel::header(format!(
+        "pays (last {}h, limit: {})",
+        config.pays,
+        if config.pays_limit > 0 {
+            config.pays_limit.to_string()
+        } else {
+            "off".to_string()
+        }
+    )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     if totals.pays_amount_msat.is_some() {

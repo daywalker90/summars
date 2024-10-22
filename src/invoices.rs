@@ -120,6 +120,9 @@ pub async fn recent_invoices(
         "Build invoices table. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
+    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
+        table = table.split_off(table.len() - (config.invoices_limit as usize))
+    }
     table.sort_by_key(|x| x.paid_at);
 
     Ok((
@@ -201,8 +204,13 @@ pub fn format_invoices(
     );
 
     invoicestable.with(Panel::header(format!(
-        "invoices (last {}h)",
-        config.invoices
+        "invoices (last {}h, limit: {})",
+        config.invoices,
+        if config.invoices_limit > 0 {
+            config.invoices_limit.to_string()
+        } else {
+            "off".to_string()
+        }
     )));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
 

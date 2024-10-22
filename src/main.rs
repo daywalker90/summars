@@ -27,14 +27,17 @@ const OPT_COLUMNS: &str = "summars-columns";
 const OPT_SORT_BY: &str = "summars-sort-by";
 const OPT_EXCLUDE_CHANNEL_STATES: &str = "summars-exclude-states";
 const OPT_FORWARDS: &str = "summars-forwards";
+const OPT_FORWARDS_LIMIT: &str = "summars-forwards-limit";
 const OPT_FORWARDS_COLUMNS: &str = "summars-forwards-columns";
 const OPT_FORWARDS_FILTER_AMT: &str = "summars-forwards-filter-amount-msat";
 const OPT_FORWARDS_FILTER_FEE: &str = "summars-forwards-filter-fee-msat";
 const OPT_FORWARDS_ALIAS: &str = "summars-forwards-alias";
 const OPT_PAYS: &str = "summars-pays";
+const OPT_PAYS_LIMIT: &str = "summars-pays-limit";
 const OPT_PAYS_COLUMNS: &str = "summars-pays-columns";
 const OPT_MAX_DESC_LENGTH: &str = "summars-max-description-length";
 const OPT_INVOICES: &str = "summars-invoices";
+const OPT_INVOICES_LIMIT: &str = "summars-invoices-limit";
 const OPT_INVOICES_COLUMNS: &str = "summars-invoices-columns";
 const OPT_MAX_LABEL_LENGTH: &str = "summars-max-label-length";
 const OPT_INVOICES_FILTER_AMT: &str = "summars-invoices-filter-amount-msat";
@@ -81,6 +84,11 @@ async fn main() -> Result<(), anyhow::Error> {
         "Show last x hours of forwards. Default is `0`",
     )
     .dynamic();
+    let opt_forwards_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+        OPT_FORWARDS_LIMIT,
+        "Limit forwards table to the last x entries. Default is `0` (off)",
+    )
+    .dynamic();
     let opt_forwards_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_FORWARDS_COLUMNS,
         "Enabled columns in the forwards table. Available columns are: \
@@ -107,6 +115,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_pays: IntegerConfigOption =
         ConfigOption::new_i64_no_default(OPT_PAYS, "Show last x hours of pays. Default is `0`")
             .dynamic();
+    let opt_pays_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+        OPT_PAYS_LIMIT,
+        "Limit pays table to the last x entries. Default is `0` (off)",
+    )
+    .dynamic();
     let opt_pays_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_PAYS_COLUMNS,
         "Enabled columns in the pays table. Available columns are: \
@@ -123,6 +136,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_invoices: IntegerConfigOption = ConfigOption::new_i64_no_default(
         OPT_INVOICES,
         "Show last x hours of invoices. Default is `0`",
+    )
+    .dynamic();
+    let opt_invoices_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+        OPT_INVOICES_LIMIT,
+        "Limit invoices table to the last x entries. Default is `0` (off)",
     )
     .dynamic();
     let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
@@ -191,14 +209,17 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(opt_sort_by)
         .option(opt_exclude_channel_states)
         .option(opt_forwards)
+        .option(opt_forwards_limit)
         .option(opt_forwards_columns)
         .option(opt_forwards_filter_amt)
         .option(opt_forwards_filter_fee)
         .option(opt_forwards_alias)
         .option(opt_pays)
+        .option(opt_pays_limit)
         .option(opt_pays_columns)
         .option(opt_max_desc_length)
         .option(opt_invoices)
+        .option(opt_invoices_limit)
         .option(opt_invoices_columns)
         .option(opt_max_label_length)
         .option(opt_invoices_filter_amt)

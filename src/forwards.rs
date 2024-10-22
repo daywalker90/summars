@@ -187,6 +187,9 @@ pub async fn recent_forwards(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis().to_string()
     );
+    if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
+        table = table.split_off(table.len() - (config.forwards_limit as usize))
+    }
     table.sort_by_key(|x| x.resolved_time);
     Ok((
         table,
@@ -293,8 +296,13 @@ pub fn format_forwards(
     );
 
     fwtable.with(Panel::header(format!(
-        "forwards (last {}h)",
-        config.forwards
+        "forwards (last {}h, limit: {})",
+        config.forwards,
+        if config.forwards_limit > 0 {
+            config.forwards_limit.to_string()
+        } else {
+            "off".to_string()
+        }
     )));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
 

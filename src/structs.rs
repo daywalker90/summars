@@ -27,14 +27,17 @@ pub struct Config {
     pub sort_by: String,
     pub exclude_channel_states: ExcludeStates,
     pub forwards: u64,
+    pub forwards_limit: u64,
     pub forwards_columns: Vec<String>,
     pub forwards_filter_amt_msat: i64,
     pub forwards_filter_fee_msat: i64,
     pub forwards_alias: bool,
     pub pays: u64,
+    pub pays_limit: u64,
     pub pays_columns: Vec<String>,
     pub max_desc_length: i64,
     pub invoices: u64,
+    pub invoices_limit: u64,
     pub invoices_columns: Vec<String>,
     pub max_label_length: i64,
     pub invoices_filter_amt_msat: i64,
@@ -72,6 +75,7 @@ impl Config {
                 connection_status: None,
             },
             forwards: 0,
+            forwards_limit: 0,
             forwards_columns: Forwards::FIELD_NAMES_AS_ARRAY
                 .into_iter()
                 .filter(|t| {
@@ -86,6 +90,7 @@ impl Config {
             forwards_filter_fee_msat: -1,
             forwards_alias: true,
             pays: 0,
+            pays_limit: 0,
             pays_columns: Pays::FIELD_NAMES_AS_ARRAY
                 .into_iter()
                 .filter(|t| {
@@ -100,6 +105,7 @@ impl Config {
                 .collect::<Vec<String>>(),
             max_desc_length: 30,
             invoices: 0,
+            invoices_limit: 0,
             invoices_columns: Invoices::FIELD_NAMES_AS_ARRAY
                 .into_iter()
                 .filter(|t| t != &"description" && t != &"preimage" && t != &"msats_received")
