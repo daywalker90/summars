@@ -17,10 +17,10 @@ use crate::{
     },
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
     OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
-    OPT_FORWARDS_COLUMNS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_INVOICES,
-    OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_JSON, OPT_LOCALE, OPT_MAX_ALIAS_LENGTH,
-    OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS, OPT_REFRESH_ALIAS,
-    OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    OPT_FORWARDS_COLUMNS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_FORWARDS_LIMIT,
+    OPT_INVOICES, OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_INVOICES_LIMIT, OPT_JSON,
+    OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS,
+    OPT_PAYS_COLUMNS, OPT_PAYS_LIMIT, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -68,11 +68,14 @@ pub async fn setconfig_callback(
 fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value, Error> {
     match name {
         n if n.eq(OPT_FORWARDS)
+            || n.eq(OPT_FORWARDS_LIMIT)
             || n.eq(OPT_FORWARDS_FILTER_AMT)
             || n.eq(OPT_FORWARDS_FILTER_FEE)
             || n.eq(OPT_PAYS)
+            || n.eq(OPT_PAYS_LIMIT)
             || n.eq(OPT_MAX_DESC_LENGTH)
             || n.eq(OPT_INVOICES)
+            || n.eq(OPT_INVOICES_LIMIT)
             || n.eq(OPT_MAX_LABEL_LENGTH)
             || n.eq(OPT_INVOICES_FILTER_AMT)
             || n.eq(OPT_REFRESH_ALIAS)
@@ -290,6 +293,11 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_FORWARDS) => {
                     check_option(config, OPT_FORWARDS, &parse_option(OPT_FORWARDS, value)?)?
                 }
+                name if name.eq(OPT_FORWARDS_LIMIT) => check_option(
+                    config,
+                    OPT_FORWARDS_LIMIT,
+                    &parse_option(OPT_FORWARDS_LIMIT, value)?,
+                )?,
                 name if name.eq(OPT_FORWARDS_COLUMNS) => check_option(
                     config,
                     OPT_FORWARDS_COLUMNS,
@@ -313,6 +321,11 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_PAYS) => {
                     check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?
                 }
+                name if name.eq(OPT_PAYS_LIMIT) => check_option(
+                    config,
+                    OPT_PAYS_LIMIT,
+                    &parse_option(OPT_PAYS_LIMIT, value)?,
+                )?,
                 name if name.eq(OPT_PAYS_COLUMNS) => check_option(
                     config,
                     OPT_PAYS_COLUMNS,
@@ -326,6 +339,11 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 name if name.eq(OPT_INVOICES) => {
                     check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?
                 }
+                name if name.eq(OPT_INVOICES_LIMIT) => check_option(
+                    config,
+                    OPT_INVOICES_LIMIT,
+                    &parse_option(OPT_INVOICES_LIMIT, value)?,
+                )?,
                 name if name.eq(OPT_INVOICES_COLUMNS) => check_option(
                     config,
                     OPT_INVOICES_COLUMNS,
@@ -398,6 +416,9 @@ pub fn get_startup_options(
         if let Some(fws) = plugin.option_str(OPT_FORWARDS)? {
             check_option(&mut config, OPT_FORWARDS, &fws)?;
         };
+        if let Some(fwsl) = plugin.option_str(OPT_FORWARDS_LIMIT)? {
+            check_option(&mut config, OPT_FORWARDS_LIMIT, &fwsl)?;
+        };
         if let Some(cols) = plugin.option_str(OPT_FORWARDS_COLUMNS)? {
             check_option(&mut config, OPT_FORWARDS_COLUMNS, &cols)?;
         };
@@ -413,6 +434,9 @@ pub fn get_startup_options(
         if let Some(pays) = plugin.option_str(OPT_PAYS)? {
             check_option(&mut config, OPT_PAYS, &pays)?;
         };
+        if let Some(paysl) = plugin.option_str(OPT_PAYS_LIMIT)? {
+            check_option(&mut config, OPT_PAYS_LIMIT, &paysl)?;
+        };
         if let Some(cols) = plugin.option_str(OPT_PAYS_COLUMNS)? {
             check_option(&mut config, OPT_PAYS_COLUMNS, &cols)?;
         };
@@ -421,6 +445,9 @@ pub fn get_startup_options(
         };
         if let Some(invs) = plugin.option_str(OPT_INVOICES)? {
             check_option(&mut config, OPT_INVOICES, &invs)?;
+        };
+        if let Some(invsl) = plugin.option_str(OPT_INVOICES_LIMIT)? {
+            check_option(&mut config, OPT_INVOICES_LIMIT, &invsl)?;
         };
         if let Some(cols) = plugin.option_str(OPT_INVOICES_COLUMNS)? {
             check_option(&mut config, OPT_INVOICES_COLUMNS, &cols)?;
@@ -480,6 +507,10 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_FORWARDS) => {
             config.forwards = options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
         }
+        n if n.eq(OPT_FORWARDS_LIMIT) => {
+            config.forwards_limit =
+                options_value_to_u64(OPT_FORWARDS_LIMIT, value.as_i64().unwrap(), 0, false)?;
+        }
         n if n.eq(OPT_FORWARDS_COLUMNS) => {
             config.forwards_columns = validate_columns_input(
                 value.as_str().unwrap(),
@@ -501,6 +532,10 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_PAYS) => {
             config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
         }
+        n if n.eq(OPT_PAYS_LIMIT) => {
+            config.pays_limit =
+                options_value_to_u64(OPT_PAYS_LIMIT, value.as_i64().unwrap(), 0, false)?;
+        }
         n if n.eq(OPT_PAYS_COLUMNS) => {
             config.pays_columns = validate_columns_input(
                 value.as_str().unwrap(),
@@ -514,6 +549,10 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_INVOICES) => {
             config.invoices = options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
+        }
+        n if n.eq(OPT_INVOICES_LIMIT) => {
+            config.invoices_limit =
+                options_value_to_u64(OPT_INVOICES_LIMIT, value.as_i64().unwrap(), 0, false)?;
         }
         n if n.eq(OPT_INVOICES_COLUMNS) => {
             config.invoices_columns = validate_columns_input(

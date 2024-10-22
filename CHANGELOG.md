@@ -5,7 +5,8 @@
 ### Added
 
 - Total values summary for forwards, pays and invoices table at the bottom in normal view and as ``totals`` object in json mode
-- Show timeframe you are currently looking at for each table of forwards, pays and invoices
+- Show timeframe and limits you are currently using for each table of forwards, pays and invoices
+- New options to limit output of forwards, pays and invoices tables: ``summars-forwards-limit``, ``summars-pays-limit`` and ``summars-invoices-limit``. Defaults to 0 (off) and limits the outputs to the last x entries, useful if you are setting high time values for ``summars-forwards``, ``summars-pays`` or ``summars-invoices``
 
 ## [3.4.0] 2024-09-22
 
