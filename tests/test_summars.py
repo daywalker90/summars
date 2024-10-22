@@ -299,7 +299,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     assert "OK" not in result["result"]
 
     result = node.rpc.call("summars", {"summars-forwards": 1})
-    assert "forwards" in result["result"]
+    assert "forwards (last 1h, limit: off)" in result["result"]
 
     result = node.rpc.call(
         "summars",
@@ -331,10 +331,10 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     assert "forwards" in result["result"]
 
     result = node.rpc.call("summars", {"summars-pays": 1})
-    assert "pays" in result["result"]
+    assert "pays (last 1h, limit: off)" in result["result"]
 
     result = node.rpc.call("summars", {"summars-invoices": 1})
-    assert "invoices" in result["result"]
+    assert "invoices (last 1h, limit: off)" in result["result"]
 
     result = node.rpc.call(
         "summars",
@@ -368,6 +368,17 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
     result = node.rpc.call("summars", {"summars-flow-style": "modern"})
     assert "result" in result
+
+    result = node.rpc.call(
+        "summars", {"summars-forwards": 24, "summars-forwards-limit": 100}
+    )
+    assert "forwards (last 24h, limit: 100)" in result["result"]
+    result = node.rpc.call(
+        "summars", {"summars-invoices": 24, "summars-invoices-limit": 100}
+    )
+    assert "invoices (last 24h, limit: 100)" in result["result"]
+    result = node.rpc.call("summars", {"summars-pays": 24, "summars-pays-limit": 100})
+    assert "pays (last 24h, limit: 100)" in result["result"]
 
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
@@ -488,6 +499,29 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-flow-style": 1})
     with pytest.raises(RpcError, match="could not parse Style"):
         node.rpc.call("summars", {"summars-flow-style": "TEST"})
+
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-forwards-limit": -1})
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-pays-limit": -1})
+    with pytest.raises(RpcError, match="must be greater than or equal to |"):
+        node.rpc.call("summars", {"summars-invoices-limit": -1})
+
+    with pytest.raises(
+        RpcError,
+        match="You must set `summars-forwards` for `summars-forwards-limit` to have an effect!",
+    ):
+        node.rpc.call("summars", {"summars-forwards-limit": 1})
+    with pytest.raises(
+        RpcError,
+        match="You must set `summars-pays` for `summars-pays-limit` to have an effect!",
+    ):
+        node.rpc.call("summars", {"summars-pays-limit": 1})
+    with pytest.raises(
+        RpcError,
+        match="You must set `summars-invoices` for `summars-invoices-limit` to have an effect!",
+    ):
+        node.rpc.call("summars", {"summars-invoices-limit": 1})
 
 
 def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
@@ -713,6 +747,14 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
     l3.dev_pay(inv2["bolt11"], dev_use_shadow=False)
 
+    inv3 = l1.dev_invoice(
+        amount_msat=13_000,
+        label="test_pay_routeboost4",
+        description="test_pay_routeboost4",
+        dev_routes=[routel3l2l1],
+    )
+    l3.dev_pay(inv3["bolt11"], dev_use_shadow=False)
+
     result = l1.rpc.call(
         "summars",
         {"summars-forwards": 1, "summars-pays": 1, "summars-invoices": 1},
@@ -720,6 +762,8 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "forwards" in result["result"]
     assert "pays" in result["result"]
     assert "invoices" in result["result"]
+    assert "123 sats_requested 124 sats_sent 1 fee_sats" in result["result"]
+    assert "236 sats_received" in result["result"]
 
     result = l1.rpc.call(
         "summars",
@@ -737,6 +781,10 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "invoices" in result
     assert pay1["payment_hash"] == result["pays"][0]["payment_hash"]
     assert 223_000 == result["invoices"][0]["msats_received"]
+    assert result["totals"]["invoices_amount_received_msat"] == 236000
+    assert result["totals"]["pays_amount_msat"] == 123000
+    assert result["totals"]["pays_amount_sent_msat"] == 124001
+    assert result["totals"]["pays_fees_msat"] == 1001
 
     result = l2.rpc.call(
         "summars",
@@ -747,4 +795,21 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
             "summars-json": True,
         },
     )
-    assert len(result["forwards"]) == 2
+    assert len(result["forwards"]) == 3
+    assert result["totals"]["forwards_amount_in_msat"] == 362003
+    assert result["totals"]["forwards_amount_out_msat"] == 359000
+    assert result["totals"]["forwards_fees_msat"] == 3003
+
+    result = l3.rpc.call(
+        "summars",
+        {
+            "summars-forwards": 1,
+            "summars-pays": 1,
+            "summars-invoices": 1,
+            "summars-json": True,
+        },
+    )
+    assert result["totals"]["invoices_amount_received_msat"] == 123000
+    assert result["totals"]["pays_amount_msat"] == 236000
+    assert result["totals"]["pays_amount_sent_msat"] == 238002
+    assert result["totals"]["pays_fees_msat"] == 2002

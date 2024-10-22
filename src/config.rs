@@ -394,6 +394,8 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
             };
         }
     };
+    check_options_dependencies(config)?;
+
     Ok(())
 }
 
@@ -602,6 +604,31 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_FLOW_STYLE) => config.flow_style = Styles::from_str(value.as_str().unwrap())?,
         n if n.eq(OPT_JSON) => config.json = value.as_bool().unwrap(),
         _ => return Err(anyhow!("Unknown option: {}", name)),
+    }
+    Ok(())
+}
+
+fn check_options_dependencies(config: &Config) -> Result<(), Error> {
+    if config.forwards_limit > 0 && config.forwards == 0 {
+        return Err(anyhow!(
+            "You must set `{}` for `{}` to have an effect!",
+            OPT_FORWARDS,
+            OPT_FORWARDS_LIMIT
+        ));
+    }
+    if config.pays_limit > 0 && config.pays == 0 {
+        return Err(anyhow!(
+            "You must set `{}` for `{}` to have an effect!",
+            OPT_PAYS,
+            OPT_PAYS_LIMIT
+        ));
+    }
+    if config.invoices_limit > 0 && config.invoices == 0 {
+        return Err(anyhow!(
+            "You must set `{}` for `{}` to have an effect!",
+            OPT_INVOICES,
+            OPT_INVOICES_LIMIT
+        ));
     }
     Ok(())
 }
