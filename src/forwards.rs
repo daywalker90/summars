@@ -22,7 +22,7 @@ use tabled::Table;
 use tokio::time::Instant;
 
 use crate::structs::{
-    Config, Forwards, ForwardsFilterStats, PagingIndex, PluginState, NO_ALIAS_SET,
+    Config, Forwards, ForwardsFilterStats, PagingIndex, PluginState, Totals, NO_ALIAS_SET,
 };
 use crate::util::{sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string};
 
@@ -31,6 +31,7 @@ pub async fn recent_forwards(
     peer_channels: &[ListpeerchannelsChannels],
     plugin: Plugin<PluginState>,
     config: &Config,
+    totals: &mut Totals,
     now: Instant,
 ) -> Result<(Vec<Forwards>, ForwardsFilterStats), Error> {
     let now_utc = Utc::now().timestamp() as u64;
@@ -117,6 +118,22 @@ pub async fn recent_forwards(
                 should_filter = true;
             }
 
+            if let Some(in_amt) = &mut totals.forwards_amount_in_msat {
+                *in_amt += forward.in_msat.msat();
+            } else {
+                totals.forwards_amount_in_msat = Some(forward.in_msat.msat())
+            }
+            if let Some(out_amt) = &mut totals.forwards_amount_out_msat {
+                *out_amt += forward.out_msat.unwrap().msat();
+            } else {
+                totals.forwards_amount_out_msat = Some(forward.out_msat.unwrap().msat())
+            }
+            if let Some(fee_amt) = &mut totals.forwards_fees_msat {
+                *fee_amt += forward.fee_msat.unwrap().msat();
+            } else {
+                totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat())
+            }
+
             if should_filter {
                 filter_amt_sum_msat += forward.in_msat.msat();
                 filter_fee_sum_msat += forward.fee_msat.unwrap().msat();
@@ -184,6 +201,7 @@ pub async fn recent_forwards(
 pub fn format_forwards(
     table: Vec<Forwards>,
     config: &Config,
+    totals: &Totals,
     filter_stats: ForwardsFilterStats,
 ) -> Result<String, Error> {
     let mut fwtable = Table::new(table);
@@ -274,7 +292,10 @@ pub fn format_forwards(
         })),
     );
 
-    fwtable.with(Panel::header("forwards"));
+    fwtable.with(Panel::header(format!(
+        "forwards (last {}h)",
+        config.forwards
+    )));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     if filter_stats.filter_count > 0 {
@@ -294,5 +315,25 @@ pub fn format_forwards(
         );
         fwtable.with(Panel::footer(filter_sum_result));
     }
+    if totals.forwards_amount_in_msat.is_some() {
+        let forwards_totals = format!(
+            "\nTotal forwards stats in the last {}h: {} in_sats {} out_sats {} fee_sats",
+            config.forwards,
+            u64_to_sat_string(
+                config,
+                ((totals.forwards_amount_in_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?,
+            u64_to_sat_string(
+                config,
+                ((totals.forwards_amount_out_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?,
+            u64_to_sat_string(
+                config,
+                ((totals.forwards_fees_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?
+        );
+        fwtable.with(Panel::footer(forwards_totals));
+    }
+
     Ok(fwtable.to_string())
 }

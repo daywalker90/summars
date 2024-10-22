@@ -10,7 +10,7 @@ use config::setconfig_callback;
 use log::{info, warn};
 use std::time::Duration;
 use structs::PluginState;
-use tables::summary;
+use summary::summary;
 
 use tasks::summars_refreshalias;
 use tokio::{self, time};
@@ -19,7 +19,7 @@ mod forwards;
 mod invoices;
 mod pays;
 mod structs;
-mod tables;
+mod summary;
 mod tasks;
 mod util;
 

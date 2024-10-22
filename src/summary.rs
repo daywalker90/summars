@@ -26,7 +26,7 @@ use crate::invoices::{format_invoices, recent_invoices};
 use crate::pays::{format_pays, recent_pays};
 use crate::structs::{
     ChannelVisibility, Config, ConnectionStatus, ForwardsFilterStats, GraphCharset,
-    InvoicesFilterStats, PluginState, ShortChannelState, Summary,
+    InvoicesFilterStats, PluginState, ShortChannelState, Summary, Totals,
 };
 use crate::util::{
     at_or_above_version, draw_chans_graph, get_alias, is_active_state, make_channel_flags,
@@ -211,11 +211,28 @@ pub async fn summary(
         now.elapsed().as_millis().to_string()
     );
 
+    let mut totals = Totals {
+        pays_amount_msat: None,
+        pays_amount_sent_msat: None,
+        pays_fees_msat: None,
+        invoices_amount_received_msat: None,
+        forwards_amount_in_msat: None,
+        forwards_amount_out_msat: None,
+        forwards_fees_msat: None,
+    };
+
     let forwards;
     let forwards_filter_stats;
     if config.forwards > 0 {
-        (forwards, forwards_filter_stats) =
-            recent_forwards(&mut rpc, &peer_channels, p.clone(), &config, now).await?;
+        (forwards, forwards_filter_stats) = recent_forwards(
+            &mut rpc,
+            &peer_channels,
+            p.clone(),
+            &config,
+            &mut totals,
+            now,
+        )
+        .await?;
         debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -227,7 +244,7 @@ pub async fn summary(
 
     let pays;
     if config.pays > 0 {
-        pays = recent_pays(&mut rpc, p.clone(), &config, now, getinfo.id).await?;
+        pays = recent_pays(&mut rpc, p.clone(), &config, &mut totals, now, getinfo.id).await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -240,7 +257,7 @@ pub async fn summary(
     let invoices_filter_stats;
     if config.invoices > 0 {
         (invoices, invoices_filter_stats) =
-            recent_invoices(p.clone(), &mut rpc, &config, now).await?;
+            recent_invoices(p.clone(), &mut rpc, &config, &mut totals, now).await?;
         debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis().to_string()
@@ -267,7 +284,8 @@ pub async fn summary(
         "channels":table,
         "forwards":forwards,
         "pays":pays,
-        "invoices":invoices}))
+        "invoices":invoices,
+        "totals":totals}))
     } else {
         let mut sumtable = Table::new(table);
         format_summary(&config, &mut sumtable)?;
@@ -288,15 +306,15 @@ pub async fn summary(
 
         let mut result = sumtable.to_string();
         if config.forwards > 0 {
-            result +=
-                &("\n\n".to_owned() + &format_forwards(forwards, &config, forwards_filter_stats)?);
+            result += &("\n\n".to_owned()
+                + &format_forwards(forwards, &config, &totals, forwards_filter_stats)?);
         }
         if config.pays > 0 {
-            result += &("\n\n".to_owned() + &format_pays(pays, &config)?);
+            result += &("\n\n".to_owned() + &format_pays(pays, &config, &totals)?);
         }
         if config.invoices > 0 {
-            result +=
-                &("\n\n".to_owned() + &format_invoices(invoices, &config, invoices_filter_stats)?);
+            result += &("\n\n".to_owned()
+                + &format_invoices(invoices, &config, &totals, invoices_filter_stats)?);
         }
 
         Ok(json!({"format-hint":"simple","result":format!(

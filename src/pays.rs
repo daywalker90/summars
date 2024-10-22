@@ -18,7 +18,7 @@ use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, Pays, PluginState, NODE_GOSSIP_MISS};
+use crate::structs::{Config, Pays, PluginState, Totals, NODE_GOSSIP_MISS};
 use crate::util::{
     get_alias, hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
 };
@@ -27,6 +27,7 @@ pub async fn recent_pays(
     rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
     config: &Config,
+    totals: &mut Totals,
     now: Instant,
     mypubkey: PublicKey,
 ) -> Result<Vec<Pays>, Error> {
@@ -52,6 +53,24 @@ pub async fn recent_pays(
         if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config_pays_sec
             && pay.destination.unwrap() != mypubkey
         {
+            let fee_msat = pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat();
+
+            if let Some(pay_amt) = &mut totals.pays_amount_msat {
+                *pay_amt += pay.amount_msat.unwrap().msat()
+            } else {
+                totals.pays_amount_msat = Some(pay.amount_msat.unwrap().msat())
+            }
+            if let Some(pay_amt_sent) = &mut totals.pays_amount_sent_msat {
+                *pay_amt_sent += pay.amount_sent_msat.unwrap().msat()
+            } else {
+                totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat())
+            }
+            if let Some(fee_amt) = &mut totals.pays_fees_msat {
+                *fee_amt += fee_msat
+            } else {
+                totals.pays_fees_msat = Some(fee_msat)
+            }
+
             let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
             table.push(Pays {
                 completed_at: pay.completed_at.unwrap(),
@@ -92,11 +111,8 @@ pub async fn recent_pays(
                 msats_requested: Amount::msat(&pay.amount_msat.unwrap()),
                 sats_requested: ((Amount::msat(&pay.amount_msat.unwrap()) as f64) / 1_000.0).round()
                     as u64,
-                fee_msats: pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat(),
-                fee_sats: (((pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat())
-                    as f64)
-                    / 1_000.0)
-                    .round() as u64,
+                fee_msats: fee_msat,
+                fee_sats: ((fee_msat as f64) / 1_000.0).round() as u64,
             });
         }
     }
@@ -108,7 +124,7 @@ pub async fn recent_pays(
     Ok(table)
 }
 
-pub fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
+pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result<String, Error> {
     let mut paystable = Table::new(table);
     config.flow_style.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
@@ -198,8 +214,28 @@ pub fn format_pays(table: Vec<Pays>, config: &Config) -> Result<String, Error> {
         );
     }
 
-    paystable.with(Panel::header("pays"));
+    paystable.with(Panel::header(format!("pays (last {}h)", config.pays)));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
+
+    if totals.pays_amount_msat.is_some() {
+        let pays_totals = format!(
+            "\nTotal pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            config.pays,
+            u64_to_sat_string(
+                config,
+                ((totals.pays_amount_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?,
+            u64_to_sat_string(
+                config,
+                ((totals.pays_amount_sent_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?,
+            u64_to_sat_string(
+                config,
+                ((totals.pays_fees_msat.unwrap() as f64) / 1000.0).round() as u64
+            )?,
+        );
+        paystable.with(Panel::footer(pays_totals));
+    }
 
     Ok(paystable.to_string())
 }
