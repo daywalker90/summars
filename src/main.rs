@@ -93,8 +93,8 @@ async fn main() -> Result<(), anyhow::Error> {
         OPT_FORWARDS_COLUMNS,
         "Enabled columns in the forwards table. Available columns are: \
         `received_time, resolved_time, in_channel, out_channel, in_sats, in_msats, out_sats, \
-        out_msats, fee_sats, fee_msats` Default is `resolved_time, in_channel, out_channel, \
-        in_sats, out_sats, fee_msats`",
+        out_msats, fee_sats, fee_msats, eff_fee_ppm` Default is `resolved_time, in_channel, \
+        out_channel, in_sats, out_sats, fee_msats`",
     )
     .dynamic();
     let opt_forwards_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
