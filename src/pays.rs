@@ -18,7 +18,7 @@ use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, Pays, PluginState, Totals, NODE_GOSSIP_MISS};
+use crate::structs::{Config, PagingIndex, Pays, PluginState, Totals, NODE_GOSSIP_MISS};
 use crate::util::{
     get_alias, hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
 };
@@ -31,13 +31,28 @@ pub async fn recent_pays(
     now: Instant,
     mypubkey: PublicKey,
 ) -> Result<Vec<Pays>, Error> {
+    let now_utc = Utc::now().timestamp() as u64;
     let config_pays_sec = config.pays * 60 * 60;
+    {
+        if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
+            *plugin.state().pay_index.lock() = PagingIndex::new();
+            debug!("pay_index: pays-age increased, resetting index");
+        }
+    }
+    let mut pay_index = plugin.state().pay_index.lock().clone();
+    debug!(
+        "pay_index: start:{} timestamp:{}",
+        pay_index.start, pay_index.timestamp
+    );
 
     let pays = rpc
         .call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
             status: Some(ListpaysStatus::COMPLETE),
+            index: Some(ListpaysIndex::CREATED),
+            start: Some(pay_index.start),
+            limit: None,
         })
         .await?
         .pays;
@@ -46,6 +61,11 @@ pub async fn recent_pays(
         pays.len(),
         now.elapsed().as_millis().to_string()
     );
+
+    pay_index.timestamp = now_utc - config_pays_sec;
+    if let Some(last_pay) = pays.last() {
+        pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
+    }
 
     let mut table = Vec::new();
 
@@ -114,7 +134,16 @@ pub async fn recent_pays(
                 fee_msats: fee_msat,
                 fee_sats: ((fee_msat as f64) / 1_000.0).round() as u64,
             });
+
+            if let Some(c_index) = pay.created_index {
+                if c_index < pay_index.start {
+                    pay_index.start = c_index;
+                }
+            }
         }
+    }
+    if pay_index.start < u64::MAX {
+        *plugin.state().pay_index.lock() = pay_index;
     }
     debug!(
         "Build pays table. Total: {}ms",
