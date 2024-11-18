@@ -1,11 +1,9 @@
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
+use cln_rpc::model::responses::GetinfoResponse;
 use cln_rpc::ClnRpc;
-use cln_rpc::{
-    model::requests::*,
-    primitives::{Amount, PublicKey},
-};
+use cln_rpc::{model::requests::*, primitives::Amount};
 
 use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
@@ -20,7 +18,8 @@ use tokio::time::Instant;
 
 use crate::structs::{Config, PagingIndex, Pays, PluginState, Totals, NODE_GOSSIP_MISS};
 use crate::util::{
-    get_alias, hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
+    at_or_above_version, get_alias, hex_encode, sort_columns,
+    timestamp_to_localized_datetime_string, u64_to_sat_string,
 };
 
 pub async fn recent_pays(
@@ -29,7 +28,7 @@ pub async fn recent_pays(
     config: &Config,
     totals: &mut Totals,
     now: Instant,
-    mypubkey: PublicKey,
+    getinfo: &GetinfoResponse,
 ) -> Result<Vec<Pays>, Error> {
     let now_utc = Utc::now().timestamp() as u64;
     let config_pays_sec = config.pays * 60 * 60;
@@ -45,8 +44,8 @@ pub async fn recent_pays(
         pay_index.start, pay_index.timestamp
     );
 
-    let pays = rpc
-        .call_typed(&ListpaysRequest {
+    let pays = if at_or_above_version(&getinfo.version, "24.11")? {
+        rpc.call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
             status: Some(ListpaysStatus::COMPLETE),
@@ -55,7 +54,20 @@ pub async fn recent_pays(
             limit: None,
         })
         .await?
-        .pays;
+        .pays
+    } else {
+        rpc.call_typed(&ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status: Some(ListpaysStatus::COMPLETE),
+            index: None,
+            start: None,
+            limit: None,
+        })
+        .await?
+        .pays
+    };
+
     debug!(
         "List {} pays. Total: {}ms",
         pays.len(),
@@ -71,7 +83,7 @@ pub async fn recent_pays(
 
     for pay in pays.into_iter() {
         if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config_pays_sec
-            && pay.destination.unwrap() != mypubkey
+            && pay.destination.unwrap() != getinfo.id
         {
             let fee_msat = pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat();
 
