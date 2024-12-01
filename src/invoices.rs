@@ -10,7 +10,7 @@ use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 
 use tabled::Table;
 use tokio::time::Instant;
@@ -144,7 +144,7 @@ pub fn format_invoices(
     config.flow_style.apply(&mut invoicestable);
     for head in Invoices::FIELD_NAMES_AS_ARRAY {
         if !config.invoices_columns.contains(&head.to_string()) {
-            invoicestable.with(Disable::column(ByColumnName::new(head)));
+            invoicestable.with(Remove::column(ByColumnName::new(head)));
         }
     }
     let headers = invoicestable

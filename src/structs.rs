@@ -20,6 +20,7 @@ use tabled::{settings::Style, Table, Tabled};
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
+pub const MISSING_VALUE: &str = "N/A";
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -295,19 +296,35 @@ pub struct Pays {
     #[field_names_as_array(skip)]
     pub completed_at_str: String,
     pub payment_hash: String,
-    pub msats_requested: u64,
+    #[tabled(display_with = "fmt_option")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub msats_requested: Option<u64>,
     #[serde(skip_serializing)]
-    pub sats_requested: u64,
+    #[tabled(display_with = "fmt_option")]
+    pub sats_requested: Option<u64>,
     pub msats_sent: u64,
     #[serde(skip_serializing)]
     pub sats_sent: u64,
-    pub fee_msats: u64,
+    #[tabled(display_with = "fmt_option")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fee_msats: Option<u64>,
+    #[tabled(display_with = "fmt_option")]
     #[serde(skip_serializing)]
-    pub fee_sats: u64,
-    pub destination: String,
-    #[serde(skip_serializing)]
-    pub description: String,
+    pub fee_sats: Option<u64>,
+    #[tabled(display_with = "fmt_option")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    #[tabled(display_with = "fmt_option")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     pub preimage: String,
+}
+
+fn fmt_option<T: Display>(o: &Option<T>) -> String {
+    match o {
+        Some(s) => format!("{}", s),
+        None => MISSING_VALUE.to_string(),
+    }
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
@@ -368,7 +385,7 @@ pub enum Styles {
     Empty,
 }
 impl Styles {
-    pub fn apply<'a>(&'a self, table: &'a mut Table) -> &mut Table {
+    pub fn apply<'a>(&'a self, table: &'a mut Table) -> &'a mut Table {
         match self {
             Styles::Ascii => table.with(Style::ascii()),
             Styles::Modern => table.with(Style::modern()),

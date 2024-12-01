@@ -11,12 +11,14 @@ use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, PagingIndex, Pays, PluginState, Totals, NODE_GOSSIP_MISS};
+use crate::structs::{
+    Config, PagingIndex, Pays, PluginState, Totals, MISSING_VALUE, NODE_GOSSIP_MISS,
+};
 use crate::util::{
     at_or_above_version, get_alias, hex_encode, sort_columns,
     timestamp_to_localized_datetime_string, u64_to_sat_string,
@@ -39,12 +41,12 @@ pub async fn recent_pays(
         }
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
-    debug!(
-        "pay_index: start:{} timestamp:{}",
-        pay_index.start, pay_index.timestamp
-    );
 
     let pays = if at_or_above_version(&getinfo.version, "24.11")? {
+        debug!(
+            "pay_index: start:{} timestamp:{}",
+            pay_index.start, pay_index.timestamp
+        );
         rpc.call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
@@ -81,76 +83,111 @@ pub async fn recent_pays(
 
     let mut table = Vec::new();
 
+    let description_wanted =
+        config.pays_columns.contains(&"description".to_string()) || config.json;
+    let destination_wanted =
+        config.pays_columns.contains(&"destination".to_string()) || config.json;
+
     for pay in pays.into_iter() {
-        if pay.completed_at.unwrap() > Utc::now().timestamp() as u64 - config_pays_sec
-            && pay.destination.unwrap() != getinfo.id
+        if pay.completed_at.unwrap() <= Utc::now().timestamp() as u64 - config_pays_sec {
+            continue;
+        }
+        if let Some(dest) = pay.destination {
+            if dest == getinfo.id {
+                continue;
+            }
+        }
+
+        let mut fee_msats = None;
+        let mut fee_sats = None;
+        let mut msats_requested = pay.amount_msat.map(|a| a.msat());
+        let mut sats_requested = None;
+        let mut description = pay.description;
+        let mut destination = pay.destination;
+        let mut destination_alias = None;
+
+        if msats_requested.is_none()
+            || (description.is_none() && description_wanted)
+            || (destination.is_none() && destination_wanted)
         {
-            let fee_msat = pay.amount_sent_msat.unwrap().msat() - pay.amount_msat.unwrap().msat();
+            if let Some(b11) = pay.bolt11 {
+                if let Ok(invoice) = rpc.call_typed(&DecodeRequest { string: b11 }).await {
+                    description = invoice.description;
+                    msats_requested = invoice.amount_msat.map(|a| a.msat());
+                    destination = invoice.payee;
+                }
+            } else if let Some(b12) = pay.bolt12 {
+                if let Ok(invoice) = rpc.call_typed(&DecodeRequest { string: b12 }).await {
+                    description = invoice.offer_description;
+                    msats_requested = invoice.invoice_amount_msat.map(|a| a.msat());
+                    destination = invoice.invoice_node_id;
+                }
+            }
+        }
+
+        if let Some(dest) = destination {
+            if dest == getinfo.id {
+                continue;
+            }
+            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?)
+        }
+
+        if let Some(amount_msat) = msats_requested {
+            fee_msats = Some(pay.amount_sent_msat.unwrap().msat() - amount_msat);
+            fee_sats = Some(((fee_msats.unwrap() as f64) / 1_000.0).round() as u64);
+            sats_requested = Some(((amount_msat as f64) / 1_000.0).round() as u64);
+
+            if let Some(fee_amt) = &mut totals.pays_fees_msat {
+                *fee_amt += fee_msats.unwrap()
+            } else {
+                totals.pays_fees_msat = fee_msats
+            }
 
             if let Some(pay_amt) = &mut totals.pays_amount_msat {
-                *pay_amt += pay.amount_msat.unwrap().msat()
+                *pay_amt += amount_msat
             } else {
-                totals.pays_amount_msat = Some(pay.amount_msat.unwrap().msat())
+                totals.pays_amount_msat = Some(amount_msat)
             }
-            if let Some(pay_amt_sent) = &mut totals.pays_amount_sent_msat {
-                *pay_amt_sent += pay.amount_sent_msat.unwrap().msat()
-            } else {
-                totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat())
-            }
-            if let Some(fee_amt) = &mut totals.pays_fees_msat {
-                *fee_amt += fee_msat
-            } else {
-                totals.pays_fees_msat = Some(fee_msat)
-            }
+        };
 
-            let destination = get_alias(rpc, plugin.clone(), pay.destination.unwrap()).await?;
-            table.push(Pays {
-                completed_at: pay.completed_at.unwrap(),
-                completed_at_str: timestamp_to_localized_datetime_string(
-                    config,
-                    pay.completed_at.unwrap(),
-                )?,
-                payment_hash: pay.payment_hash.to_string(),
-                msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-                sats_sent: ((Amount::msat(&pay.amount_sent_msat.unwrap()) as f64) / 1_000.0).round()
-                    as u64,
-                destination: if destination == NODE_GOSSIP_MISS {
-                    pay.destination.unwrap().to_string()
+        if let Some(pay_amt_sent) = &mut totals.pays_amount_sent_msat {
+            *pay_amt_sent += pay.amount_sent_msat.unwrap().msat()
+        } else {
+            totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat())
+        }
+
+        table.push(Pays {
+            completed_at: pay.completed_at.unwrap(),
+            completed_at_str: timestamp_to_localized_datetime_string(
+                config,
+                pay.completed_at.unwrap(),
+            )?,
+            payment_hash: pay.payment_hash.to_string(),
+            msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
+            sats_sent: ((Amount::msat(&pay.amount_sent_msat.unwrap()) as f64) / 1_000.0).round()
+                as u64,
+            destination: if let Some(dest) = &destination_alias {
+                if dest == NODE_GOSSIP_MISS {
+                    Some(destination.unwrap().to_string())
                 } else if config.utf8 {
-                    destination
+                    destination_alias
                 } else {
-                    destination.replace(|c: char| !c.is_ascii(), "?")
-                },
-                description: if config.pays_columns.contains(&"description".to_string())
-                    && !config.json
-                {
-                    if let Some(desc) = pay.description {
-                        desc
-                    } else if let Some(b11) = pay.bolt11 {
-                        let invoice = rpc.call_typed(&DecodeRequest { string: b11 }).await?;
-                        invoice.description.unwrap_or_default()
-                    } else {
-                        let b12 = pay
-                            .bolt12
-                            .ok_or_else(|| anyhow!("No description, bolt11 or bolt12 found"))?;
-                        let invoice = rpc.call_typed(&DecodeRequest { string: b12 }).await?;
-                        invoice.offer_description.unwrap_or_default()
-                    }
-                } else {
-                    String::new()
-                },
-                preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
-                msats_requested: Amount::msat(&pay.amount_msat.unwrap()),
-                sats_requested: ((Amount::msat(&pay.amount_msat.unwrap()) as f64) / 1_000.0).round()
-                    as u64,
-                fee_msats: fee_msat,
-                fee_sats: ((fee_msat as f64) / 1_000.0).round() as u64,
-            });
-
-            if let Some(c_index) = pay.created_index {
-                if c_index < pay_index.start {
-                    pay_index.start = c_index;
+                    Some(dest.replace(|c: char| !c.is_ascii(), "?"))
                 }
+            } else {
+                None
+            },
+            description,
+            preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
+            msats_requested,
+            sats_requested,
+            fee_msats,
+            fee_sats,
+        });
+
+        if let Some(c_index) = pay.created_index {
+            if c_index < pay_index.start {
+                pay_index.start = c_index;
             }
         }
     }
@@ -173,7 +210,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     config.flow_style.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
         if !config.pays_columns.contains(&head.to_string()) {
-            paystable.with(Disable::column(ByColumnName::new(head)));
+            paystable.with(Remove::column(ByColumnName::new(head)));
         }
     }
     let headers = paystable
@@ -223,26 +260,46 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     paystable.with(Modify::new(ByColumnName::new("sats_requested")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("sats_requested").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+            |s| {
+                if s.eq_ignore_ascii_case(MISSING_VALUE) {
+                    s.to_string()
+                } else {
+                    u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+                }
+            },
         )),
     );
     paystable.with(Modify::new(ByColumnName::new("msats_requested")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("msats_requested").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
+            |s| {
+                if s.eq_ignore_ascii_case(MISSING_VALUE) {
+                    s.to_string()
+                } else {
+                    u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+                }
+            },
         )),
     );
 
     paystable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+            if s.eq_ignore_ascii_case(MISSING_VALUE) {
+                s.to_string()
+            } else {
+                u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+            }
         })),
     );
     paystable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
     paystable.with(
         Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+            if s.eq_ignore_ascii_case(MISSING_VALUE) {
+                s.to_string()
+            } else {
+                u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+            }
         })),
     );
 
@@ -269,22 +326,24 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
-    if totals.pays_amount_msat.is_some() {
+    if totals.pays_amount_sent_msat.is_some() {
         let pays_totals = format!(
             "\nTotal pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
             config.pays,
-            u64_to_sat_string(
-                config,
-                ((totals.pays_amount_msat.unwrap() as f64) / 1000.0).round() as u64
-            )?,
+            if let Some(amt) = totals.pays_amount_msat {
+                u64_to_sat_string(config, ((amt as f64) / 1000.0).round() as u64)?
+            } else {
+                MISSING_VALUE.to_string()
+            },
             u64_to_sat_string(
                 config,
                 ((totals.pays_amount_sent_msat.unwrap() as f64) / 1000.0).round() as u64
             )?,
-            u64_to_sat_string(
-                config,
-                ((totals.pays_fees_msat.unwrap() as f64) / 1000.0).round() as u64
-            )?,
+            if let Some(fee) = totals.pays_fees_msat {
+                u64_to_sat_string(config, ((fee as f64) / 1000.0).round() as u64)?
+            } else {
+                MISSING_VALUE.to_string()
+            },
         );
         paystable.with(Panel::footer(pays_totals));
     }

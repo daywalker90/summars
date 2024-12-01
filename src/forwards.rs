@@ -16,7 +16,7 @@ use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::ByColumnName;
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 
 use tabled::Table;
 use tokio::time::Instant;
@@ -218,7 +218,7 @@ pub fn format_forwards(
     config.flow_style.apply(&mut fwtable);
     for head in Forwards::FIELD_NAMES_AS_ARRAY {
         if !config.forwards_columns.contains(&head.to_string()) {
-            fwtable.with(Disable::column(ByColumnName::new(head)));
+            fwtable.with(Remove::column(ByColumnName::new(head)));
         }
     }
     let headers = fwtable

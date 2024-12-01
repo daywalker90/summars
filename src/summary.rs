@@ -13,7 +13,7 @@ use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::{ByColumnName, Locator};
 use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Disable, Format, Modify, Panel, Width};
+use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 
 use serde_json::json;
 
@@ -623,9 +623,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.apply(sumtable);
     for head in Summary::FIELD_NAMES_AS_ARRAY {
         if !config.columns.contains(&head.to_string()) {
-            sumtable.with(Disable::column(ByColumnName::new(
-                head.to_ascii_uppercase(),
-            )));
+            sumtable.with(Remove::column(ByColumnName::new(head.to_ascii_uppercase())));
         }
     }
 
