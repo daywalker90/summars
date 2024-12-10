@@ -1,13 +1,16 @@
 # Changelog
 
-## [4.0.0] Unreleased
+## [4.0.0] 2024-12-10
+
+### Added
+
+- pays: CLN 24.11+ will use newly added indexing in ``listpays`` to speed up building the pays table on subsequent summars calls
 
 ### Changed
 
 - pays: summars can't guarantee that it can find/calculate ``sats_requested``,``msats_requested`` and therefore also can't guarantee ``fee_sats`` and ``fee_msats``. If this is the case these will be shown as ``N/A`` and not included in the totals summary at the end and in json mode the fields will be omitted
 - pays: summars can't guarantee that it can find the ``destination``. If this is the case it will be shown as ``N/A`` and in json mode this field will be omitted
 - pays: description field now included in json output mode if a description was found
-- pays: CLN 24.11+ will use newly added indexing in ``listpays`` to speed up building the pays table on subsequent summars calls
 
 ### Fixed
 
