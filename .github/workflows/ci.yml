@@ -170,6 +170,13 @@ jobs:
           if [ -d "proto" ]; then
             python -m grpc_tools.protoc --proto_path="proto" --python_out="tests" --grpc_python_out="tests" proto/*.proto
           fi
+
+          url=$(curl -s https://api.github.com/repos/daywalker90/holdinvoice/releases/latest \
+            | ''.assets[] | select(.name | endswith("x86_64-linux-gnu.tar.gz")) | .browser_download_url' \
+            | tr -d '\"')
+          wget $url
+          tar -xvf ${url##*/} -C tests
+
           cargo build
         fi
 
