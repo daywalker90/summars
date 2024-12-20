@@ -872,6 +872,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
     )
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert hold_inv["payment_hash"] not in result["result"]
+    result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
+    assert len(result["forwards"]) == 0
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert hold_inv["payment_hash"] not in result["result"]
 
@@ -887,6 +889,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] not in result["result"]
+    result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
+    assert len(result["forwards"]) == 1
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] not in result["result"]
@@ -901,6 +905,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] in result["result"]
+    result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
+    assert len(result["forwards"]) == 2
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] in result["result"]
@@ -918,6 +924,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
     assert new_inv["payment_hash"] in result["result"]
     assert new_inv2["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] in result["result"]
+    result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
+    assert len(result["forwards"]) == 3
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert new_inv2["payment_hash"] in result["result"]

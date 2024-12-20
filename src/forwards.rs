@@ -61,6 +61,17 @@ pub async fn recent_forwards(
         })
         .await?
         .forwards;
+    let offered_forwards = rpc
+        .call_typed(&ListforwardsRequest {
+            status: Some(ListforwardsStatus::OFFERED),
+            in_channel: None,
+            out_channel: None,
+            index: Some(ListforwardsIndex::CREATED),
+            start: Some(fw_index.start),
+            limit: None,
+        })
+        .await?
+        .forwards;
     debug!(
         "List {} forwards. Total: {}ms",
         forwards.len(),
@@ -70,6 +81,14 @@ pub async fn recent_forwards(
     fw_index.timestamp = now_utc - config_forwards_sec;
     if let Some(last_fw) = forwards.last() {
         fw_index.start = last_fw.created_index.unwrap_or(u64::MAX);
+    }
+
+    for forward in &offered_forwards {
+        if let Some(c_index) = forward.created_index {
+            if c_index < fw_index.start {
+                fw_index.start = c_index;
+            }
+        }
     }
 
     let chanmap: BTreeMap<ShortChannelId, ListpeerchannelsChannels> = peer_channels
