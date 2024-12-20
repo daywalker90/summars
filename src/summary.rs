@@ -244,7 +244,16 @@ pub async fn summary(
 
     let pays;
     if config.pays > 0 {
-        pays = recent_pays(&mut rpc, p.clone(), &config, &mut totals, now, &getinfo).await?;
+        pays = recent_pays(
+            &mut rpc,
+            p.clone(),
+            &config,
+            &peer_channels,
+            &mut totals,
+            now,
+            &getinfo,
+        )
+        .await?;
         debug!(
             "End of pays table. Total: {}ms",
             now.elapsed().as_millis().to_string()

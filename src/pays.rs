@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
-use cln_rpc::model::responses::GetinfoResponse;
+use cln_rpc::model::responses::{GetinfoResponse, ListpeerchannelsChannels};
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, primitives::Amount};
 
@@ -28,6 +30,7 @@ pub async fn recent_pays(
     rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
     config: &Config,
+    peer_channels: &[ListpeerchannelsChannels],
     totals: &mut Totals,
     now: Instant,
     getinfo: &GetinfoResponse,
@@ -42,11 +45,31 @@ pub async fn recent_pays(
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
 
+    let mut pending_pays = Vec::new();
+    let mut pending_hashes = HashSet::new();
     let pays = if at_or_above_version(&getinfo.version, "24.11")? {
         debug!(
             "pay_index: start:{} timestamp:{}",
             pay_index.start, pay_index.timestamp
         );
+        pending_pays = rpc
+            .call_typed(&ListpaysRequest {
+                bolt11: None,
+                payment_hash: None,
+                status: Some(ListpaysStatus::PENDING),
+                index: Some(ListpaysIndex::CREATED),
+                start: Some(pay_index.start),
+                limit: None,
+            })
+            .await?
+            .pays;
+        for chan in peer_channels {
+            if let Some(htlcs) = &chan.htlcs {
+                for htlc in htlcs {
+                    pending_hashes.insert(htlc.payment_hash);
+                }
+            }
+        }
         rpc.call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
@@ -79,6 +102,22 @@ pub async fn recent_pays(
     pay_index.timestamp = now_utc - config_pays_sec;
     if let Some(last_pay) = pays.last() {
         pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
+    }
+
+    for pay in &pending_pays {
+        if let Some(dest) = pay.destination {
+            if dest == getinfo.id {
+                continue;
+            }
+        }
+        if !pending_hashes.contains(&pay.payment_hash) {
+            continue;
+        }
+        if let Some(c_index) = pay.created_index {
+            if c_index < pay_index.start {
+                pay_index.start = c_index;
+            }
+        }
     }
 
     let mut table = Vec::new();
