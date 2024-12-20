@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import os
 
 import pytest
 from pyln.client import RpcError
@@ -814,3 +815,75 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result["totals"]["pays_amount_msat"] == 236000
     assert result["totals"]["pays_amount_sent_msat"] == 238002
     assert result["totals"]["pays_fees_msat"] == 2002
+
+
+def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
+    l1, l2 = node_factory.get_nodes(
+        2,
+        opts={
+            "log-level": "debug",
+            "plugin": [
+                get_plugin,
+                os.path.join(os.getcwd(), "tests/holdinvoice"),
+            ],
+        },
+    )
+    l1.fundwallet(10_000_000)
+    l1.rpc.fundchannel(
+        l2.info["id"] + "@localhost:" + str(l2.port),
+        1_000_000,
+        push_msat=500_000_000,
+        mindepth=1,
+    )
+    bitcoind.generate_block(6)
+    sync_blockheight(bitcoind, [l1, l2])
+
+    cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0]["short_channel_id"]
+    l2.wait_channel_active(cl1)
+
+    hold_inv = l2.rpc.call(
+        "holdinvoice",
+        {
+            "amount_msat": 1_000,
+            "description": "hold_inv1",
+            "label": "hold_inv1",
+            "cltv": 144,
+        },
+    )
+    assert "payment_hash" in hold_inv
+    hold_route = l1.rpc.getroute(l2.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
+        "route"
+    ]
+    l1.rpc.sendpay(
+        hold_route, hold_inv["payment_hash"], payment_secret=hold_inv["payment_secret"]
+    )
+    wait_for(
+        lambda: l2.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
+        == "ACCEPTED"
+    )
+    result = l1.rpc.call("summars", {"summars-pays": 1})
+    assert hold_inv["payment_hash"] not in result
+
+    new_inv = l2.rpc.invoice(1_000, "new_inv", "new_inv")
+    new_route = l1.rpc.getroute(l2.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
+        "route"
+    ]
+    l1.rpc.sendpay(
+        new_route, new_inv["payment_hash"], payment_secret=new_inv["payment_secret"]
+    )
+    l1.rpc.waitsendpay(new_inv["payment_hash"], 30)
+
+    result = l1.rpc.call("summars", {"summars-pays": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] not in result["result"]
+
+    result_settle = l2.rpc.call(
+        "holdinvoicesettle", {"payment_hash": hold_inv["payment_hash"]}
+    )
+    assert result_settle["state"] == "SETTLED"
+
+    l1.rpc.waitsendpay(hold_inv["payment_hash"], 30)
+
+    result = l1.rpc.call("summars", {"summars-pays": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] in result["result"]
