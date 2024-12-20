@@ -172,7 +172,7 @@ jobs:
           fi
 
           url=$(curl -s https://api.github.com/repos/daywalker90/holdinvoice/releases/latest \
-            | '.assets[] | select(.name | endswith("x86_64-linux-gnu.tar.gz")) | .browser_download_url' \
+            | jq '.assets[] | select(.name | endswith("x86_64-linux-gnu.tar.gz")) | .browser_download_url' \
             | tr -d '\"')
           wget $url
           tar -xvf ${url##*/} -C tests
