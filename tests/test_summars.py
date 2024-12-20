@@ -817,9 +817,9 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result["totals"]["pays_fees_msat"] == 2002
 
 
-def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
-    l1, l2 = node_factory.get_nodes(
-        2,
+def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
+    l1, l2, l3 = node_factory.get_nodes(
+        3,
         opts={
             "log-level": "debug",
             "plugin": [
@@ -829,19 +829,28 @@ def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
         },
     )
     l1.fundwallet(10_000_000)
+    l2.fundwallet(10_000_000)
     l1.rpc.fundchannel(
         l2.info["id"] + "@localhost:" + str(l2.port),
         1_000_000,
         push_msat=500_000_000,
         mindepth=1,
     )
+    l2.rpc.fundchannel(
+        l3.info["id"] + "@localhost:" + str(l3.port),
+        1_000_000,
+        push_msat=500_000_000,
+        mindepth=1,
+    )
     bitcoind.generate_block(6)
-    sync_blockheight(bitcoind, [l1, l2])
+    sync_blockheight(bitcoind, [l1, l2, l3])
 
     cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0]["short_channel_id"]
+    cl2 = l3.rpc.listpeerchannels(l2.info["id"])["channels"][0]["short_channel_id"]
     l2.wait_channel_active(cl1)
+    l3.wait_channel_active(cl2)
 
-    hold_inv = l2.rpc.call(
+    hold_inv = l3.rpc.call(
         "holdinvoice",
         {
             "amount_msat": 1_000,
@@ -851,21 +860,23 @@ def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
         },
     )
     assert "payment_hash" in hold_inv
-    hold_route = l1.rpc.getroute(l2.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
+    hold_route = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
         "route"
     ]
     l1.rpc.sendpay(
         hold_route, hold_inv["payment_hash"], payment_secret=hold_inv["payment_secret"]
     )
     wait_for(
-        lambda: l2.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
+        lambda: l3.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
         == "ACCEPTED"
     )
     result = l1.rpc.call("summars", {"summars-pays": 1})
-    assert hold_inv["payment_hash"] not in result
+    assert hold_inv["payment_hash"] not in result["result"]
+    result = l3.rpc.call("summars", {"summars-invoices": 1})
+    assert hold_inv["payment_hash"] not in result["result"]
 
-    new_inv = l2.rpc.invoice(1_000, "new_inv", "new_inv")
-    new_route = l1.rpc.getroute(l2.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
+    new_inv = l3.rpc.invoice(1_000, "new_inv", "new_inv")
+    new_route = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
         "route"
     ]
     l1.rpc.sendpay(
@@ -876,8 +887,11 @@ def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] not in result["result"]
+    result = l3.rpc.call("summars", {"summars-invoices": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] not in result["result"]
 
-    result_settle = l2.rpc.call(
+    result_settle = l3.rpc.call(
         "holdinvoicesettle", {"payment_hash": hold_inv["payment_hash"]}
     )
     assert result_settle["state"] == "SETTLED"
@@ -886,4 +900,25 @@ def test_pay_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] in result["result"]
+    result = l3.rpc.call("summars", {"summars-invoices": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] in result["result"]
+
+    new_inv2 = l3.rpc.invoice(1_000, "new_inv2", "new_inv2")
+    new_route2 = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
+        "route"
+    ]
+    l1.rpc.sendpay(
+        new_route2, new_inv2["payment_hash"], payment_secret=new_inv2["payment_secret"]
+    )
+    l1.rpc.waitsendpay(new_inv2["payment_hash"], 30)
+
+    result = l1.rpc.call("summars", {"summars-pays": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert new_inv2["payment_hash"] in result["result"]
+    assert hold_inv["payment_hash"] in result["result"]
+    result = l3.rpc.call("summars", {"summars-invoices": 1})
+    assert new_inv["payment_hash"] in result["result"]
+    assert new_inv2["payment_hash"] in result["result"]
     assert hold_inv["payment_hash"] in result["result"]

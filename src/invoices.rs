@@ -68,7 +68,7 @@ pub async fn recent_invoices(
     let mut filter_amt_sum_msat = 0;
 
     for invoice in invoices.into_iter() {
-        if let ListinvoicesInvoicesStatus::PAID = invoice.status {
+        if ListinvoicesInvoicesStatus::PAID == invoice.status {
             let inv_paid_at = if let Some(p_at) = invoice.paid_at {
                 p_at
             } else {
@@ -109,6 +109,12 @@ pub async fn recent_invoices(
                     if c_index < inv_index.start {
                         inv_index.start = c_index;
                     }
+                }
+            }
+        } else if ListinvoicesInvoicesStatus::UNPAID == invoice.status {
+            if let Some(c_index) = invoice.created_index {
+                if c_index < inv_index.start {
+                    inv_index.start = c_index;
                 }
             }
         }
