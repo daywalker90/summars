@@ -68,6 +68,29 @@ else
     exit 1
 fi
 
+# Need holdinvoice for some tests
+HOLDINVOICE_LATEST_RELEASE=$(curl -s "https://api.github.com/repos/daywalker90/holdinvoice/releases/latest")
+HOLDINVOICE_FILE_URL=$(echo "$HOLDINVOICE_LATEST_RELEASE" | jq -r ".assets[] | select(.name | endswith(\"$platform_file_end\")) | .browser_download_url")
+
+if [ -z "$HOLDINVOICE_FILE_URL" ]; then
+  echo "No holdinvoice file found matching key: $platform_file_end"
+  exit 1
+fi
+
+holdinvoice_archive=holdinvoice-$platform_file_end
+
+if ! curl -L "$HOLDINVOICE_FILE_URL" -o "$script_dir/$holdinvoice_archive"; then
+    echo "Error downloading the file from $HOLDINVOICE_FILE_URL" >&2
+    exit 1
+fi
+
+
+if ! tar -xzvf "$script_dir/$holdinvoice_archive" -C "$script_dir"; then
+    echo "Error extracting the contents of $holdinvoice_archive" >&2
+    exit 1
+fi
+
+
 # Function to check if a Python package is installed
 check_package() {
     python_exec="$1"
