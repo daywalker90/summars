@@ -847,7 +847,9 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
 
     cl1 = l2.rpc.listpeerchannels(l1.info["id"])["channels"][0]["short_channel_id"]
     cl2 = l3.rpc.listpeerchannels(l2.info["id"])["channels"][0]["short_channel_id"]
+    l1.wait_channel_active(cl1)
     l2.wait_channel_active(cl1)
+    l2.wait_channel_active(cl2)
     l3.wait_channel_active(cl2)
 
     hold_inv = l3.rpc.call(
