@@ -1,5 +1,13 @@
 # Changelog
 
+## [4.0.1] 2024-12-20
+
+### Fixed
+
+- pays: CLN 24.11+: payments that were started (but not yet finished) earlier than the first payment shown by summars would not show up once paid
+- invoices: invoices created before the first invoice shown by summars would not show up once paid
+- forwards: offered and not yet settled forwards that were created before the first forward shown by summars would not show up once settled
+
 ## [4.0.0] 2024-12-10
 
 ### Added
