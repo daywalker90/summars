@@ -391,12 +391,12 @@ async fn chan_to_summary(
                     in_ppm = rem.fee_proportional_millionths.to_string();
                 }
             }
-        } else {
+        } else if let Some(scid) = chan.short_channel_id {
             let mut rpc = ClnRpc::new(&rpc_path).await?;
             let mut chan_gossip = rpc
                 .call_typed(&ListchannelsRequest {
                     destination: None,
-                    short_channel_id: Some(chan.short_channel_id.unwrap()),
+                    short_channel_id: Some(scid),
                     source: None,
                 })
                 .await?
