@@ -7,10 +7,7 @@ use std::{
 
 use anyhow::anyhow;
 use cln_plugin::Error;
-use cln_rpc::{
-    model::responses::ListpeerchannelsChannelsState,
-    primitives::{PublicKey, ShortChannelId},
-};
+use cln_rpc::primitives::{ChannelState, PublicKey, ShortChannelId};
 use icu_locid::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -296,25 +293,25 @@ pub struct Pays {
     #[field_names_as_array(skip)]
     pub completed_at_str: String,
     pub payment_hash: String,
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub msats_requested: Option<u64>,
     #[serde(skip_serializing)]
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     pub sats_requested: Option<u64>,
     pub msats_sent: u64,
     #[serde(skip_serializing)]
     pub sats_sent: u64,
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_msats: Option<u64>,
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing)]
     pub fee_sats: Option<u64>,
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination: Option<String>,
-    #[tabled(display_with = "fmt_option")]
+    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub preimage: String,
@@ -424,26 +421,26 @@ impl FromStr for Styles {
 }
 
 #[derive(Copy, Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub struct ShortChannelState(pub ListpeerchannelsChannelsState);
+pub struct ShortChannelState(pub ChannelState);
 impl Display for ShortChannelState {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self.0 {
-            ListpeerchannelsChannelsState::OPENINGD => write!(f, "OPENING"),
-            ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN => write!(f, "AWAIT_LOCK"),
-            ListpeerchannelsChannelsState::CHANNELD_NORMAL => write!(f, "OK"),
-            ListpeerchannelsChannelsState::CHANNELD_SHUTTING_DOWN => write!(f, "SHUTTING_DOWN"),
-            ListpeerchannelsChannelsState::CLOSINGD_SIGEXCHANGE => write!(f, "CLOSINGD_SIGEX"),
-            ListpeerchannelsChannelsState::CLOSINGD_COMPLETE => write!(f, "CLOSINGD_DONE"),
-            ListpeerchannelsChannelsState::AWAITING_UNILATERAL => write!(f, "AWAIT_UNILATERAL"),
-            ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN => write!(f, "FUNDING_SPEND"),
-            ListpeerchannelsChannelsState::ONCHAIN => write!(f, "ONCHAIN"),
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => write!(f, "DUAL_OPEN"),
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED => write!(f, "DUAL_COMITTED"),
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY => {
+            ChannelState::OPENINGD => write!(f, "OPENING"),
+            ChannelState::CHANNELD_AWAITING_LOCKIN => write!(f, "AWAIT_LOCK"),
+            ChannelState::CHANNELD_NORMAL => write!(f, "OK"),
+            ChannelState::CHANNELD_SHUTTING_DOWN => write!(f, "SHUTTING_DOWN"),
+            ChannelState::CLOSINGD_SIGEXCHANGE => write!(f, "CLOSINGD_SIGEX"),
+            ChannelState::CLOSINGD_COMPLETE => write!(f, "CLOSINGD_DONE"),
+            ChannelState::AWAITING_UNILATERAL => write!(f, "AWAIT_UNILATERAL"),
+            ChannelState::FUNDING_SPEND_SEEN => write!(f, "FUNDING_SPEND"),
+            ChannelState::ONCHAIN => write!(f, "ONCHAIN"),
+            ChannelState::DUALOPEND_OPEN_INIT => write!(f, "DUAL_OPEN"),
+            ChannelState::DUALOPEND_OPEN_COMMITTED => write!(f, "DUAL_COMITTED"),
+            ChannelState::DUALOPEND_OPEN_COMMIT_READY => {
                 write!(f, "DUAL_COMMIT_RDY")
             }
-            ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => write!(f, "DUAL_AWAIT"),
-            ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => write!(f, "AWAIT_SPLICE"),
+            ChannelState::DUALOPEND_AWAITING_LOCKIN => write!(f, "DUAL_AWAIT"),
+            ChannelState::CHANNELD_AWAITING_SPLICE => write!(f, "AWAIT_SPLICE"),
         }
     }
 }
@@ -451,44 +448,20 @@ impl FromStr for ShortChannelState {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "opening" => Ok(ShortChannelState(ListpeerchannelsChannelsState::OPENINGD)),
-            "await_lock" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN,
-            )),
-            "ok" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CHANNELD_NORMAL,
-            )),
-            "shutting_down" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CHANNELD_SHUTTING_DOWN,
-            )),
-            "closingd_sigex" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CLOSINGD_SIGEXCHANGE,
-            )),
-            "closingd_done" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CLOSINGD_COMPLETE,
-            )),
-            "await_unilateral" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::AWAITING_UNILATERAL,
-            )),
-            "funding_spend" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN,
-            )),
-            "onchain" => Ok(ShortChannelState(ListpeerchannelsChannelsState::ONCHAIN)),
-            "dual_open" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT,
-            )),
-            "dual_comitted" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED,
-            )),
-            "dual_commit_rdy" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY,
-            )),
-            "dual_await" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN,
-            )),
-            "await_splice" => Ok(ShortChannelState(
-                ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE,
-            )),
+            "opening" => Ok(ShortChannelState(ChannelState::OPENINGD)),
+            "await_lock" => Ok(ShortChannelState(ChannelState::CHANNELD_AWAITING_LOCKIN)),
+            "ok" => Ok(ShortChannelState(ChannelState::CHANNELD_NORMAL)),
+            "shutting_down" => Ok(ShortChannelState(ChannelState::CHANNELD_SHUTTING_DOWN)),
+            "closingd_sigex" => Ok(ShortChannelState(ChannelState::CLOSINGD_SIGEXCHANGE)),
+            "closingd_done" => Ok(ShortChannelState(ChannelState::CLOSINGD_COMPLETE)),
+            "await_unilateral" => Ok(ShortChannelState(ChannelState::AWAITING_UNILATERAL)),
+            "funding_spend" => Ok(ShortChannelState(ChannelState::FUNDING_SPEND_SEEN)),
+            "onchain" => Ok(ShortChannelState(ChannelState::ONCHAIN)),
+            "dual_open" => Ok(ShortChannelState(ChannelState::DUALOPEND_OPEN_INIT)),
+            "dual_comitted" => Ok(ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMITTED)),
+            "dual_commit_rdy" => Ok(ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMIT_READY)),
+            "dual_await" => Ok(ShortChannelState(ChannelState::DUALOPEND_AWAITING_LOCKIN)),
+            "await_splice" => Ok(ShortChannelState(ChannelState::CHANNELD_AWAITING_SPLICE)),
             _ => Err(anyhow!("could not parse State from {}", s)),
         }
     }
@@ -532,88 +505,77 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let opening = ShortChannelState(ListpeerchannelsChannelsState::OPENINGD).to_string();
-        let await_lock =
-            ShortChannelState(ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN).to_string();
-        let ok = ShortChannelState(ListpeerchannelsChannelsState::CHANNELD_NORMAL).to_string();
-        let shutting_down =
-            ShortChannelState(ListpeerchannelsChannelsState::CHANNELD_SHUTTING_DOWN).to_string();
-        let closingd_sigex =
-            ShortChannelState(ListpeerchannelsChannelsState::CLOSINGD_SIGEXCHANGE).to_string();
-        let closingd_done =
-            ShortChannelState(ListpeerchannelsChannelsState::CLOSINGD_COMPLETE).to_string();
-        let await_unilateral =
-            ShortChannelState(ListpeerchannelsChannelsState::AWAITING_UNILATERAL).to_string();
-        let funding_spend =
-            ShortChannelState(ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN).to_string();
-        let onchain = ShortChannelState(ListpeerchannelsChannelsState::ONCHAIN).to_string();
-        let dual_open =
-            ShortChannelState(ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT).to_string();
-        let dual_comitted =
-            ShortChannelState(ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED).to_string();
+        let opening = ShortChannelState(ChannelState::OPENINGD).to_string();
+        let await_lock = ShortChannelState(ChannelState::CHANNELD_AWAITING_LOCKIN).to_string();
+        let ok = ShortChannelState(ChannelState::CHANNELD_NORMAL).to_string();
+        let shutting_down = ShortChannelState(ChannelState::CHANNELD_SHUTTING_DOWN).to_string();
+        let closingd_sigex = ShortChannelState(ChannelState::CLOSINGD_SIGEXCHANGE).to_string();
+        let closingd_done = ShortChannelState(ChannelState::CLOSINGD_COMPLETE).to_string();
+        let await_unilateral = ShortChannelState(ChannelState::AWAITING_UNILATERAL).to_string();
+        let funding_spend = ShortChannelState(ChannelState::FUNDING_SPEND_SEEN).to_string();
+        let onchain = ShortChannelState(ChannelState::ONCHAIN).to_string();
+        let dual_open = ShortChannelState(ChannelState::DUALOPEND_OPEN_INIT).to_string();
+        let dual_comitted = ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMITTED).to_string();
         let dual_commit_rdy =
-            ShortChannelState(ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY)
-                .to_string();
-        let dual_await =
-            ShortChannelState(ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN).to_string();
-        let await_splice =
-            ShortChannelState(ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE).to_string();
+            ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMIT_READY).to_string();
+        let dual_await = ShortChannelState(ChannelState::DUALOPEND_AWAITING_LOCKIN).to_string();
+        let await_splice = ShortChannelState(ChannelState::CHANNELD_AWAITING_SPLICE).to_string();
 
         assert_eq!(
             opening.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::OPENINGD
+            ChannelState::OPENINGD
         );
         assert_eq!(
             await_lock.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN
+            ChannelState::CHANNELD_AWAITING_LOCKIN
         );
         assert_eq!(
             ok.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CHANNELD_NORMAL
+            ChannelState::CHANNELD_NORMAL
         );
         assert_eq!(
             shutting_down.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CHANNELD_SHUTTING_DOWN
+            ChannelState::CHANNELD_SHUTTING_DOWN
         );
         assert_eq!(
             closingd_sigex.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CLOSINGD_SIGEXCHANGE
+            ChannelState::CLOSINGD_SIGEXCHANGE
         );
         assert_eq!(
             closingd_done.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CLOSINGD_COMPLETE
+            ChannelState::CLOSINGD_COMPLETE
         );
         assert_eq!(
             await_unilateral.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::AWAITING_UNILATERAL
+            ChannelState::AWAITING_UNILATERAL
         );
         assert_eq!(
             funding_spend.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::FUNDING_SPEND_SEEN
+            ChannelState::FUNDING_SPEND_SEEN
         );
         assert_eq!(
             onchain.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::ONCHAIN
+            ChannelState::ONCHAIN
         );
         assert_eq!(
             dual_open.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT
+            ChannelState::DUALOPEND_OPEN_INIT
         );
         assert_eq!(
             dual_comitted.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMITTED
+            ChannelState::DUALOPEND_OPEN_COMMITTED
         );
         assert_eq!(
             dual_commit_rdy.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::DUALOPEND_OPEN_COMMIT_READY
+            ChannelState::DUALOPEND_OPEN_COMMIT_READY
         );
         assert_eq!(
             dual_await.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN
+            ChannelState::DUALOPEND_AWAITING_LOCKIN
         );
         assert_eq!(
             await_splice.parse::<ShortChannelState>().unwrap().0,
-            ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE
+            ChannelState::CHANNELD_AWAITING_SPLICE
         );
     }
 }

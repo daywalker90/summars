@@ -1,5 +1,15 @@
 # Changelog
 
+## [4.0.2] 2025-03-11
+
+### Changed
+
+- upgraded dependencies
+
+### Fixed
+
+- fix error in edge case for pending channels in cln 23.11 and earlier
+
 ## [4.0.1] 2024-12-20
 
 ### Fixed
