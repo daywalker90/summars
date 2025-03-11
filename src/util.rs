@@ -7,11 +7,8 @@ use anyhow::anyhow;
 use chrono::{Datelike, Local, Timelike};
 use cln_plugin::{Error, Plugin};
 use cln_rpc::{
-    model::{
-        requests::ListnodesRequest,
-        responses::{ListpeerchannelsChannels, ListpeerchannelsChannelsState},
-    },
-    primitives::PublicKey,
+    model::{requests::ListnodesRequest, responses::ListpeerchannelsChannels},
+    primitives::{ChannelState, PublicKey},
     ClnRpc,
 };
 use fixed_decimal::{FixedDecimal, FixedInteger};
@@ -27,12 +24,12 @@ use crate::structs::{Config, GraphCharset, PluginState, NODE_GOSSIP_MISS, NO_ALI
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
     match channel.state {
-        ListpeerchannelsChannelsState::OPENINGD => true,
-        ListpeerchannelsChannelsState::CHANNELD_AWAITING_LOCKIN => true,
-        ListpeerchannelsChannelsState::CHANNELD_NORMAL => true,
-        ListpeerchannelsChannelsState::DUALOPEND_OPEN_INIT => true,
-        ListpeerchannelsChannelsState::DUALOPEND_AWAITING_LOCKIN => true,
-        ListpeerchannelsChannelsState::CHANNELD_AWAITING_SPLICE => true,
+        ChannelState::OPENINGD => true,
+        ChannelState::CHANNELD_AWAITING_LOCKIN => true,
+        ChannelState::CHANNELD_NORMAL => true,
+        ChannelState::DUALOPEND_OPEN_INIT => true,
+        ChannelState::DUALOPEND_AWAITING_LOCKIN => true,
+        ChannelState::CHANNELD_AWAITING_SPLICE => true,
         _ => false,
     }
 }
