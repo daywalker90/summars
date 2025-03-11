@@ -9,6 +9,7 @@
 ### Fixed
 
 - fix error in edge case for pending channels in cln 23.11 and earlier
+- improve version detection on alternative cln builds (e.g. btcpayserver custom cln builds)
 
 ## [4.0.1] 2024-12-20
 
