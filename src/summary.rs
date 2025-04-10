@@ -293,13 +293,16 @@ pub async fn summary(
             result += &("\n\n".to_owned()
                 + &format_forwards(forwards, &config, &totals, forwards_filter_stats)?);
         }
+        debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
             result += &("\n\n".to_owned() + &format_pays(pays, &config, &totals)?);
         }
+        debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
             result += &("\n\n".to_owned()
                 + &format_invoices(invoices, &config, &totals, invoices_filter_stats)?);
         }
+        debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
         Ok(json!({"format-hint":"simple","result":format!(
             "address={}
