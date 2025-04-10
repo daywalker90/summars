@@ -7,6 +7,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 
 * [Installation](#installation)
 * [Building](#building)
+* [Methods](#methods)
 * [Example Usage](#example-usage)
 * [How to set options](#how-to-set-options)
 * [Options](#options)
@@ -43,11 +44,13 @@ After that the binary will be here: ``target/release/summars``
 
 Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
 
-# Example Usage
+# Methods
 
 There are currently two commands:
 * ``summars`` the main command
-* ``summars-refreshalias`` to manually refresh the alias cache
+* ``summars-refreshalias`` to manually refresh the peer alias cache
+
+# Example Usage
 
 ```
 lightning-cli summars summars-forwards=200 summars-pays=3 summars-invoices=3
@@ -77,12 +80,12 @@ channels_flags=P:private O:offline
     26,738 |  1,819,119 | 2476654x19x0  |          1 | [__] |    0 |     1 | Boltz                | 03f060953bef5b777dc77e44afa3859d022fc1a77c55138deb232ad7255e869c00 |   100% |     0 |  OK
     49,714 |    951,285 | 2501790x6x4   |          1 | [__] |    0 |     1 | endurance            | 03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134 |   100% |     0 |  OK
 
-                                              forwards
- resolved_time         in_channel             out_channel            in_sats   out_sats   fee_msats
+                                  forwards (last 200h, limit: off)
+ resolved_time         in_alias               out_alias             in_sats   out_sats   fee_msats
  5/16/24, 3:48:58 PM   lndus1.next.zaphq.io   02758997f184be06f435    11,503     11,503          11
 
-                                                                pays
- completed_at          payment_hash                                                       sats_sent   fee_msats   destination
+                                                 pays (last 3h, limit: off)
+ completed_at          payment_hash                                                       sats_sent  fee_msats   destination
  5/19/24, 5:34:58 PM   19483c34259aa832a6bb805b72bc02db89d639975608adf4371d8ff4eda8be99      50,000           0   Boltz
  5/19/24, 5:34:59 PM   175168a906829f668d712786604bc1db04358f02fcf37563afb58402a7cb9282      50,000           0   Boltz
  5/19/24, 5:35:01 PM   ad6491728f6a120980f14a5eb5688b7406ec2563525af812b911a39649da3f09      50,000           0   Boltz
@@ -90,7 +93,7 @@ channels_flags=P:private O:offline
  5/19/24, 5:35:03 PM   71ce7cabc80f55b51dd9373f2ea57acaa21b9087e993ebfad3b4302dc46a943b      50,000           0   Boltz
  5/19/24, 5:35:04 PM   cbd929f8a0bc4bc46dba51b0dc3188662708d1bd8e6ae5ee71ccd894194d40db      50,000           0   Boltz
 
-                                                                invoices
+                                                 invoices (last 3h, limit: off)
  paid_at               label                            sats_received   payment_hash
  5/19/24, 5:35:21 PM   WpcvbXKW                                50,000   39eb0fa161fb85ab7c653bdfb49da8ca4914287b2ecd567968a3c4156c285768
  5/19/24, 5:35:22 PM   TQCankEM                                50,000   432c37e7bfae40df087e2e8a3c4590d3cd7011ebf56760dee8edfea3b8281e0e
@@ -141,7 +144,7 @@ You can mix these methods and if you set the same option with different methods,
 # Options
 ### Channels table
 * ``summars-columns`` Comma-separated list of enabled columns in the channel table. Also dictates order of columns. Valid columns: ``GRAPH_SATS``, ``PERC_US``, ``OUT_SATS``, ``IN_SATS``, ``TOTAL_SATS``, ``SCID``, ``MIN_HTLC``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``IN_BASE``, ``PPM``, ``IN_PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``. Default columns: ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``MAX_HTLC``, ``FLAG``, ``BASE``, ``PPM``, ``ALIAS``, ``PEER_ID``, ``UPTIME``, ``HTLCS``, ``STATE``
-* ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Valid columns are all ``summars-columns`` except for ``GRAPH_SATS``. Default is ``SCID``
+* ``summars-sort-by`` Sort by column name. Use ``-`` before column name to reverse sort. Valid columns are all ``summars-columns`` except for ``GRAPH_SATS`` (use ``IN_SATS``, ``OUT_SATS`` or ``TOTAL_SATS`` instead). Default is ``SCID``
 * ``summars-exclude-states`` List if excluded channel states. Comma-separated. Valid states are: ``OPENING``, ``AWAIT_LOCK``, ``OK``, ``SHUTTING_DOWN``, ``CLOSINGD_SIGEX``, ``CLOSINGD_DONE``, ``AWAIT_UNILATERAL``, ``FUNDING_SPEND``, ``ONCHAIN``, ``DUAL_OPEN``, ``DUAL_COMITTED``, ``DUAL_COMMIT_RDY``, ``DUAL_AWAIT``, ``AWAIT_SPLICE`` and ``PUBLIC``, ``PRIVATE`` to filter channels by their network visibility, aswell as  or `ONLINE,OFFLINE` to filter by connection status.
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)

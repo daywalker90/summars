@@ -358,6 +358,8 @@ async fn chan_to_summary(
     let mut in_ppm = "N/A".to_owned();
     if config.columns.contains(&"in_base".to_owned())
         || config.columns.contains(&"in_ppm".to_owned())
+        || config.sort_by.eq_ignore_ascii_case("in_base")
+        || config.sort_by.eq_ignore_ascii_case("in_ppm")
     {
         if at_or_above_version(version, "24.02")? {
             if let Some(upd) = &chan.updates {
@@ -384,8 +386,14 @@ async fn chan_to_summary(
         }
     }
 
+    let graph_sats = if config.columns.contains(&"graph_sats".to_owned()) {
+        draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat)
+    } else {
+        String::new()
+    };
+
     Ok(Summary {
-        graph_sats: draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat),
+        graph_sats,
         out_sats: ((to_us_msat as f64) / 1_000.0).round() as u64,
         in_sats: (((total_msat - to_us_msat) as f64) / 1_000.0).round() as u64,
         total_sats: ((total_msat as f64) / 1_000.0).round() as u64,
@@ -413,7 +421,7 @@ async fn chan_to_summary(
         },
         peer_id: chan.peer_id,
         uptime: avail * 100.0,
-        htlcs: chan.htlcs.clone().unwrap_or_default().len(),
+        htlcs: chan.htlcs.as_ref().map(|h| h.len()).unwrap_or(0),
         state: statestr.to_string(),
         perc_us: (to_us_msat as f64 / total_msat as f64) * 100.0,
     })
