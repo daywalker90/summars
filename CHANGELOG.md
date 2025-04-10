@@ -1,6 +1,6 @@
 # Changelog
 
-## [5.0.0]
+## [5.0.0] 2025-04-10
 
 ### Added
 - ``summars-forwards-columns``: added ``in_alias`` and ``out_alias`` to show the peer aliases of the forward if possible, falls back to ShortchannelId's if no alias was found
