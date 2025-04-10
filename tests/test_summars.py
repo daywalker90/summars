@@ -34,6 +34,8 @@ forwards_columns = [
     "resolved_time",
     "in_channel",
     "out_channel",
+    "in_alias",
+    "out_alias",
     "in_sats",
     "out_sats",
     "fee_msats",
@@ -62,7 +64,7 @@ invoice_columns = [
 
 
 def test_basic(node_factory, get_plugin):  # noqa: F811
-    node = node_factory.get_node(options={"plugin": get_plugin})
+    node = node_factory.get_node(options={"plugin": get_plugin, "log-level": "debug"})
     result = node.rpc.call("summars", {"summars-locale": "en_US"})
     assert result is not None
     assert isinstance(result, dict) is True
@@ -126,7 +128,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
 
 
 def test_options(node_factory, get_plugin):  # noqa: F811
-    node = node_factory.get_node(options={"plugin": get_plugin})
+    node = node_factory.get_node(options={"plugin": get_plugin, "log-level": "debug"})
 
     for col in columns:
         result = node.rpc.call("summars", {"summars-columns": col})
@@ -264,7 +266,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
     for col in columns:
         if col == "GRAPH_SATS":
-            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`!"):
+            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`"):
                 node.rpc.call(
                     "summars",
                     {
@@ -279,7 +281,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
             )
             assert col in result["result"]
         if col == "GRAPH_SATS":
-            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`!"):
+            with pytest.raises(RpcError, match="Can not sort by `GRAPH_SATS`"):
                 node.rpc.call(
                     "summars",
                     {
@@ -324,11 +326,6 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     result = node.rpc.call(
         "summars",
         {"summars-forwards": 1, "summars-forwards-filter-fee-msat": -1},
-    )
-    assert "forwards" in result["result"]
-
-    result = node.rpc.call(
-        "summars", {"summars-forwards": 1, "summars-forwards-alias": False}
     )
     assert "forwards" in result["result"]
 
@@ -384,7 +381,7 @@ def test_options(node_factory, get_plugin):  # noqa: F811
 
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
-    node = node_factory.get_node(options={"plugin": get_plugin})
+    node = node_factory.get_node(options={"plugin": get_plugin, "log-level": "debug"})
 
     with pytest.raises(RpcError, match="not found in valid summars-columns names"):
         node.rpc.call("summars", {"summars-columns": "test"})
@@ -427,10 +424,10 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
 
     with pytest.raises(RpcError, match="not a valid string"):
         node.rpc.call("summars", {"summars-sort-by": 1})
-    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by valid columns."):
         node.rpc.call("summars", {"summars-sort-by": "TEST"})
-    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
-        node.rpc.call("summars", {"summars-sort-by": "IN_PPM"})
+
+    node.rpc.call("summars", {"summars-sort-by": "IN_PPM"})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards": "TEST"})
@@ -442,11 +439,6 @@ def test_option_errors(node_factory, get_plugin):  # noqa: F811
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-forwards-filter-fee-msat": "TEST"})
-
-    with pytest.raises(RpcError, match="not a valid boolean"):
-        node.rpc.call("summars", {"summars-forwards-alias": "TEST"})
-    with pytest.raises(RpcError, match="not a valid boolean"):
-        node.rpc.call("summars", {"summars-forwards-alias": 1})
 
     with pytest.raises(RpcError, match="not a valid integer"):
         node.rpc.call("summars", {"summars-pays": "TEST"})
@@ -535,6 +527,7 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
             "summars-invoices": 1,
             "summars-pays": 1,
             "summars-utf8": True,
+            "log-level": "debug",
         },
     )
     result = node.rpc.call("summars")
@@ -558,9 +551,9 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
     assert "PEER_ID" not in result["result"]
     assert "STATE" not in result["result"]
 
-    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by valid columns."):
         node.rpc.setconfig("summars-sort-by", 1)
-    with pytest.raises(RpcError, match="is invalid. Can only sort by enabled columns."):
+    with pytest.raises(RpcError, match="is invalid. Can only sort by valid columns."):
         node.rpc.setconfig("summars-sort-by", "TEST")
 
     with pytest.raises(RpcError, match="not a valid integer"):
@@ -582,7 +575,14 @@ def test_setconfig_options(node_factory, get_plugin):  # noqa: F811
 
 
 def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
-    l1, l2, l3 = node_factory.get_nodes(3, opts=[{"plugin": get_plugin}, {}, {}])
+    l1, l2, l3 = node_factory.get_nodes(
+        3,
+        opts=[
+            {"plugin": get_plugin, "log-level": "debug"},
+            {"log-level": "debug"},
+            {"log-level": "debug"},
+        ],
+    )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
     l1.rpc.fundchannel(
@@ -671,7 +671,9 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
 
 
 def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
-    l1, l2, l3 = node_factory.get_nodes(3, opts={"plugin": get_plugin})
+    l1, l2, l3 = node_factory.get_nodes(
+        3, opts={"plugin": get_plugin, "log-level": "debug"}
+    )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
     l1.rpc.connect(l2.info["id"], "localhost", l2.port)
@@ -817,7 +819,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result["totals"]["pays_fees_msat"] == 2002
 
 
-def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811:
+def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1, l2, l3 = node_factory.get_nodes(
         3,
         opts={
