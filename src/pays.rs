@@ -214,7 +214,7 @@ pub async fn recent_pays(
             } else {
                 None
             },
-            description: description.map(|s| replace_escaping_chars(&s)),
+            description,
             preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
             msats_requested,
             sats_requested,
@@ -338,13 +338,15 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     );
 
     if config.max_desc_length < 0 {
-        paystable
-            .with(Modify::new(ByColumnName::new("description")).with(
-                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
-            ));
+        paystable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Format::content(replace_escaping_chars))
+                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
+        );
     } else {
         paystable.with(
             Modify::new(ByColumnName::new("description"))
+                .with(Format::content(replace_escaping_chars))
                 .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
     }
