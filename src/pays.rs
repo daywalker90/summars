@@ -22,7 +22,7 @@ use crate::structs::{
     Config, PagingIndex, Pays, PluginState, Totals, MISSING_VALUE, NODE_GOSSIP_MISS,
 };
 use crate::util::{
-    at_or_above_version, get_alias, hex_encode, sort_columns,
+    at_or_above_version, get_alias, hex_encode, replace_escaping_chars, sort_columns,
     timestamp_to_localized_datetime_string, u64_to_sat_string,
 };
 
@@ -214,7 +214,7 @@ pub async fn recent_pays(
             } else {
                 None
             },
-            description,
+            description: description.map(|s| replace_escaping_chars(&s)),
             preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
             msats_requested,
             sats_requested,

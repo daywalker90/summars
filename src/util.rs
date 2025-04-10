@@ -258,6 +258,25 @@ pub fn feeppm_effective_from_amts(amount_msat_start: u64, amount_msat_end: u64) 
         as u32
 }
 
+pub fn replace_escaping_chars(s: &str) -> String {
+    let mut result = String::new();
+
+    for c in s.chars() {
+        let replacement = match c {
+            '"' => '\'',
+            '\\' => '/',
+            '\n' => ' ',
+            '\t' => ' ',
+            '\r' => ' ',
+            _ if c.is_control() => '_',
+            _ => c,
+        };
+        result.push(replacement);
+    }
+
+    result
+}
+
 #[test]
 fn test_flags() {
     assert_eq!(make_channel_flags(false, false), "[__]");

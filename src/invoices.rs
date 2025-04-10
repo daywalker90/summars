@@ -17,7 +17,8 @@ use tokio::time::Instant;
 
 use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals};
 use crate::util::{
-    hex_encode, sort_columns, timestamp_to_localized_datetime_string, u64_to_sat_string,
+    hex_encode, replace_escaping_chars, sort_columns, timestamp_to_localized_datetime_string,
+    u64_to_sat_string,
 };
 
 pub async fn recent_invoices(
@@ -100,7 +101,9 @@ pub async fn recent_invoices(
                             as f64)
                             / 1_000.0)
                             .round() as u64,
-                        description: invoice.description.unwrap_or_default(),
+                        description: replace_escaping_chars(
+                            &invoice.description.unwrap_or_default(),
+                        ),
                         payment_hash: invoice.payment_hash.to_string(),
                         preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
                     });
