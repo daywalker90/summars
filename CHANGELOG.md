@@ -8,6 +8,7 @@
 ### Changed
 - ``summars-forwards-columns``: ``in_channel`` and ``out_channel`` are now always the ShortchannelId's
 - ``summars-forwards-columns``: default columns are now ``resolved_time``, ``in_alias``, ``out_alias``, ``in_sats``, ``out_sats``, ``fee_msats``
+- ``description`` columns in ``summars-pays-columns`` and ``summars-invoices-columns`` have characters replaced that would be escaped by CLN and then would misalign the column e.g. replace `"` with `'` 
 
 ### Removed
 - ``summars-forwads-alias`` option was removed in favor of additional ``summars-forwards-columns``
