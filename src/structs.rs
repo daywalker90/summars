@@ -29,7 +29,6 @@ pub struct Config {
     pub forwards_columns: Vec<String>,
     pub forwards_filter_amt_msat: i64,
     pub forwards_filter_fee_msat: i64,
-    pub forwards_alias: bool,
     pub pays: u64,
     pub pays_limit: u64,
     pub pays_columns: Vec<String>,
@@ -82,12 +81,13 @@ impl Config {
                         && t != &"out_msats"
                         && t != &"fee_sats"
                         && t != &"eff_fee_ppm"
+                        && t != &"in_channel"
+                        && t != &"out_channel"
                 })
                 .map(|s| s.to_string())
                 .collect::<Vec<String>>(),
             forwards_filter_amt_msat: -1,
             forwards_filter_fee_msat: -1,
-            forwards_alias: true,
             pays: 0,
             pays_limit: 0,
             pays_columns: Pays::FIELD_NAMES_AS_ARRAY
@@ -239,17 +239,9 @@ pub struct Forwards {
     #[serde(skip_serializing)]
     #[field_names_as_array(skip)]
     pub resolved_time_str: String,
-    #[tabled(rename = "in_channel")]
-    #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
-    pub in_channel_alias: String,
-    #[tabled(rename = "out_channel")]
-    #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
-    pub out_channel_alias: String,
-    #[tabled(skip)]
+    pub in_alias: String,
+    pub out_alias: String,
     pub in_channel: ShortChannelId,
-    #[tabled(skip)]
     pub out_channel: ShortChannelId,
     pub in_msats: u64,
     #[serde(skip_serializing)]
