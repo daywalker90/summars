@@ -3,10 +3,11 @@
 ## [5.0.0]
 
 ### Added
-- ``summars-forwards-columns``: ``in_alias`` and ``out_alias`` show the peer alias of the forward if possible, falls back to ShortchannelId's if no alias was found
+- ``summars-forwards-columns``: ``in_alias`` and ``out_alias`` show the peer aliases of the forward if possible, falls back to ShortchannelId's if no alias was found
 
 ### Changed
 - ``summars-forwards-columns``: ``in_channel`` and ``out_channel`` are now always the ShortchannelId's
+- ``summars-forwards-columns``: default columns are now ``resolved_time``, ``in_alias``, ``out_alias``, ``in_sats``, ``out_sats``, ``fee_msats``
 
 ### Removed
 - ``summars-forwads-alias`` option was removed in favor of additional ``summars-forwards-columns``
