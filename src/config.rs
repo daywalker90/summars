@@ -145,26 +145,30 @@ fn validate_columns_input(
     Ok(cleaned_strings)
 }
 
-fn validate_sort_input(columns: &[String], input: &str) -> Result<String, Error> {
+fn validate_sort_input(input: &str) -> Result<String, Error> {
     let reverse = input.starts_with('-');
+    let input_sane = if reverse {
+        input[1..].to_ascii_lowercase()
+    } else {
+        input.to_ascii_lowercase()
+    };
 
-    let sortable_columns = columns
-        .iter()
-        .filter(|t| t != &"graph_sats")
-        .map(|s| s.to_owned())
-        .collect::<Vec<String>>();
-
-    if reverse && sortable_columns.contains(&(input[1..].to_ascii_lowercase()))
-        || sortable_columns.contains(&input.to_ascii_lowercase())
-    {
+    if input_sane.eq("graph_sats") {
+        Err(anyhow!(
+            "Can not sort by `GRAPH_SATS`, use `IN_SATS`, `OUT_SATS` or `TOTAL_SATS` instead!"
+        ))
+    } else if Summary::FIELD_NAMES_AS_ARRAY.contains(&input_sane.as_str()) {
         Ok(input.to_ascii_uppercase())
-    } else if input.to_ascii_lowercase().contains("graph_sats") {
-        Err(anyhow!("Can not sort by `GRAPH_SATS`!"))
     } else {
         Err(anyhow!(
-            "`{}` is invalid. Can only sort by enabled columns. Must be one of: {}",
+            "`{}` is invalid. Can only sort by valid columns. Must be one of: {}",
             input.to_ascii_lowercase(),
-            sortable_columns.join(", ")
+            Summary::FIELD_NAMES_AS_ARRAY
+                .iter()
+                .filter(|t| t != &&"graph_sats")
+                .map(|s| s.to_owned())
+                .collect::<Vec<_>>()
+                .join(", ")
         ))
     }
 }
@@ -492,9 +496,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 &Summary::FIELD_NAMES_AS_ARRAY,
             )?;
         }
-        n if n.eq(OPT_SORT_BY) => {
-            config.sort_by = validate_sort_input(&config.columns, value.as_str().unwrap())?
-        }
+        n if n.eq(OPT_SORT_BY) => config.sort_by = validate_sort_input(value.as_str().unwrap())?,
         n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
             config.exclude_channel_states = validate_exclude_states_input(value.as_str().unwrap())?;
         }
