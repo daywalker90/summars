@@ -96,7 +96,7 @@ pub async fn recent_pays(
     debug!(
         "List {} pays. Total: {}ms",
         pays.len(),
-        now.elapsed().as_millis().to_string()
+        now.elapsed().as_millis()
     );
 
     pay_index.timestamp = now_utc - config_pays_sec;
@@ -122,10 +122,8 @@ pub async fn recent_pays(
 
     let mut table = Vec::new();
 
-    let description_wanted =
-        config.pays_columns.contains(&"description".to_string()) || config.json;
-    let destination_wanted =
-        config.pays_columns.contains(&"destination".to_string()) || config.json;
+    let description_wanted = config.pays_columns.contains(&"description".to_owned()) || config.json;
+    let destination_wanted = config.pays_columns.contains(&"destination".to_owned()) || config.json;
 
     for pay in pays.into_iter() {
         if pay.completed_at.unwrap() <= Utc::now().timestamp() as u64 - config_pays_sec {
@@ -233,10 +231,7 @@ pub async fn recent_pays(
     if pay_index.start < u64::MAX {
         *plugin.state().pay_index.lock() = pay_index;
     }
-    debug!(
-        "Build pays table. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
     if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
         table = table.split_off(table.len() - (config.pays_limit as usize))
     }
@@ -248,7 +243,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     let mut paystable = Table::new(table);
     config.flow_style.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
-        if !config.pays_columns.contains(&head.to_string()) {
+        if !config.pays_columns.contains(&head.to_owned()) {
             paystable.with(Remove::column(ByColumnName::new(head)));
         }
     }
@@ -258,7 +253,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_string())
+        .map(|s| s.text().to_owned())
         .collect::<Vec<String>>();
     let records = paystable.get_records_mut();
     if headers.len() != config.pays_columns.len() {
@@ -301,7 +296,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         Modify::new(ByColumnName::new("sats_requested").not(Rows::first())).with(Format::content(
             |s| {
                 if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                    s.to_string()
+                    s.to_owned()
                 } else {
                     u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
                 }
@@ -313,7 +308,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         Modify::new(ByColumnName::new("msats_requested").not(Rows::first())).with(Format::content(
             |s| {
                 if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                    s.to_string()
+                    s.to_owned()
                 } else {
                     u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
                 }
@@ -325,7 +320,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     paystable.with(
         Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
             if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                s.to_string()
+                s.to_owned()
             } else {
                 u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
             }
@@ -335,7 +330,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     paystable.with(
         Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
             if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                s.to_string()
+                s.to_owned()
             } else {
                 u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
             }
@@ -360,7 +355,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         if config.pays_limit > 0 {
             config.pays_limit.to_string()
         } else {
-            "off".to_string()
+            "off".to_owned()
         }
     )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
@@ -372,7 +367,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
             if let Some(amt) = totals.pays_amount_msat {
                 u64_to_sat_string(config, ((amt as f64) / 1000.0).round() as u64)?
             } else {
-                MISSING_VALUE.to_string()
+                MISSING_VALUE.to_owned()
             },
             u64_to_sat_string(
                 config,
@@ -381,7 +376,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
             if let Some(fee) = totals.pays_fees_msat {
                 u64_to_sat_string(config, ((fee as f64) / 1000.0).round() as u64)?
             } else {
-                MISSING_VALUE.to_string()
+                MISSING_VALUE.to_owned()
             },
         );
         paystable.with(Panel::footer(pays_totals));

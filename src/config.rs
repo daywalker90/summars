@@ -151,7 +151,7 @@ fn validate_sort_input(columns: &[String], input: &str) -> Result<String, Error>
     let sortable_columns = columns
         .iter()
         .filter(|t| t != &"graph_sats")
-        .map(|s| s.to_string())
+        .map(|s| s.to_owned())
         .collect::<Vec<String>>();
 
     if reverse && sortable_columns.contains(&(input[1..].to_ascii_lowercase()))

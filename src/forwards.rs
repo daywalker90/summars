@@ -75,7 +75,7 @@ pub async fn recent_forwards(
     debug!(
         "List {} forwards. Total: {}ms",
         forwards.len(),
-        now.elapsed().as_millis().to_string()
+        now.elapsed().as_millis()
     );
 
     fw_index.timestamp = now_utc - config_forwards_sec;
@@ -205,7 +205,7 @@ pub async fn recent_forwards(
     }
     debug!(
         "Build forwards table. Total: {}ms",
-        now.elapsed().as_millis().to_string()
+        now.elapsed().as_millis()
     );
     if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
         table = table.split_off(table.len() - (config.forwards_limit as usize))
@@ -230,7 +230,7 @@ pub fn format_forwards(
     let mut fwtable = Table::new(table);
     config.flow_style.apply(&mut fwtable);
     for head in Forwards::FIELD_NAMES_AS_ARRAY {
-        if !config.forwards_columns.contains(&head.to_string()) {
+        if !config.forwards_columns.contains(&head.to_owned()) {
             fwtable.with(Remove::column(ByColumnName::new(head)));
         }
     }
@@ -240,7 +240,7 @@ pub fn format_forwards(
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_string())
+        .map(|s| s.text().to_owned())
         .collect::<Vec<String>>();
     let records = fwtable.get_records_mut();
     if headers.len() != config.forwards_columns.len() {
@@ -327,7 +327,7 @@ pub fn format_forwards(
         if config.forwards_limit > 0 {
             config.forwards_limit.to_string()
         } else {
-            "off".to_string()
+            "off".to_owned()
         }
     )));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));

@@ -55,7 +55,7 @@ pub async fn recent_invoices(
     debug!(
         "List {} invoices. Total: {}ms",
         invoices.len(),
-        now.elapsed().as_millis().to_string()
+        now.elapsed().as_millis()
     );
 
     inv_index.timestamp = now_utc - config_invoices_sec;
@@ -124,7 +124,7 @@ pub async fn recent_invoices(
     }
     debug!(
         "Build invoices table. Total: {}ms",
-        now.elapsed().as_millis().to_string()
+        now.elapsed().as_millis()
     );
     if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
         table = table.split_off(table.len() - (config.invoices_limit as usize))
@@ -149,7 +149,7 @@ pub fn format_invoices(
     let mut invoicestable = Table::new(table);
     config.flow_style.apply(&mut invoicestable);
     for head in Invoices::FIELD_NAMES_AS_ARRAY {
-        if !config.invoices_columns.contains(&head.to_string()) {
+        if !config.invoices_columns.contains(&head.to_owned()) {
             invoicestable.with(Remove::column(ByColumnName::new(head)));
         }
     }
@@ -159,7 +159,7 @@ pub fn format_invoices(
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_string())
+        .map(|s| s.text().to_owned())
         .collect::<Vec<String>>();
     let records = invoicestable.get_records_mut();
     if headers.len() != config.invoices_columns.len() {
@@ -215,7 +215,7 @@ pub fn format_invoices(
         if config.invoices_limit > 0 {
             config.invoices_limit.to_string()
         } else {
-            "off".to_string()
+            "off".to_owned()
         }
     )));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));

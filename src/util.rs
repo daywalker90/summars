@@ -238,11 +238,11 @@ pub async fn get_alias(
             Some(node) => {
                 match &node.alias {
                     Some(newalias) => alias = newalias.clone(),
-                    None => alias = NO_ALIAS_SET.to_string(),
+                    None => alias = NO_ALIAS_SET.to_owned(),
                 }
                 p.state().alias_map.lock().insert(peer_id, alias.clone());
             }
-            None => alias = NODE_GOSSIP_MISS.to_string(),
+            None => alias = NODE_GOSSIP_MISS.to_owned(),
         },
     };
     Ok(alias)

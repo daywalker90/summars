@@ -257,7 +257,7 @@ async fn main() -> Result<(), anyhow::Error> {
         tokio::spawn(async move {
             match tasks::trace_availability(traceclone).await {
                 Ok(()) => (),
-                Err(e) => warn!("Error in trace_availability thread: {}", e.to_string()),
+                Err(e) => warn!("Error in trace_availability thread: {}", e),
             };
         });
 
@@ -268,7 +268,7 @@ async fn main() -> Result<(), anyhow::Error> {
             loop {
                 match tasks::refresh_alias(aliasclone.clone()).await {
                     Ok(()) => (),
-                    Err(e) => warn!("Error in refresh_alias thread: {}", e.to_string()),
+                    Err(e) => warn!("Error in refresh_alias thread: {}", e),
                 };
                 time::sleep(Duration::from_secs(alias_refresh_freq * 60 * 60)).await;
             }
