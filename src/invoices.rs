@@ -101,9 +101,7 @@ pub async fn recent_invoices(
                             as f64)
                             / 1_000.0)
                             .round() as u64,
-                        description: replace_escaping_chars(
-                            &invoice.description.unwrap_or_default(),
-                        ),
+                        description: invoice.description.unwrap_or_default(),
                         payment_hash: invoice.payment_hash.to_string(),
                         preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
                     });
@@ -175,13 +173,15 @@ pub fn format_invoices(
     sort_columns(records, &headers, &config.invoices_columns);
 
     if config.max_desc_length < 0 {
-        invoicestable
-            .with(Modify::new(ByColumnName::new("description")).with(
-                Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true),
-            ));
+        invoicestable.with(
+            Modify::new(ByColumnName::new("description"))
+                .with(Format::content(replace_escaping_chars))
+                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
+        );
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new("description"))
+                .with(Format::content(replace_escaping_chars))
                 .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
     }
