@@ -31,7 +31,6 @@ const OPT_FORWARDS_LIMIT: &str = "summars-forwards-limit";
 const OPT_FORWARDS_COLUMNS: &str = "summars-forwards-columns";
 const OPT_FORWARDS_FILTER_AMT: &str = "summars-forwards-filter-amount-msat";
 const OPT_FORWARDS_FILTER_FEE: &str = "summars-forwards-filter-fee-msat";
-const OPT_FORWARDS_ALIAS: &str = "summars-forwards-alias";
 const OPT_PAYS: &str = "summars-pays";
 const OPT_PAYS_LIMIT: &str = "summars-pays-limit";
 const OPT_PAYS_COLUMNS: &str = "summars-pays-columns";
@@ -92,9 +91,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_forwards_columns: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_FORWARDS_COLUMNS,
         "Enabled columns in the forwards table. Available columns are: \
-        `received_time, resolved_time, in_channel, out_channel, in_sats, in_msats, out_sats, \
-        out_msats, fee_sats, fee_msats, eff_fee_ppm` Default is `resolved_time, in_channel, \
-        out_channel, in_sats, out_sats, fee_msats`",
+        `received_time, resolved_time, in_channel, out_channel, in_alias, out_alias, \
+        in_sats, in_msats, out_sats, out_msats, fee_sats, fee_msats, eff_fee_ppm` \
+        Default is `resolved_time, in_alias, out_alias, in_sats, out_sats, fee_msats`",
     )
     .dynamic();
     let opt_forwards_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
@@ -105,11 +104,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_forwards_filter_fee: IntegerConfigOption = ConfigOption::new_i64_no_default(
         OPT_FORWARDS_FILTER_FEE,
         "Filter forwards with less than or equal to x msats in fees. Default is `-1`",
-    )
-    .dynamic();
-    let opt_forwards_alias: BooleanConfigOption = ConfigOption::new_bool_no_default(
-        OPT_FORWARDS_ALIAS,
-        "Show peer alias for forward channels instead of scid's. Default is `true`",
     )
     .dynamic();
     let opt_pays: IntegerConfigOption =
@@ -213,7 +207,6 @@ async fn main() -> Result<(), anyhow::Error> {
         .option(opt_forwards_columns)
         .option(opt_forwards_filter_amt)
         .option(opt_forwards_filter_fee)
-        .option(opt_forwards_alias)
         .option(opt_pays)
         .option(opt_pays_limit)
         .option(opt_pays_columns)

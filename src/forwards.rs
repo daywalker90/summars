@@ -105,31 +105,25 @@ pub async fn recent_forwards(
 
     for forward in forwards.into_iter() {
         if forward.received_time as u64 > now_utc - config_forwards_sec {
-            let inchan = config
-                .forwards_alias
-                .then(|| {
-                    chanmap.get(&forward.in_channel).and_then(|chan| {
-                        alias_map
-                            .get::<PublicKey>(&chan.peer_id)
-                            .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
-                            .cloned()
-                    })
+            let inchan = chanmap
+                .get(&forward.in_channel)
+                .and_then(|chan| {
+                    alias_map
+                        .get::<PublicKey>(&chan.peer_id)
+                        .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
+                        .cloned()
                 })
-                .flatten()
                 .unwrap_or_else(|| forward.in_channel.to_string());
 
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = config
-                .forwards_alias
-                .then(|| {
-                    chanmap.get(&fw_outchan).and_then(|chan| {
-                        alias_map
-                            .get::<PublicKey>(&chan.peer_id)
-                            .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
-                            .cloned()
-                    })
+            let outchan = chanmap
+                .get(&fw_outchan)
+                .and_then(|chan| {
+                    alias_map
+                        .get::<PublicKey>(&chan.peer_id)
+                        .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
+                        .cloned()
                 })
-                .flatten()
                 .unwrap_or_else(|| fw_outchan.to_string());
 
             let mut should_filter = false;
@@ -172,13 +166,13 @@ pub async fn recent_forwards(
                         config,
                         forward.resolved_time.unwrap() as u64,
                     )?,
-                    in_channel_alias: if config.utf8 {
+                    in_alias: if config.utf8 {
                         inchan
                     } else {
                         inchan.replace(|c: char| !c.is_ascii(), "?")
                     },
                     in_channel: forward.in_channel,
-                    out_channel_alias: if config.utf8 {
+                    out_alias: if config.utf8 {
                         outchan
                     } else {
                         outchan.replace(|c: char| !c.is_ascii(), "?")

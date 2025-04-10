@@ -146,10 +146,9 @@ You can mix these methods and if you set the same option with different methods,
 ### Forwards table
 * ``summars-forwards`` List successfull forwards of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-forwards-limit`` Additionally limit the amount of entries shown by ``summars-forwards``. Default is ``0`` (off)
-* ``summars-forwards-columns`` Comma-separated list of enabled columns in the forwards table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``in_msats``, ``out_sats``, ``out_msats``, ``fee_sats``, ``fee_msats``, ``eff_fee_ppm``. Default columns: ``resolved_time``, ``in_channel``, ``out_channel``, ``in_sats``, ``out_sats``, ``fee_msats``
+* ``summars-forwards-columns`` Comma-separated list of enabled columns in the forwards table. Also dictates order of columns. Valid columns: ``received_time``, ``resolved_time``, ``in_channel``, ``out_channel``, ``in_alias``, ``out_alias``, ``in_sats``, ``in_msats``, ``out_sats``, ``out_msats``, ``fee_sats``, ``fee_msats``, ``eff_fee_ppm``. Default columns: ``resolved_time``, ``in_alias``, ``out_alias``, ``in_sats``, ``out_sats``, ``fee_msats``
 * ``summars-forwards-filter-amount-msat`` Filter forwards where **in** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
 * ``summars-forwards-filter-fee-msat`` Filter forwards where **fee** amount is smaller than or equal to x msat and show a summary of those forwards instead. Default is ``-1`` (disabled)
-* ``summars-forwards-alias`` In the forwards list show aliases insted of scid's. Default is ``true``
 ### Pays table
 * ``summars-pays`` List successfull payments of the last x hours. Default is ``0`` hours (disabled)
 * ``summars-pays-limit`` Additionally limit the amount of entries shown by ``summars-pays``. Default is ``0`` (off)

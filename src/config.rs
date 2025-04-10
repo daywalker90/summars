@@ -16,11 +16,11 @@ use crate::{
         ShortChannelState, Styles, Summary,
     },
     PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
-    OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_ALIAS,
-    OPT_FORWARDS_COLUMNS, OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_FORWARDS_LIMIT,
-    OPT_INVOICES, OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_INVOICES_LIMIT, OPT_JSON,
-    OPT_LOCALE, OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS,
-    OPT_PAYS_COLUMNS, OPT_PAYS_LIMIT, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_COLUMNS,
+    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_FORWARDS_LIMIT, OPT_INVOICES,
+    OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_INVOICES_LIMIT, OPT_JSON, OPT_LOCALE,
+    OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS,
+    OPT_PAYS_LIMIT, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -92,7 +92,7 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
             }
             Err(anyhow!("{} is not a valid integer!", n))
         }
-        n if n.eq(OPT_FORWARDS_ALIAS) || n.eq(OPT_UTF8) || n.eq(OPT_JSON) => {
+        n if n.eq(OPT_UTF8) || n.eq(OPT_JSON) => {
             if let Some(n_bool) = value.as_bool() {
                 return Ok(options::Value::Boolean(n_bool));
             } else if let Some(n_str) = value.as_str() {
@@ -313,11 +313,6 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     OPT_FORWARDS_FILTER_FEE,
                     &parse_option(OPT_FORWARDS_FILTER_FEE, value)?,
                 )?,
-                name if name.eq(OPT_FORWARDS_ALIAS) => check_option(
-                    config,
-                    OPT_FORWARDS_ALIAS,
-                    &parse_option(OPT_FORWARDS_ALIAS, value)?,
-                )?,
                 name if name.eq(OPT_PAYS) => {
                     check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?
                 }
@@ -430,9 +425,6 @@ pub fn get_startup_options(
         if let Some(fff) = plugin.option_str(OPT_FORWARDS_FILTER_FEE)? {
             check_option(&mut config, OPT_FORWARDS_FILTER_FEE, &fff)?;
         };
-        if let Some(fa) = plugin.option_str(OPT_FORWARDS_ALIAS)? {
-            check_option(&mut config, OPT_FORWARDS_ALIAS, &fa)?;
-        };
         if let Some(pays) = plugin.option_str(OPT_PAYS)? {
             check_option(&mut config, OPT_PAYS, &pays)?;
         };
@@ -527,9 +519,6 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         n if n.eq(OPT_FORWARDS_FILTER_FEE) => {
             config.forwards_filter_fee_msat =
                 validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_FEE, -1)?;
-        }
-        n if n.eq(OPT_FORWARDS_ALIAS) => {
-            config.forwards_alias = value.as_bool().unwrap();
         }
         n if n.eq(OPT_PAYS) => {
             config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
