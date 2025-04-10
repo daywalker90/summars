@@ -40,16 +40,13 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
             .await?
             .nodes
             .first()
-            .map(|node| node.alias.clone().unwrap_or(NO_ALIAS_SET.to_string()));
+            .map(|node| node.alias.clone().unwrap_or(NO_ALIAS_SET.to_owned()));
         if let Some(a) = alias {
             plugin.state().alias_map.lock().insert(peer.id, a);
         }
     }
 
-    info!(
-        "Alias map refresh done in: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    info!("Alias map refresh done in: {}ms", now.elapsed().as_millis());
     Ok(())
 }
 pub async fn summars_refreshalias(

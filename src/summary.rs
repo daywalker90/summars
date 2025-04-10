@@ -46,10 +46,7 @@ pub async fn summary(
     validateargs(v, &mut config)?;
 
     let getinfo = rpc.call_typed(&GetinfoRequest {}).await?;
-    debug!(
-        "Getinfo. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
 
     let peers = rpc
         .call_typed(&ListpeersRequest {
@@ -58,26 +55,17 @@ pub async fn summary(
         })
         .await?
         .peers;
-    debug!(
-        "Listpeers. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
     let peer_channels = rpc
         .call_typed(&ListpeerchannelsRequest { id: None })
         .await?
         .channels;
-    debug!(
-        "Listpeerchannels. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
 
     let funds = rpc
         .call_typed(&ListfundsRequest { spent: Some(false) })
         .await?;
-    debug!(
-        "Listfunds. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
 
     let mut utxo_amt: u64 = 0;
     for utxo in &funds.outputs {
@@ -199,16 +187,10 @@ pub async fn summary(
             channel_count += 1;
         }
     }
-    debug!(
-        "First summary-loop. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
 
     sort_summary(&config, &mut table);
-    debug!(
-        "Sort summary. Total: {}ms",
-        now.elapsed().as_millis().to_string()
-    );
+    debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
 
     let mut totals = Totals {
         pays_amount_msat: None,
@@ -234,7 +216,7 @@ pub async fn summary(
         .await?;
         debug!(
             "End of forwards table. Total: {}ms",
-            now.elapsed().as_millis().to_string()
+            now.elapsed().as_millis()
         );
     } else {
         forwards = Vec::new();
@@ -253,10 +235,7 @@ pub async fn summary(
             &getinfo,
         )
         .await?;
-        debug!(
-            "End of pays table. Total: {}ms",
-            now.elapsed().as_millis().to_string()
-        );
+        debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
     } else {
         pays = Vec::new();
     }
@@ -268,7 +247,7 @@ pub async fn summary(
             recent_invoices(p.clone(), &mut rpc, &config, &mut totals, now).await?;
         debug!(
             "End of invoices table. Total: {}ms",
-            now.elapsed().as_millis().to_string()
+            now.elapsed().as_millis()
         );
     } else {
         invoices = Vec::new();
@@ -298,10 +277,7 @@ pub async fn summary(
         let mut sumtable = Table::new(table);
         format_summary(&config, &mut sumtable)?;
         draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
-        debug!(
-            "Format summary. Total: {}ms",
-            now.elapsed().as_millis().to_string()
-        );
+        debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
 
         if filter_count > 0 {
             sumtable.with(Panel::footer(format!(
@@ -378,10 +354,10 @@ async fn chan_to_summary(
         chan.peer_id
     ))?);
 
-    let mut in_base = "N/A".to_string();
-    let mut in_ppm = "N/A".to_string();
-    if config.columns.contains(&"in_base".to_string())
-        || config.columns.contains(&"in_ppm".to_string())
+    let mut in_base = "N/A".to_owned();
+    let mut in_ppm = "N/A".to_owned();
+    if config.columns.contains(&"in_base".to_owned())
+        || config.columns.contains(&"in_ppm".to_owned())
     {
         if at_or_above_version(version, "24.02")? {
             if let Some(upd) = &chan.updates {
@@ -415,7 +391,7 @@ async fn chan_to_summary(
         total_sats: ((total_msat as f64) / 1_000.0).round() as u64,
         scid_raw: scid,
         scid: if scidsortdummy == scid {
-            "PENDING".to_string()
+            "PENDING".to_owned()
         } else {
             scid.to_string()
         },
@@ -431,7 +407,7 @@ async fn chan_to_summary(
         ppm: chan.fee_proportional_millionths.unwrap(),
         in_ppm,
         alias: if config.utf8 {
-            alias.to_string()
+            alias
         } else {
             alias.replace(|c: char| !c.is_ascii(), "?")
         },
@@ -630,7 +606,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.apply(sumtable);
     for head in Summary::FIELD_NAMES_AS_ARRAY {
-        if !config.columns.contains(&head.to_string()) {
+        if !config.columns.contains(&head.to_owned()) {
             sumtable.with(Remove::column(ByColumnName::new(head.to_ascii_uppercase())));
         }
     }
@@ -641,7 +617,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_string())
+        .map(|s| s.text().to_owned())
         .collect::<Vec<String>>();
     let records = sumtable.get_records_mut();
     if headers.len() != config.columns.len() {
@@ -685,7 +661,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new("UPTIME").not(Rows::first())).with(Format::content(|s| {
             let av = s.parse::<f64>().unwrap_or(-1.0);
             if av < 0.0 {
-                "N/A".to_string()
+                "N/A".to_owned()
             } else {
                 format!("{}%", av.round())
             }
@@ -695,7 +671,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new("PERC_US").not(Rows::first())).with(Format::content(|s| {
             let av = s.parse::<f64>().unwrap_or(-1.0);
             if av < 0.0 {
-                "N/A".to_string()
+                "N/A".to_owned()
             } else {
                 format!("{:.1}%", av)
             }
@@ -736,7 +712,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
             if let Ok(b) = s.parse::<u64>() {
                 u64_to_sat_string(config, b).unwrap()
             } else {
-                s.to_string()
+                s.to_owned()
             }
         })),
     );
@@ -750,7 +726,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
             if let Ok(b) = s.parse::<u64>() {
                 u64_to_sat_string(config, b).unwrap()
             } else {
-                s.to_string()
+                s.to_owned()
             }
         })),
     );
@@ -790,7 +766,7 @@ fn get_addrstr(getinfo: &GetinfoResponse) -> String {
         Some(a) => {
             getinfo.id.to_string()
                 + "@"
-                + &a.address.unwrap_or("missing address".to_string())
+                + &a.address.unwrap_or("missing address".to_owned())
                 + ":"
                 + &a.port.to_string()
         }
@@ -798,11 +774,11 @@ fn get_addrstr(getinfo: &GetinfoResponse) -> String {
             Some(baddr) => {
                 getinfo.id.to_string()
                     + "@"
-                    + &baddr.address.unwrap_or("missing address".to_string())
+                    + &baddr.address.unwrap_or("missing address".to_owned())
                     + ":"
                     + &baddr.port.unwrap_or(9735).to_string()
             }
-            None => "No addresses found!".to_string(),
+            None => "No addresses found!".to_owned(),
         },
     }
 }

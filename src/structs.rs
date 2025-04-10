@@ -65,7 +65,7 @@ impl Config {
                     .map(ToString::to_string)
                     .collect::<Vec<String>>()
             },
-            sort_by: "SCID".to_string(),
+            sort_by: "SCID".to_owned(),
             exclude_channel_states: ExcludeStates {
                 channel_states: Vec::new(),
                 channel_visibility: None,
@@ -84,7 +84,7 @@ impl Config {
                         && t != &"in_channel"
                         && t != &"out_channel"
                 })
-                .map(|s| s.to_string())
+                .map(|s| s.to_owned())
                 .collect::<Vec<String>>(),
             forwards_filter_amt_msat: -1,
             forwards_filter_fee_msat: -1,
@@ -100,7 +100,7 @@ impl Config {
                         && t != &"msats_sent"
                         && t != &"fee_msats"
                 })
-                .map(|s| s.to_string())
+                .map(|s| s.to_owned())
                 .collect::<Vec<String>>(),
             max_desc_length: 30,
             invoices: 0,
@@ -108,7 +108,7 @@ impl Config {
             invoices_columns: Invoices::FIELD_NAMES_AS_ARRAY
                 .into_iter()
                 .filter(|t| t != &"description" && t != &"preimage" && t != &"msats_received")
-                .map(|s| s.to_string())
+                .map(|s| s.to_owned())
                 .collect::<Vec<String>>(),
             max_label_length: 30,
             invoices_filter_amt_msat: -1,
@@ -312,7 +312,7 @@ pub struct Pays {
 fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
         Some(s) => format!("{}", s),
-        None => MISSING_VALUE.to_string(),
+        None => MISSING_VALUE.to_owned(),
     }
 }
 
@@ -470,24 +470,24 @@ pub struct GraphCharset {
 impl GraphCharset {
     pub fn new_utf8() -> GraphCharset {
         GraphCharset {
-            double_left: "╟".to_string(),
-            left: "├".to_string(),
-            bar: "─".to_string(),
-            mid: "┼".to_string(),
-            right: "┤".to_string(),
-            double_right: "╢".to_string(),
-            empty: "║".to_string(),
+            double_left: "╟".to_owned(),
+            left: "├".to_owned(),
+            bar: "─".to_owned(),
+            mid: "┼".to_owned(),
+            right: "┤".to_owned(),
+            double_right: "╢".to_owned(),
+            empty: "║".to_owned(),
         }
     }
     pub fn new_ascii() -> GraphCharset {
         GraphCharset {
-            double_left: "#".to_string(),
-            left: "[".to_string(),
-            bar: "-".to_string(),
-            mid: "+".to_string(),
-            right: "]".to_string(),
-            double_right: "#".to_string(),
-            empty: "|".to_string(),
+            double_left: "#".to_owned(),
+            left: "[".to_owned(),
+            bar: "-".to_owned(),
+            mid: "+".to_owned(),
+            right: "]".to_owned(),
+            double_right: "#".to_owned(),
+            empty: "|".to_owned(),
         }
     }
 }
