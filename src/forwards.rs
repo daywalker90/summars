@@ -254,26 +254,26 @@ pub fn format_forwards(
 
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_channel")).with(
+            Modify::new(ByColumnName::new("in_alias")).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_channel"))
+            Modify::new(ByColumnName::new("in_alias"))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_channel")).with(
+            Modify::new(ByColumnName::new("out_alias")).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_channel"))
+            Modify::new(ByColumnName::new("out_alias"))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
