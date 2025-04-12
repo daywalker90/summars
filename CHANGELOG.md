@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.0.1] - Unreleased
+
+### Fixed
+- correctly apply ``summars-max-alias-length`` option to new ``in_alias`` and ``out_alias`` forwards columns instead of ``in_channel`` / ``out_channel``
+
 ## [5.0.0] 2025-04-10
 
 ### Added
