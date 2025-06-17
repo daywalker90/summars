@@ -65,7 +65,7 @@ invoice_columns = [
 
 def test_basic(node_factory, get_plugin):  # noqa: F811
     node = node_factory.get_node(options={"plugin": get_plugin, "log-level": "debug"})
-    result = node.rpc.call("summars", {"summars-locale": "en_US"})
+    result = node.rpc.call("summars", {"summars-locale": "en-US"})
     assert result is not None
     assert isinstance(result, dict) is True
     assert "result" in result

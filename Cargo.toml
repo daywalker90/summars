@@ -2,7 +2,7 @@
 name = "summars"
 version = "5.0.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.82"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,20 +14,21 @@ serde_json = "1"
 
 tokio = { version = "1", features = ["fs","sync","rt-multi-thread"] }
 cln-rpc = "0.4"
-# cln-rpc = { path="../lightning/cln-rpc/", version = "^0.3" }
+# cln-rpc = { path="../lightning/cln-rpc/", version = "^0.4" }
 cln-plugin = "0.4"
-# cln-plugin = { path="../lightning/plugins/", version = "^0.3" }
+# cln-plugin = { path="../lightning/plugins/", version = "^0.4" }
 
-tabled = "0.18"
+tabled = "0.20"
 
-fixed_decimal = "0.5"
-icu_decimal = "1"
+fixed_decimal = "0.7"
+icu_decimal = "2"
 
-icu_locid = "1"
+icu_locale = "2"
 sys-locale = "0.3"
 
-icu_datetime = "1"
-icu_calendar = { version = "1", default-features = false, features = ["std"]}
+icu_datetime = "2"
+icu_calendar = "2"
+icu_time = "2"
 
 struct-field-names-as-array = "0.3"
 chrono = "0.4"

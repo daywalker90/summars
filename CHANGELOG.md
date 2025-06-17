@@ -1,6 +1,10 @@
 # Changelog
 
-## [5.0.1] - Unreleased
+## [5.1.0] - Unreleased
+
+### Changed
+- upgraded dependencies, locales now must not be written as `en_US` but rather `en-US` (just the language part is enough anyways)
+- raise MSRV to 1.82 because of `icu_calendar`
 
 ### Fixed
 - correctly apply ``summars-max-alias-length`` option to new ``in_alias`` and ``out_alias`` forwards columns instead of ``in_channel`` / ``out_channel``
