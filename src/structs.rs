@@ -8,7 +8,7 @@ use std::{
 use anyhow::anyhow;
 use cln_plugin::Error;
 use cln_rpc::primitives::{ChannelState, PublicKey, ShortChannelId};
-use icu_locid::Locale;
+use icu_locale::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use struct_field_names_as_array::FieldNamesAsArray;

@@ -5,7 +5,7 @@ use cln_plugin::{
     ConfiguredPlugin, Plugin,
 };
 use cln_rpc::RpcError;
-use icu_locid::Locale;
+use icu_locale::Locale;
 use serde_json::json;
 use std::{collections::HashSet, str::FromStr};
 use struct_field_names_as_array::FieldNamesAsArray;
