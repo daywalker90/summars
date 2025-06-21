@@ -8,6 +8,7 @@
 
 ### Fixed
 - correctly apply ``summars-max-alias-length`` option to new ``in_alias`` and ``out_alias`` forwards columns instead of ``in_channel`` / ``out_channel``
+- forwards that are not settled for a time longer than your `summars-forwards` now show up when they settle
 
 ## [5.0.0] 2025-04-10
 

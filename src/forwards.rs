@@ -50,7 +50,7 @@ pub async fn recent_forwards(
         "fw_index: start:{} timestamp:{}",
         fw_index.start, fw_index.timestamp
     );
-    let forwards = rpc
+    let settled_forwards = rpc
         .call_typed(&ListforwardsRequest {
             status: Some(ListforwardsStatus::SETTLED),
             in_channel: None,
@@ -74,12 +74,12 @@ pub async fn recent_forwards(
         .forwards;
     debug!(
         "List {} forwards. Total: {}ms",
-        forwards.len(),
+        settled_forwards.len(),
         now.elapsed().as_millis()
     );
 
     fw_index.timestamp = now_utc - config_forwards_sec;
-    if let Some(last_fw) = forwards.last() {
+    if let Some(last_fw) = settled_forwards.last() {
         fw_index.start = last_fw.created_index.unwrap_or(u64::MAX);
     }
 
@@ -103,8 +103,8 @@ pub async fn recent_forwards(
     let mut filter_fee_sum_msat = 0;
     let mut filter_count = 0;
 
-    for forward in forwards.into_iter() {
-        if forward.received_time as u64 > now_utc - config_forwards_sec {
+    for forward in settled_forwards.into_iter() {
+        if forward.resolved_time.unwrap_or(0.0) as u64 > now_utc - config_forwards_sec {
             let inchan = chanmap
                 .get(&forward.in_channel)
                 .and_then(|chan| {
