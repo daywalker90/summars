@@ -1,6 +1,6 @@
 # Changelog
 
-## [5.1.0] - Unreleased
+## [5.1.0] - 2025-07-07
 
 ### Changed
 - upgraded dependencies, locales now must not be written as `en_US` but rather `en-US` (just the language part is enough anyways)
