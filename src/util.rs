@@ -89,7 +89,7 @@ pub fn draw_chans_graph(
         right = format!("{:23}", draw.bar.repeat(their_len - 1) + &draw.right);
     }
 
-    format!("{}{}{}", left, mid, right)
+    format!("{left}{mid}{right}")
 }
 
 pub fn u64_to_btc_string(config: &Config, amount_msat: u64) -> Result<String, Error> {
@@ -166,7 +166,7 @@ pub fn timestamp_to_localized_datetime_string(
 pub fn hex_encode(bytes: &[u8]) -> String {
     let mut hex_string = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        hex_string.push_str(&format!("{:02x}", byte));
+        hex_string.push_str(&format!("{byte:02x}"));
     }
     hex_string
 }
