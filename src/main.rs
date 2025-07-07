@@ -233,7 +233,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .rpcmethod(
             "summars-refreshalias",
-            "Show summary of channels and optionally recent forwards",
+            "Refresh the alias cache manually",
             summars_refreshalias,
         )
         .dynamic()
@@ -243,7 +243,7 @@ async fn main() -> Result<(), anyhow::Error> {
         Some(plugin) => {
             match get_startup_options(&plugin, state.clone()) {
                 Ok(()) => &(),
-                Err(e) => return plugin.disable(format!("{}", e).as_str()).await,
+                Err(e) => return plugin.disable(format!("{e}").as_str()).await,
             };
             info!("read startup options done");
 
@@ -257,7 +257,7 @@ async fn main() -> Result<(), anyhow::Error> {
         tokio::spawn(async move {
             match tasks::trace_availability(traceclone).await {
                 Ok(()) => (),
-                Err(e) => warn!("Error in trace_availability thread: {}", e),
+                Err(e) => warn!("Error in trace_availability thread: {e}"),
             };
         });
 
@@ -268,7 +268,7 @@ async fn main() -> Result<(), anyhow::Error> {
             loop {
                 match tasks::refresh_alias(aliasclone.clone()).await {
                     Ok(()) => (),
-                    Err(e) => warn!("Error in refresh_alias thread: {}", e),
+                    Err(e) => warn!("Error in refresh_alias thread: {e}"),
                 };
                 time::sleep(Duration::from_secs(alias_refresh_freq * 60 * 60)).await;
             }

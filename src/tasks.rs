@@ -74,7 +74,7 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
             warn!("Could not open {}: {}. Maybe this is the first time using summars? Creating new file.", availdbfile.to_str().unwrap(),e);
             match fs::create_dir(summarsdir.clone()).await {
                 Ok(_) => (),
-                Err(e) => warn!("Warning: Could not create summars folder:{}", e),
+                Err(e) => warn!("Warning: Could not create summars folder:{e}"),
             };
             File::create(availdbfile.clone()).await?;
             persistpeers = BTreeMap::new();

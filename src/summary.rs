@@ -684,7 +684,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
             if av < 0.0 {
                 "N/A".to_owned()
             } else {
-                format!("{:.1}%", av)
+                format!("{av:.1}%")
             }
         })),
     );
