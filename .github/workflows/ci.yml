@@ -99,7 +99,8 @@ jobs:
     - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries
       if: ${{ contains(matrix.os, 'ubuntu') &&  steps.cache-cln.outputs.cache-hit != 'true' }}
       run: |
-          url=$(curl --retry 3 --retry-delay 3 https://api.github.com/repos/ElementsProject/lightning/releases/tags/${{ inputs.cln-version }} \
+          set -e
+          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/ElementsProject/lightning/releases/tags/${{ inputs.cln-version }} \
             | jq '.assets[] | select(.name | contains("24.04")) | .browser_download_url' \
             | tr -d '\"')
           wget $url
@@ -171,7 +172,7 @@ jobs:
             python -m grpc_tools.protoc --proto_path="proto" --python_out="tests" --grpc_python_out="tests" proto/*.proto
           fi
 
-          url=$(curl --retry 3 --retry-delay 3 https://api.github.com/repos/daywalker90/holdinvoice/releases/latest \
+          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/daywalker90/holdinvoice/releases/latest \
             | jq '.assets[] | select(.name | endswith("x86_64-linux-gnu.tar.gz")) | .browser_download_url' \
             | tr -d '\"')
           wget $url
