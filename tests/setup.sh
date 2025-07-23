@@ -69,24 +69,17 @@ else
 fi
 
 # Need holdinvoice for some tests
-HOLDINVOICE_LATEST_RELEASE=$(curl -s "https://api.github.com/repos/daywalker90/holdinvoice/releases/latest")
-HOLDINVOICE_FILE_URL=$(echo "$HOLDINVOICE_LATEST_RELEASE" | jq -r ".assets[] | select(.name | endswith(\"$platform_file_end\")) | .browser_download_url")
+HOLDINVOICE_VERSION="4.0.0"
+HOLDINVOICE_ARCHIVE="holdinvoice-v$HOLDINVOICE_VERSION-$platform_file_end"
+HOLDINVOICE_FILE_URL="https://github.com/daywalker90/holdinvoice/releases/download/v$version/$HOLDINVOICE_ARCHIVE"
 
-if [ -z "$HOLDINVOICE_FILE_URL" ]; then
-  echo "No holdinvoice file found matching key: $platform_file_end"
-  exit 1
-fi
-
-holdinvoice_archive=holdinvoice-$platform_file_end
-
-if ! curl -L "$HOLDINVOICE_FILE_URL" -o "$script_dir/$holdinvoice_archive"; then
+if ! curl -L "$HOLDINVOICE_FILE_URL" -o "$script_dir/$HOLDINVOICE_ARCHIVE"; then
     echo "Error downloading the file from $HOLDINVOICE_FILE_URL" >&2
     exit 1
 fi
 
-
-if ! tar -xzvf "$script_dir/$holdinvoice_archive" -C "$script_dir"; then
-    echo "Error extracting the contents of $holdinvoice_archive" >&2
+if ! tar -xzvf "$script_dir/$HOLDINVOICE_ARCHIVE" -C "$script_dir"; then
+    echo "Error extracting the contents of $HOLDINVOICE_ARCHIVE" >&2
     exit 1
 fi
 
