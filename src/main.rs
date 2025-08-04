@@ -7,7 +7,6 @@ use cln_plugin::{
     Builder,
 };
 use config::setconfig_callback;
-use log::{info, warn};
 use std::time::Duration;
 use structs::PluginState;
 use summary::summary;
@@ -245,30 +244,30 @@ async fn main() -> Result<(), anyhow::Error> {
                 Ok(()) => &(),
                 Err(e) => return plugin.disable(format!("{e}").as_str()).await,
             };
-            info!("read startup options done");
+            log::info!("read startup options done");
 
             confplugin = plugin;
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
     };
     if let Ok(plugin) = confplugin.start(state).await {
-        info!("starting uptime task");
+        log::info!("starting uptime task");
         let traceclone = plugin.clone();
         tokio::spawn(async move {
             match tasks::trace_availability(traceclone).await {
                 Ok(()) => (),
-                Err(e) => warn!("Error in trace_availability thread: {e}"),
+                Err(e) => log::warn!("Error in trace_availability thread: {e}"),
             };
         });
 
-        info!("starting refresh alias task");
+        log::info!("starting refresh alias task");
         let aliasclone = plugin.clone();
         let alias_refresh_freq = plugin.state().config.lock().refresh_alias;
         tokio::spawn(async move {
             loop {
                 match tasks::refresh_alias(aliasclone.clone()).await {
                     Ok(()) => (),
-                    Err(e) => warn!("Error in refresh_alias thread: {e}"),
+                    Err(e) => log::warn!("Error in refresh_alias thread: {e}"),
                 };
                 time::sleep(Duration::from_secs(alias_refresh_freq * 60 * 60)).await;
             }

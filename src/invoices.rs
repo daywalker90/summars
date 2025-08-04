@@ -4,7 +4,6 @@ use cln_plugin::Plugin;
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
 
-use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
@@ -33,13 +32,14 @@ pub async fn recent_invoices(
     {
         if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
             *plugin.state().inv_index.lock() = PagingIndex::new();
-            debug!("inv_index: invoices-age increased, resetting index");
+            log::debug!("inv_index: invoices-age increased, resetting index");
         }
     }
     let mut inv_index = plugin.state().inv_index.lock().clone();
-    debug!(
+    log::debug!(
         "inv_index: start:{} timestamp:{}",
-        inv_index.start, inv_index.timestamp
+        inv_index.start,
+        inv_index.timestamp
     );
     let invoices = rpc
         .call_typed(&ListinvoicesRequest {
@@ -53,7 +53,7 @@ pub async fn recent_invoices(
         })
         .await?
         .invoices;
-    debug!(
+    log::debug!(
         "List {} invoices. Total: {}ms",
         invoices.len(),
         now.elapsed().as_millis()
@@ -123,7 +123,7 @@ pub async fn recent_invoices(
     if inv_index.start < u64::MAX {
         *plugin.state().inv_index.lock() = inv_index;
     }
-    debug!(
+    log::debug!(
         "Build invoices table. Total: {}ms",
         now.elapsed().as_millis()
     );

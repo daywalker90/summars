@@ -9,7 +9,6 @@ use cln_rpc::{
     primitives::{Amount, PublicKey},
 };
 
-use log::debug;
 use std::collections::BTreeMap;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
@@ -42,13 +41,14 @@ pub async fn recent_forwards(
     {
         if plugin.state().fw_index.lock().timestamp > now_utc - config_forwards_sec {
             *plugin.state().fw_index.lock() = PagingIndex::new();
-            debug!("fw_index: forwards-age increased, resetting index");
+            log::debug!("fw_index: forwards-age increased, resetting index");
         }
     }
     let mut fw_index = plugin.state().fw_index.lock().clone();
-    debug!(
+    log::debug!(
         "fw_index: start:{} timestamp:{}",
-        fw_index.start, fw_index.timestamp
+        fw_index.start,
+        fw_index.timestamp
     );
     let settled_forwards = rpc
         .call_typed(&ListforwardsRequest {
@@ -72,7 +72,7 @@ pub async fn recent_forwards(
         })
         .await?
         .forwards;
-    debug!(
+    log::debug!(
         "List {} forwards. Total: {}ms",
         settled_forwards.len(),
         now.elapsed().as_millis()
@@ -203,7 +203,7 @@ pub async fn recent_forwards(
     if fw_index.start < u64::MAX {
         *plugin.state().fw_index.lock() = fw_index;
     }
-    debug!(
+    log::debug!(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis()
     );

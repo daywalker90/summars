@@ -7,7 +7,6 @@ use cln_rpc::model::responses::{GetinfoResponse, ListpeerchannelsChannels};
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, primitives::Amount};
 
-use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
@@ -40,7 +39,7 @@ pub async fn recent_pays(
     {
         if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
             *plugin.state().pay_index.lock() = PagingIndex::new();
-            debug!("pay_index: pays-age increased, resetting index");
+            log::debug!("pay_index: pays-age increased, resetting index");
         }
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
@@ -48,9 +47,10 @@ pub async fn recent_pays(
     let mut pending_pays = Vec::new();
     let mut pending_hashes = HashSet::new();
     let pays = if at_or_above_version(&getinfo.version, "24.11")? {
-        debug!(
+        log::debug!(
             "pay_index: start:{} timestamp:{}",
-            pay_index.start, pay_index.timestamp
+            pay_index.start,
+            pay_index.timestamp
         );
         pending_pays = rpc
             .call_typed(&ListpaysRequest {
@@ -93,7 +93,7 @@ pub async fn recent_pays(
         .pays
     };
 
-    debug!(
+    log::debug!(
         "List {} pays. Total: {}ms",
         pays.len(),
         now.elapsed().as_millis()
@@ -231,7 +231,7 @@ pub async fn recent_pays(
     if pay_index.start < u64::MAX {
         *plugin.state().pay_index.lock() = pay_index;
     }
-    debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
     if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
         table = table.split_off(table.len() - (config.pays_limit as usize))
     }
