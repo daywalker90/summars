@@ -4,7 +4,6 @@ use cln_rpc::primitives::{ChannelState, ShortChannelId};
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
 
-use log::debug;
 use std::cmp::Reverse;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -46,7 +45,7 @@ pub async fn summary(
     validateargs(v, &mut config)?;
 
     let getinfo = rpc.call_typed(&GetinfoRequest {}).await?;
-    debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
 
     let peers = rpc
         .call_typed(&ListpeersRequest {
@@ -55,17 +54,17 @@ pub async fn summary(
         })
         .await?
         .peers;
-    debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
     let peer_channels = rpc
         .call_typed(&ListpeerchannelsRequest { id: None })
         .await?
         .channels;
-    debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
 
     let funds = rpc
         .call_typed(&ListfundsRequest { spent: Some(false) })
         .await?;
-    debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
 
     let mut utxo_amt: u64 = 0;
     for utxo in &funds.outputs {
@@ -187,10 +186,10 @@ pub async fn summary(
             channel_count += 1;
         }
     }
-    debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
 
     sort_summary(&config, &mut table);
-    debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
 
     let mut totals = Totals {
         pays_amount_msat: None,
@@ -214,7 +213,7 @@ pub async fn summary(
             now,
         )
         .await?;
-        debug!(
+        log::debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis()
         );
@@ -235,7 +234,7 @@ pub async fn summary(
             &getinfo,
         )
         .await?;
-        debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
     } else {
         pays = Vec::new();
     }
@@ -245,7 +244,7 @@ pub async fn summary(
     if config.invoices > 0 {
         (invoices, invoices_filter_stats) =
             recent_invoices(p.clone(), &mut rpc, &config, &mut totals, now).await?;
-        debug!(
+        log::debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis()
         );
@@ -277,7 +276,7 @@ pub async fn summary(
         let mut sumtable = Table::new(table);
         format_summary(&config, &mut sumtable)?;
         draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
-        debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
 
         if filter_count > 0 {
             sumtable.with(Panel::footer(format!(
@@ -293,16 +292,16 @@ pub async fn summary(
             result += &("\n\n".to_owned()
                 + &format_forwards(forwards, &config, &totals, forwards_filter_stats)?);
         }
-        debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
             result += &("\n\n".to_owned() + &format_pays(pays, &config, &totals)?);
         }
-        debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
             result += &("\n\n".to_owned()
                 + &format_invoices(invoices, &config, &totals, invoices_filter_stats)?);
         }
-        debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
         Ok(json!({"format-hint":"simple","result":format!(
             "address={}

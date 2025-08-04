@@ -4,7 +4,7 @@ use cln_plugin::Plugin;
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
 
-use log::debug;
+use serde_json::json;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
@@ -15,7 +15,10 @@ use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals};
+use crate::structs::{
+    Config, HoldLookupResponse, Holdstate, Invoices, InvoicesFilterStats, PagingIndex, PluginState,
+    Totals,
+};
 use crate::util::{
     hex_encode, replace_escaping_chars, sort_columns, timestamp_to_localized_datetime_string,
     u64_to_sat_string,
@@ -33,13 +36,14 @@ pub async fn recent_invoices(
     {
         if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
             *plugin.state().inv_index.lock() = PagingIndex::new();
-            debug!("inv_index: invoices-age increased, resetting index");
+            log::debug!("inv_index: invoices-age increased, resetting index");
         }
     }
     let mut inv_index = plugin.state().inv_index.lock().clone();
-    debug!(
+    log::debug!(
         "inv_index: start:{} timestamp:{}",
-        inv_index.start, inv_index.timestamp
+        inv_index.start,
+        inv_index.timestamp
     );
     let invoices = rpc
         .call_typed(&ListinvoicesRequest {
@@ -53,7 +57,7 @@ pub async fn recent_invoices(
         })
         .await?
         .invoices;
-    debug!(
+    log::debug!(
         "List {} invoices. Total: {}ms",
         invoices.len(),
         now.elapsed().as_millis()
@@ -123,14 +127,56 @@ pub async fn recent_invoices(
     if inv_index.start < u64::MAX {
         *plugin.state().inv_index.lock() = inv_index;
     }
-    debug!(
-        "Build invoices table. Total: {}ms",
+    log::debug!(
+        "Build invoices table entries. Total: {}ms",
         now.elapsed().as_millis()
     );
-    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
-        table = table.split_off(table.len() - (config.invoices_limit as usize))
+
+    if plugin.state().config.lock().hold_invoice_support {
+        let holdinvoices: HoldLookupResponse =
+            rpc.call_raw("holdinvoicelookup", &json!({})).await?;
+
+        for holdinvoice in holdinvoices.holdinvoices.into_iter() {
+            if holdinvoice.state == Holdstate::Settled {
+                let paid_at = holdinvoice.paid_at.unwrap();
+                if paid_at > now_utc - config_invoices_sec {
+                    if let Some(inv_amt) = &mut totals.invoices_amount_received_msat {
+                        *inv_amt += holdinvoice.amount_msat
+                    } else {
+                        totals.invoices_amount_received_msat = Some(holdinvoice.amount_msat)
+                    }
+
+                    if holdinvoice.amount_msat as i64 <= config.invoices_filter_amt_msat {
+                        filter_count += 1;
+                        filter_amt_sum_msat += holdinvoice.amount_msat;
+                    } else {
+                        table.push(Invoices {
+                            paid_at,
+                            paid_at_str: timestamp_to_localized_datetime_string(config, paid_at)?,
+                            label: "Holdinvoice".to_owned(),
+                            msats_received: holdinvoice.amount_msat,
+                            sats_received: ((holdinvoice.amount_msat as f64) / 1_000.0).round()
+                                as u64,
+                            description: holdinvoice.description.unwrap_or_default(),
+                            payment_hash: holdinvoice.payment_hash,
+                            preimage: holdinvoice.preimage.unwrap_or_default(),
+                        });
+                    }
+                }
+            }
+        }
+        log::debug!(
+            "Build holdinvoices table entries. Total: {}ms",
+            now.elapsed().as_millis()
+        );
     }
+
     table.sort_by_key(|x| x.paid_at);
+
+    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
+        let start = table.len().saturating_sub(config.invoices_limit as usize);
+        table = table.drain(start..).collect();
+    }
 
     Ok((
         table,

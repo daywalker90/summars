@@ -859,7 +859,6 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
         {
             "amount_msat": 1_000,
             "description": "hold_inv1",
-            "label": "hold_inv1",
             "cltv": 144,
         },
     )
@@ -871,7 +870,9 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
         hold_route, hold_inv["payment_hash"], payment_secret=hold_inv["payment_secret"]
     )
     wait_for(
-        lambda: l3.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
+        lambda: l3.rpc.holdinvoicelookup(hold_inv["payment_hash"])["holdinvoices"][0][
+            "state"
+        ]
         == "ACCEPTED"
     )
     result = l1.rpc.call("summars", {"summars-pays": 1})

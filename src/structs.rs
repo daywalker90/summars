@@ -47,6 +47,7 @@ pub struct Config {
     pub style: Styles,
     pub flow_style: Styles,
     pub json: bool,
+    pub hold_invoice_support: bool,
 }
 impl Config {
     pub fn new() -> Config {
@@ -132,10 +133,9 @@ impl Config {
             availability_window: 72,
             utf8: true,
             style: Styles::Psql,
-
             flow_style: Styles::Blank,
-
             json: false,
+            hold_invoice_support: false,
         }
     }
 }
@@ -491,6 +491,64 @@ impl GraphCharset {
         }
     }
 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HoldLookupResponse {
+    pub holdinvoices: Vec<HoldInvoiceResponse>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct HoldInvoiceResponse {
+    pub bolt11: String,
+    pub amount_msat: u64,
+    pub payment_hash: String,
+    pub payment_secret: String,
+    pub created_at: u64,
+    pub expires_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preimage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description_hash: Option<String>,
+    pub state: Holdstate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub htlc_expiry: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paid_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum Holdstate {
+    Open,
+    Settled,
+    Canceled,
+    Accepted,
+}
+impl fmt::Display for Holdstate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Holdstate::Open => write!(f, "OPEN"),
+            Holdstate::Settled => write!(f, "SETTLED"),
+            Holdstate::Canceled => write!(f, "CANCELED"),
+            Holdstate::Accepted => write!(f, "ACCEPTED"),
+        }
+    }
+}
+impl FromStr for Holdstate {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "open" => Ok(Holdstate::Open),
+            "settled" => Ok(Holdstate::Settled),
+            "canceled" => Ok(Holdstate::Canceled),
+            "accepted" => Ok(Holdstate::Accepted),
+            _ => Err(anyhow!("could not parse Holdstate from {}", s)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
