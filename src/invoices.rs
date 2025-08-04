@@ -127,10 +127,13 @@ pub async fn recent_invoices(
         "Build invoices table. Total: {}ms",
         now.elapsed().as_millis()
     );
-    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
-        table = table.split_off(table.len() - (config.invoices_limit as usize))
-    }
+
     table.sort_by_key(|x| x.paid_at);
+
+    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
+        let start = table.len().saturating_sub(config.invoices_limit as usize);
+        table = table.drain(start..).collect();
+    }
 
     Ok((
         table,

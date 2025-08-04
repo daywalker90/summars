@@ -207,10 +207,14 @@ pub async fn recent_forwards(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis()
     );
-    if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
-        table = table.split_off(table.len() - (config.forwards_limit as usize))
-    }
+
     table.sort_by_key(|x| x.resolved_time);
+
+    if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
+        let start = table.len().saturating_sub(config.forwards_limit as usize);
+        table = table.drain(start..).collect();
+    }
+
     Ok((
         table,
         ForwardsFilterStats {

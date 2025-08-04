@@ -232,10 +232,14 @@ pub async fn recent_pays(
         *plugin.state().pay_index.lock() = pay_index;
     }
     log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
-    if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
-        table = table.split_off(table.len() - (config.pays_limit as usize))
-    }
+
     table.sort_by_key(|x| x.completed_at);
+
+    if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
+        let start = table.len().saturating_sub(config.pays_limit as usize);
+        table = table.drain(start..).collect();
+    }
+
     Ok(table)
 }
 
