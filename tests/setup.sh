@@ -69,7 +69,7 @@ else
 fi
 
 # Need holdinvoice for some tests
-HOLDINVOICE_VERSION="4.0.0"
+HOLDINVOICE_VERSION="5.0.0"
 HOLDINVOICE_ARCHIVE="holdinvoice-v$HOLDINVOICE_VERSION-$platform_file_end"
 HOLDINVOICE_FILE_URL="https://github.com/daywalker90/holdinvoice/releases/download/v$HOLDINVOICE_VERSION/$HOLDINVOICE_ARCHIVE"
 

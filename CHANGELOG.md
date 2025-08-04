@@ -1,5 +1,10 @@
 # Changelog
 
+## [5.2.0] - Unreleased
+
+### Added
+- Support for [holdinvoice](https://github.com/daywalker90/holdinvoice) v5
+
 ## [5.1.0] - 2025-07-07
 
 ### Changed

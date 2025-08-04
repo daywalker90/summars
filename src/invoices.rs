@@ -4,6 +4,7 @@ use cln_plugin::Plugin;
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
 
+use serde_json::json;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
@@ -14,7 +15,10 @@ use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
 use tabled::Table;
 use tokio::time::Instant;
 
-use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals};
+use crate::structs::{
+    Config, HoldLookupResponse, Holdstate, Invoices, InvoicesFilterStats, PagingIndex, PluginState,
+    Totals,
+};
 use crate::util::{
     hex_encode, replace_escaping_chars, sort_columns, timestamp_to_localized_datetime_string,
     u64_to_sat_string,
@@ -124,9 +128,48 @@ pub async fn recent_invoices(
         *plugin.state().inv_index.lock() = inv_index;
     }
     log::debug!(
-        "Build invoices table. Total: {}ms",
+        "Build invoices table entries. Total: {}ms",
         now.elapsed().as_millis()
     );
+
+    if plugin.state().config.lock().hold_invoice_support {
+        let holdinvoices: HoldLookupResponse =
+            rpc.call_raw("holdinvoicelookup", &json!({})).await?;
+
+        for holdinvoice in holdinvoices.holdinvoices.into_iter() {
+            if holdinvoice.state == Holdstate::Settled {
+                let paid_at = holdinvoice.paid_at.unwrap();
+                if paid_at > now_utc - config_invoices_sec {
+                    if let Some(inv_amt) = &mut totals.invoices_amount_received_msat {
+                        *inv_amt += holdinvoice.amount_msat
+                    } else {
+                        totals.invoices_amount_received_msat = Some(holdinvoice.amount_msat)
+                    }
+
+                    if holdinvoice.amount_msat as i64 <= config.invoices_filter_amt_msat {
+                        filter_count += 1;
+                        filter_amt_sum_msat += holdinvoice.amount_msat;
+                    } else {
+                        table.push(Invoices {
+                            paid_at,
+                            paid_at_str: timestamp_to_localized_datetime_string(config, paid_at)?,
+                            label: "Holdinvoice".to_owned(),
+                            msats_received: holdinvoice.amount_msat,
+                            sats_received: ((holdinvoice.amount_msat as f64) / 1_000.0).round()
+                                as u64,
+                            description: holdinvoice.description.unwrap_or_default(),
+                            payment_hash: holdinvoice.payment_hash,
+                            preimage: holdinvoice.preimage.unwrap_or_default(),
+                        });
+                    }
+                }
+            }
+        }
+        log::debug!(
+            "Build holdinvoices table entries. Total: {}ms",
+            now.elapsed().as_millis()
+        );
+    }
 
     table.sort_by_key(|x| x.paid_at);
 

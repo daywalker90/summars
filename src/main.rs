@@ -1,12 +1,17 @@
 extern crate serde_json;
 
-use crate::config::get_startup_options;
+use crate::{
+    config::get_startup_options,
+    util::{at_or_above_version, make_rpc_path},
+};
 use anyhow::anyhow;
 use cln_plugin::{
     options::{BooleanConfigOption, ConfigOption, IntegerConfigOption, StringConfigOption},
     Builder,
 };
+use cln_rpc::{ClnRpc, RpcError};
 use config::setconfig_callback;
+use serde_json::json;
 use std::time::Duration;
 use structs::PluginState;
 use summary::summary;
@@ -251,6 +256,24 @@ async fn main() -> Result<(), anyhow::Error> {
         None => return Err(anyhow!("Error configuring the plugin!")),
     };
     if let Ok(plugin) = confplugin.start(state).await {
+        let rpc_path = make_rpc_path(&plugin);
+        let mut rpc = ClnRpc::new(&rpc_path).await?;
+        let hold_version: Result<serde_json::Value, RpcError> =
+            rpc.call_raw("holdinvoice-version", &json!({})).await;
+        if let Ok(hv) = hold_version {
+            let hold_version_str = hv
+                .get("version")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| anyhow!("Malformed holdinvoice-version response"))?;
+
+            if at_or_above_version(hold_version_str, "5.0.0")?
+                && !at_or_above_version(hold_version_str, "6.0.0")?
+            {
+                plugin.state().config.lock().hold_invoice_support = true;
+                log::info!("Holdinvoice support enabled");
+            }
+        }
+
         log::info!("starting uptime task");
         let traceclone = plugin.clone();
         tokio::spawn(async move {
