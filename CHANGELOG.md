@@ -4,6 +4,7 @@
 
 ### Added
 - *CLN v25.09+ only*: `summars-columns`: new `PING` column which pings your peers and shows the result in milliseconds, not enabled by default since it raises response time significantly
+- Added a count to show how much of your `summars-*-limit` is used
 
 ## [5.1.0] - 2025-07-07
 

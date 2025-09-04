@@ -147,6 +147,7 @@ pub fn format_invoices(
     totals: &Totals,
     filter_stats: InvoicesFilterStats,
 ) -> Result<String, Error> {
+    let count = table.len();
     let mut invoicestable = Table::new(table);
     config.flow_style.apply(&mut invoicestable);
     for head in Invoices::FIELD_NAMES_AS_ARRAY {
@@ -216,7 +217,7 @@ pub fn format_invoices(
         "invoices (last {}h, limit: {})",
         config.invoices,
         if config.invoices_limit > 0 {
-            config.invoices_limit.to_string()
+            format!("{}/{}", count, config.invoices_limit.to_string())
         } else {
             "off".to_owned()
         }

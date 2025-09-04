@@ -227,6 +227,7 @@ pub fn format_forwards(
     totals: &Totals,
     filter_stats: ForwardsFilterStats,
 ) -> Result<String, Error> {
+    let count = table.len();
     let mut fwtable = Table::new(table);
     config.flow_style.apply(&mut fwtable);
     for head in Forwards::FIELD_NAMES_AS_ARRAY {
@@ -325,7 +326,7 @@ pub fn format_forwards(
         "forwards (last {}h, limit: {})",
         config.forwards,
         if config.forwards_limit > 0 {
-            config.forwards_limit.to_string()
+            format!("{}/{}", count, config.forwards_limit.to_string())
         } else {
             "off".to_owned()
         }
