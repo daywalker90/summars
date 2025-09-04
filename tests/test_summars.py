@@ -27,6 +27,7 @@ columns = [
     "HTLCS",
     "STATE",
     "PERC_US",
+    "PING",
 ]
 
 forwards_columns = [
@@ -87,6 +88,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
         and x != "MIN_HTLC"
         and x != "IN_BASE"
         and x != "IN_PPM"
+        and x != "PING"
     ]
     for column in expected_columns:
         assert column in result["result"]

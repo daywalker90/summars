@@ -1,24 +1,27 @@
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
-use cln_rpc::primitives::{ChannelState, ShortChannelId};
+use cln_rpc::primitives::{ChannelState, PublicKey, ShortChannelId};
 use cln_rpc::ClnRpc;
 use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
 
-use log::debug;
 use std::cmp::Reverse;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration;
 use struct_field_names_as_array::FieldNamesAsArray;
 use tabled::grid::records::vec_records::Cell;
 use tabled::grid::records::Records;
 use tabled::settings::location::{ByColumnName, Locator};
 use tabled::settings::object::{Object, Rows};
 use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
+use tokio::sync::Semaphore;
 
 use serde_json::json;
 
 use tabled::Table;
-use tokio::time::Instant;
+use tokio::time::{timeout, Instant};
 
 use crate::config::validateargs;
 use crate::forwards::{format_forwards, recent_forwards};
@@ -33,6 +36,8 @@ use crate::util::{
     make_rpc_path, sort_columns, u64_to_btc_string, u64_to_sat_string,
 };
 
+const PING_TIMEOUT_MS: u64 = 5000;
+
 pub async fn summary(
     p: Plugin<PluginState>,
     v: serde_json::Value,
@@ -46,7 +51,7 @@ pub async fn summary(
     validateargs(v, &mut config)?;
 
     let getinfo = rpc.call_typed(&GetinfoRequest {}).await?;
-    debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
 
     let peers = rpc
         .call_typed(&ListpeersRequest {
@@ -55,17 +60,17 @@ pub async fn summary(
         })
         .await?
         .peers;
-    debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
     let peer_channels = rpc
         .call_typed(&ListpeerchannelsRequest { id: None })
         .await?
         .channels;
-    debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
 
     let funds = rpc
         .call_typed(&ListfundsRequest { spent: Some(false) })
         .await?;
-    debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
 
     let mut utxo_amt: u64 = 0;
     for utxo in &funds.outputs {
@@ -98,14 +103,14 @@ pub async fn summary(
 
     let mut filter_count = 0;
 
-    let mut table = Vec::new();
+    let mut table = HashMap::with_capacity(peer_channels.len());
 
     let num_gossipers = peers
         .iter()
         .filter(|s| s.num_channels.unwrap() == 0)
         .count();
 
-    for chan in &peer_channels {
+    for (id, chan) in peer_channels.iter().enumerate() {
         if config
             .exclude_channel_states
             .channel_states
@@ -178,7 +183,7 @@ pub async fn summary(
             graph_max_chan_side_msat,
         )
         .await?;
-        table.push(summary);
+        table.insert(id, summary);
 
         if is_active_state(chan) {
             if chan.peer_connected {
@@ -187,10 +192,15 @@ pub async fn summary(
             channel_count += 1;
         }
     }
-    debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
+
+    get_pings(&rpc_path, &config, &getinfo.version, &mut table).await?;
+    log::debug!("Got pings. Total: {}ms", now.elapsed().as_millis());
+
+    let mut table = table.into_values().collect::<Vec<Summary>>();
 
     sort_summary(&config, &mut table);
-    debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
 
     let mut totals = Totals {
         pays_amount_msat: None,
@@ -214,7 +224,7 @@ pub async fn summary(
             now,
         )
         .await?;
-        debug!(
+        log::debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis()
         );
@@ -235,7 +245,7 @@ pub async fn summary(
             &getinfo,
         )
         .await?;
-        debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
     } else {
         pays = Vec::new();
     }
@@ -245,7 +255,7 @@ pub async fn summary(
     if config.invoices > 0 {
         (invoices, invoices_filter_stats) =
             recent_invoices(p.clone(), &mut rpc, &config, &mut totals, now).await?;
-        debug!(
+        log::debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis()
         );
@@ -277,7 +287,7 @@ pub async fn summary(
         let mut sumtable = Table::new(table);
         format_summary(&config, &mut sumtable)?;
         draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
-        debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
 
         if filter_count > 0 {
             sumtable.with(Panel::footer(format!(
@@ -293,16 +303,16 @@ pub async fn summary(
             result += &("\n\n".to_owned()
                 + &format_forwards(forwards, &config, &totals, forwards_filter_stats)?);
         }
-        debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
             result += &("\n\n".to_owned() + &format_pays(pays, &config, &totals)?);
         }
-        debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
             result += &("\n\n".to_owned()
                 + &format_invoices(invoices, &config, &totals, invoices_filter_stats)?);
         }
-        debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
+        log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
         Ok(json!({"format-hint":"simple","result":format!(
             "address={}
@@ -427,7 +437,88 @@ async fn chan_to_summary(
         htlcs: chan.htlcs.as_ref().map(|h| h.len()).unwrap_or(0),
         state: statestr.to_string(),
         perc_us: (to_us_msat as f64 / total_msat as f64) * 100.0,
+        ping: 0,
     })
+}
+
+async fn get_pings(
+    rpc_path: &PathBuf,
+    config: &Config,
+    version: &str,
+    table: &mut HashMap<usize, Summary>,
+) -> Result<(), Error> {
+    if !at_or_above_version(version, "25.09")? {
+        log::info!("Not using ping on pre-v25.09 CLN");
+        return Ok(());
+    } else if config.columns.contains(&"ping".to_owned())
+        || config.sort_by.eq_ignore_ascii_case("ping")
+    {
+        let mut peer_table: HashMap<PublicKey, Vec<usize>> = HashMap::with_capacity(table.len());
+        for (id, chan) in table.iter() {
+            peer_table
+                .entry(chan.peer_id)
+                .or_insert_with(Vec::new)
+                .push(*id);
+        }
+        let concurrency_limit = std::cmp::max(peer_table.len() / 10, 5);
+        let semaphore = Arc::new(Semaphore::new(concurrency_limit));
+        let mut handles = Vec::new();
+        for (peer_id, internal_ids) in peer_table.into_iter() {
+            let permit = semaphore.clone().acquire_owned().await?;
+            let rpc_path_clone = rpc_path.clone();
+            handles.push(tokio::spawn(async move {
+                let mut rpc = if let Ok(r) = ClnRpc::new(rpc_path_clone).await {
+                    r
+                } else {
+                    log::warn!("Could not connect to CLN, skipping ping");
+                    drop(permit);
+                    return (internal_ids, 0);
+                };
+                log::trace!(
+                    "Pinging {}: {}",
+                    internal_ids
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<String>>()
+                        .join("/"),
+                    peer_id
+                );
+                let now = Instant::now();
+                let ping = timeout(
+                    Duration::from_millis(PING_TIMEOUT_MS),
+                    rpc.call_typed(&PingRequest {
+                        len: None,
+                        pongbytes: None,
+                        id: peer_id,
+                    }),
+                )
+                .await;
+                let elapsed = if let Ok(a_p) = ping {
+                    if let Ok(_p) = a_p {
+                        let elap = now.elapsed().as_millis() as u64;
+                        log::trace!("Pinged {} in {}ms", peer_id, elap);
+                        elap
+                    } else {
+                        log::trace!("Pinging {} failed", peer_id);
+                        PING_TIMEOUT_MS + 1
+                    }
+                } else {
+                    log::trace!("Pinging {} timed out", peer_id);
+                    PING_TIMEOUT_MS + 1
+                };
+
+                drop(permit);
+                (internal_ids, elapsed)
+            }));
+        }
+        for h in handles {
+            let result = h.await?;
+            for id in result.0 {
+                table.get_mut(&id).unwrap().ping = result.1;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
@@ -604,6 +695,13 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 })
             }
         }
+        col if col.eq("PING") => {
+            if reverse {
+                table.sort_by_key(|x| Reverse(x.ping))
+            } else {
+                table.sort_by_key(|x| x.ping)
+            }
+        }
         _ => {
             if reverse {
                 table.sort_by_key(|x| Reverse(x.scid_raw))
@@ -667,6 +765,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     sumtable.with(Modify::new(ByColumnName::new("PERC_US")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("HTLCS")).with(Alignment::right()));
     sumtable.with(Modify::new(ByColumnName::new("STATE")).with(Alignment::center()));
+    sumtable.with(Modify::new(ByColumnName::new("PING")).with(Alignment::right()));
 
     sumtable.with(
         Modify::new(ByColumnName::new("UPTIME").not(Rows::first())).with(Format::content(|s| {
@@ -738,6 +837,16 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
                 u64_to_sat_string(config, b).unwrap()
             } else {
                 s.to_owned()
+            }
+        })),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new("PING").not(Rows::first())).with(Format::content(|s| {
+            let ping = s.parse::<u64>().unwrap();
+            if ping > PING_TIMEOUT_MS || ping == 0 {
+                return "N/A".to_owned();
+            } else {
+                u64_to_sat_string(config, ping).unwrap()
             }
         })),
     );

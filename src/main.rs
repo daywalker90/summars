@@ -52,7 +52,7 @@ const OPT_JSON: &str = "summars-json";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,debug");
+    std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,trace");
     let state = PluginState::new();
     let confplugin;
     let opt_columns: StringConfigOption = ConfigOption::new_str_no_default(

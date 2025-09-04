@@ -61,6 +61,7 @@ impl Config {
                             && t != &"min_htlc"
                             && t != &"in_base"
                             && t != &"in_ppm"
+                            && t != &"ping"
                     })
                     .map(ToString::to_string)
                     .collect::<Vec<String>>()
@@ -223,6 +224,7 @@ pub struct Summary {
     pub htlcs: usize,
     pub state: String,
     pub perc_us: f64,
+    pub ping: u64,
 }
 
 #[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
