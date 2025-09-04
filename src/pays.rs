@@ -240,6 +240,7 @@ pub async fn recent_pays(
 }
 
 pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result<String, Error> {
+    let count = table.len();
     let mut paystable = Table::new(table);
     config.flow_style.apply(&mut paystable);
     for head in Pays::FIELD_NAMES_AS_ARRAY {
@@ -355,7 +356,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         "pays (last {}h, limit: {})",
         config.pays,
         if config.pays_limit > 0 {
-            config.pays_limit.to_string()
+            format!("{}/{}", count, config.pays_limit.to_string())
         } else {
             "off".to_owned()
         }
