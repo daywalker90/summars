@@ -1,12 +1,13 @@
 #!/usr/bin/python
 
 import os
+import threading
 
 import pytest
 from pyln.client import RpcError
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import only_one, sync_blockheight, wait_for
-from util import get_plugin  # noqa: F401
+from util import get_plugin, my_xpay  # noqa: F401
 
 columns = [
     "GRAPH_SATS",
@@ -373,13 +374,13 @@ def test_options(node_factory, get_plugin):  # noqa: F811
     result = node.rpc.call(
         "summars", {"summars-forwards": 24, "summars-forwards-limit": 100}
     )
-    assert "forwards (last 24h, limit: 100)" in result["result"]
+    assert "forwards (last 24h, limit: 0/100)" in result["result"]
     result = node.rpc.call(
         "summars", {"summars-invoices": 24, "summars-invoices-limit": 100}
     )
-    assert "invoices (last 24h, limit: 100)" in result["result"]
+    assert "invoices (last 24h, limit: 0/100)" in result["result"]
     result = node.rpc.call("summars", {"summars-pays": 24, "summars-pays-limit": 100})
-    assert "pays (last 24h, limit: 100)" in result["result"]
+    assert "pays (last 24h, limit: 0/100)" in result["result"]
 
 
 def test_option_errors(node_factory, get_plugin):  # noqa: F811
@@ -608,7 +609,9 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     chans = l1.rpc.listpeerchannels(l2.info["id"])["channels"]
 
     for chan in chans:
-        if not chan["private"]:
+        if chan["private"]:
+            l1.wait_local_channel_active(chan["short_channel_id"])
+        else:
             l1.wait_channel_active(chan["short_channel_id"])
 
     result = l1.rpc.call("summars")
@@ -866,12 +869,9 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
         },
     )
     assert "payment_hash" in hold_inv
-    hold_route = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
-        "route"
-    ]
-    l1.rpc.sendpay(
-        hold_route, hold_inv["payment_hash"], payment_secret=hold_inv["payment_secret"]
-    )
+
+    threading.Thread(target=my_xpay, args=(l1, hold_inv["bolt11"])).start()
+
     wait_for(
         lambda: l3.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
         == "ACCEPTED"
@@ -884,13 +884,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert hold_inv["payment_hash"] not in result["result"]
 
     new_inv = l3.rpc.invoice(1_000, "new_inv", "new_inv")
-    new_route = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
-        "route"
-    ]
-    l1.rpc.sendpay(
-        new_route, new_inv["payment_hash"], payment_secret=new_inv["payment_secret"]
-    )
-    l1.rpc.waitsendpay(new_inv["payment_hash"], 30)
+
+    my_xpay(l1, new_inv["bolt11"])
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
@@ -906,7 +901,12 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
     assert result_settle["state"] == "SETTLED"
 
-    l1.rpc.waitsendpay(hold_inv["payment_hash"], 30)
+    wait_for(
+        lambda: l1.rpc.listpays(payment_hash=hold_inv["payment_hash"])["pays"][0][
+            "status"
+        ]
+        == "complete"
+    )
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
@@ -918,13 +918,8 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert hold_inv["payment_hash"] in result["result"]
 
     new_inv2 = l3.rpc.invoice(1_000, "new_inv2", "new_inv2")
-    new_route2 = l1.rpc.getroute(l3.info["id"], 1_001, riskfactor=1, fuzzpercent=0)[
-        "route"
-    ]
-    l1.rpc.sendpay(
-        new_route2, new_inv2["payment_hash"], payment_secret=new_inv2["payment_secret"]
-    )
-    l1.rpc.waitsendpay(new_inv2["payment_hash"], 30)
+
+    my_xpay(l1, new_inv2["bolt11"])
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
