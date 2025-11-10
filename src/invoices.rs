@@ -1,24 +1,38 @@
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
-use cln_rpc::ClnRpc;
-use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
-
+use cln_rpc::{
+    model::{requests::*, responses::*},
+    primitives::Amount,
+    ClnRpc,
+};
 use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::grid::records::vec_records::Cell;
-use tabled::grid::records::Records;
-use tabled::settings::location::ByColumnName;
-use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
-
-use tabled::Table;
+use tabled::{
+    grid::records::{vec_records::Cell, Records},
+    settings::{
+        location::ByColumnName,
+        object::{Object, Rows},
+        Alignment,
+        Format,
+        Modify,
+        Panel,
+        Remove,
+        Width,
+    },
+    Table,
+};
 use tokio::time::Instant;
 
-use crate::structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals};
-use crate::util::{
-    hex_encode, replace_escaping_chars, sort_columns, timestamp_to_localized_datetime_string,
-    u64_to_sat_string,
+use crate::{
+    structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals},
+    util::{
+        hex_encode,
+        replace_escaping_chars,
+        sort_columns,
+        timestamp_to_localized_datetime_string,
+        u64_to_sat_string,
+    },
 };
 
 pub async fn recent_invoices(

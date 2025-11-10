@@ -3,27 +3,43 @@ use std::collections::HashSet;
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
-use cln_rpc::model::responses::{GetinfoResponse, ListpeerchannelsChannels};
-use cln_rpc::ClnRpc;
-use cln_rpc::{model::requests::*, primitives::Amount};
-
+use cln_rpc::{
+    model::{
+        requests::*,
+        responses::{GetinfoResponse, ListpeerchannelsChannels},
+    },
+    primitives::Amount,
+    ClnRpc,
+};
 use log::debug;
 use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::grid::records::vec_records::Cell;
-use tabled::grid::records::Records;
-use tabled::settings::location::ByColumnName;
-use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
-
-use tabled::Table;
+use tabled::{
+    grid::records::{vec_records::Cell, Records},
+    settings::{
+        location::ByColumnName,
+        object::{Object, Rows},
+        Alignment,
+        Format,
+        Modify,
+        Panel,
+        Remove,
+        Width,
+    },
+    Table,
+};
 use tokio::time::Instant;
 
-use crate::structs::{
-    Config, PagingIndex, Pays, PluginState, Totals, MISSING_VALUE, NODE_GOSSIP_MISS,
-};
-use crate::util::{
-    at_or_above_version, get_alias, hex_encode, replace_escaping_chars, sort_columns,
-    timestamp_to_localized_datetime_string, u64_to_sat_string,
+use crate::{
+    structs::{Config, PagingIndex, Pays, PluginState, Totals, MISSING_VALUE, NODE_GOSSIP_MISS},
+    util::{
+        at_or_above_version,
+        get_alias,
+        hex_encode,
+        replace_escaping_chars,
+        sort_columns,
+        timestamp_to_localized_datetime_string,
+        u64_to_sat_string,
+    },
 };
 
 pub async fn recent_pays(

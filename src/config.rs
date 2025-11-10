@@ -1,26 +1,57 @@
+use std::{collections::HashSet, str::FromStr};
+
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::{
     options::{self},
-    ConfiguredPlugin, Plugin,
+    ConfiguredPlugin,
+    Plugin,
 };
 use cln_rpc::RpcError;
 use icu_locale::Locale;
 use serde_json::json;
-use std::{collections::HashSet, str::FromStr};
 use struct_field_names_as_array::FieldNamesAsArray;
 
 use crate::{
     structs::{
-        ChannelVisibility, Config, ConnectionStatus, ExcludeStates, Forwards, Invoices, Pays,
-        ShortChannelState, Styles, Summary,
+        ChannelVisibility,
+        Config,
+        ConnectionStatus,
+        ExcludeStates,
+        Forwards,
+        Invoices,
+        Pays,
+        ShortChannelState,
+        Styles,
+        Summary,
     },
-    PluginState, OPT_AVAILABILITY_INTERVAL, OPT_AVAILABILITY_WINDOW, OPT_COLUMNS,
-    OPT_EXCLUDE_CHANNEL_STATES, OPT_FLOW_STYLE, OPT_FORWARDS, OPT_FORWARDS_COLUMNS,
-    OPT_FORWARDS_FILTER_AMT, OPT_FORWARDS_FILTER_FEE, OPT_FORWARDS_LIMIT, OPT_INVOICES,
-    OPT_INVOICES_COLUMNS, OPT_INVOICES_FILTER_AMT, OPT_INVOICES_LIMIT, OPT_JSON, OPT_LOCALE,
-    OPT_MAX_ALIAS_LENGTH, OPT_MAX_DESC_LENGTH, OPT_MAX_LABEL_LENGTH, OPT_PAYS, OPT_PAYS_COLUMNS,
-    OPT_PAYS_LIMIT, OPT_REFRESH_ALIAS, OPT_SORT_BY, OPT_STYLE, OPT_UTF8,
+    PluginState,
+    OPT_AVAILABILITY_INTERVAL,
+    OPT_AVAILABILITY_WINDOW,
+    OPT_COLUMNS,
+    OPT_EXCLUDE_CHANNEL_STATES,
+    OPT_FLOW_STYLE,
+    OPT_FORWARDS,
+    OPT_FORWARDS_COLUMNS,
+    OPT_FORWARDS_FILTER_AMT,
+    OPT_FORWARDS_FILTER_FEE,
+    OPT_FORWARDS_LIMIT,
+    OPT_INVOICES,
+    OPT_INVOICES_COLUMNS,
+    OPT_INVOICES_FILTER_AMT,
+    OPT_INVOICES_LIMIT,
+    OPT_JSON,
+    OPT_LOCALE,
+    OPT_MAX_ALIAS_LENGTH,
+    OPT_MAX_DESC_LENGTH,
+    OPT_MAX_LABEL_LENGTH,
+    OPT_PAYS,
+    OPT_PAYS_COLUMNS,
+    OPT_PAYS_LIMIT,
+    OPT_REFRESH_ALIAS,
+    OPT_SORT_BY,
+    OPT_STYLE,
+    OPT_UTF8,
 };
 
 pub async fn setconfig_callback(

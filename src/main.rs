@@ -1,6 +1,7 @@
 extern crate serde_json;
 
-use crate::config::get_startup_options;
+use std::time::Duration;
+
 use anyhow::anyhow;
 use cln_plugin::{
     options::{BooleanConfigOption, ConfigOption, IntegerConfigOption, StringConfigOption},
@@ -8,12 +9,12 @@ use cln_plugin::{
 };
 use config::setconfig_callback;
 use log::{info, warn};
-use std::time::Duration;
 use structs::PluginState;
 use summary::summary;
-
 use tasks::summars_refreshalias;
 use tokio::{self, time};
+
+use crate::config::get_startup_options;
 mod config;
 mod forwards;
 mod invoices;

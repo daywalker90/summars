@@ -1,39 +1,68 @@
+use std::{
+    cmp::Reverse,
+    collections::HashMap,
+    path::PathBuf,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
+
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
-use cln_rpc::primitives::{ChannelState, PublicKey, ShortChannelId};
-use cln_rpc::ClnRpc;
-use cln_rpc::{model::requests::*, model::responses::*, primitives::Amount};
-
-use std::cmp::Reverse;
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
-use struct_field_names_as_array::FieldNamesAsArray;
-use tabled::grid::records::vec_records::Cell;
-use tabled::grid::records::Records;
-use tabled::settings::location::{ByColumnName, Locator};
-use tabled::settings::object::{Object, Rows};
-use tabled::settings::{Alignment, Format, Modify, Panel, Remove, Width};
-use tokio::sync::Semaphore;
-
-use serde_json::json;
-
-use tabled::Table;
-use tokio::time::{timeout, Instant};
-
-use crate::config::validateargs;
-use crate::forwards::{format_forwards, recent_forwards};
-use crate::invoices::{format_invoices, recent_invoices};
-use crate::pays::{format_pays, recent_pays};
-use crate::structs::{
-    ChannelVisibility, Config, ConnectionStatus, ForwardsFilterStats, GraphCharset,
-    InvoicesFilterStats, PluginState, ShortChannelState, Summary, Totals,
+use cln_rpc::{
+    model::{requests::*, responses::*},
+    primitives::{Amount, ChannelState, PublicKey, ShortChannelId},
+    ClnRpc,
 };
-use crate::util::{
-    at_or_above_version, draw_chans_graph, get_alias, is_active_state, make_channel_flags,
-    make_rpc_path, sort_columns, u64_to_btc_string, u64_to_sat_string,
+use serde_json::json;
+use struct_field_names_as_array::FieldNamesAsArray;
+use tabled::{
+    grid::records::{vec_records::Cell, Records},
+    settings::{
+        location::{ByColumnName, Locator},
+        object::{Object, Rows},
+        Alignment,
+        Format,
+        Modify,
+        Panel,
+        Remove,
+        Width,
+    },
+    Table,
+};
+use tokio::{
+    sync::Semaphore,
+    time::{timeout, Instant},
+};
+
+use crate::{
+    config::validateargs,
+    forwards::{format_forwards, recent_forwards},
+    invoices::{format_invoices, recent_invoices},
+    pays::{format_pays, recent_pays},
+    structs::{
+        ChannelVisibility,
+        Config,
+        ConnectionStatus,
+        ForwardsFilterStats,
+        GraphCharset,
+        InvoicesFilterStats,
+        PluginState,
+        ShortChannelState,
+        Summary,
+        Totals,
+    },
+    util::{
+        at_or_above_version,
+        draw_chans_graph,
+        get_alias,
+        is_active_state,
+        make_channel_flags,
+        make_rpc_path,
+        sort_columns,
+        u64_to_btc_string,
+        u64_to_sat_string,
+    },
 };
 
 const PING_TIMEOUT_MS: u64 = 5000;
