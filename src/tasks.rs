@@ -100,7 +100,10 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
         time::sleep(Duration::from_secs(summary_availability_interval as u64)).await;
         {
             let mut channels = rpc
-                .call_typed(&ListpeerchannelsRequest { id: None })
+                .call_typed(&ListpeerchannelsRequest {
+                    id: None,
+                    short_channel_id: None,
+                })
                 .await?
                 .channels;
             channels.retain(is_active_state);

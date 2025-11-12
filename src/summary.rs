@@ -91,7 +91,10 @@ pub async fn summary(
         .peers;
     log::debug!("Listpeers. Total: {}ms", now.elapsed().as_millis());
     let peer_channels = rpc
-        .call_typed(&ListpeerchannelsRequest { id: None })
+        .call_typed(&ListpeerchannelsRequest {
+            id: None,
+            short_channel_id: None,
+        })
         .await?
         .channels;
     log::debug!("Listpeerchannels. Total: {}ms", now.elapsed().as_millis());
