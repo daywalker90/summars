@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write,
     path::{Path, PathBuf},
     time::{Duration, UNIX_EPOCH},
 };
@@ -37,15 +38,15 @@ pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
 pub fn make_channel_flags(private: bool, offline: bool) -> String {
     let mut flags = String::from("[");
     if private {
-        flags.push('P')
+        flags.push('P');
     } else {
-        flags.push('_')
+        flags.push('_');
     }
 
-    if !offline {
-        flags.push('_')
+    if offline {
+        flags.push('O');
     } else {
-        flags.push('O')
+        flags.push('_');
     }
     flags.push(']');
     flags
@@ -142,7 +143,7 @@ pub fn timestamp_to_localized_datetime_string(
     let date_time_formatter =
         match DateTimeFormatter::try_new(config.locale.clone().into(), fieldsets::YMDT::short()) {
             Ok(d) => d,
-            Err(e) => return Err(anyhow!("Could not create DateTimeFormatter: {}", e)),
+            Err(e) => return Err(anyhow!("Could not create DateTimeFormatter: {e}")),
         };
     let datetime_iso = icu_time::DateTime {
         date: icu_calendar::Date::try_new_gregorian(
@@ -159,14 +160,14 @@ pub fn timestamp_to_localized_datetime_string(
     };
     match date_time_formatter.format_same_calendar(&datetime_iso) {
         Ok(fstr) => Ok(fstr.to_string()),
-        Err(e) => Err(anyhow!("Could not format datetime string :{}", e)),
+        Err(e) => Err(anyhow!("Could not format datetime string :{e}")),
     }
 }
 
 pub fn hex_encode(bytes: &[u8]) -> String {
     let mut hex_string = String::with_capacity(bytes.len() * 2);
     for byte in bytes {
-        hex_string.push_str(&format!("{byte:02x}"));
+        write!(&mut hex_string, "{byte:02x}").unwrap();
     }
     hex_string
 }
@@ -191,7 +192,7 @@ pub fn sort_columns(
         while target_index_map[i] != i {
             let target_index = target_index_map[i];
             target_index_map.swap(i, target_index);
-            records.swap_column(i, target_index)
+            records.swap_column(i, target_index);
         }
     }
 }
@@ -210,7 +211,7 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     let min_version_parts: Vec<&str> = min_version.split('.').collect();
 
     if my_version_parts.len() <= 1 || my_version_parts.len() > 3 {
-        return Err(anyhow!("Version string parse error: {}", my_version));
+        return Err(anyhow!("Version string parse error: {my_version}"));
     }
     for (my, min) in my_version_parts.iter().zip(min_version_parts.iter()) {
         let my_num: u32 = my.parse()?;
@@ -248,16 +249,15 @@ pub async fn get_alias(
             }
             None => alias = NODE_GOSSIP_MISS.to_owned(),
         },
-    };
+    }
     Ok(alias)
 }
 
 pub fn feeppm_effective_from_amts(amount_msat_start: u64, amount_msat_end: u64) -> u32 {
-    if amount_msat_start < amount_msat_end {
-        panic!(
-            "CRITICAL ERROR: amount_msat_start should be greater than or equal to amount_msat_end"
-        )
-    }
+    assert!(
+        amount_msat_start >= amount_msat_end,
+        "CRITICAL ERROR: amount_msat_start should be greater than or equal to amount_msat_end"
+    );
     ((amount_msat_start - amount_msat_end) as f64 / amount_msat_end as f64 * 1_000_000.0).ceil()
         as u32
 }
@@ -269,9 +269,7 @@ pub fn replace_escaping_chars(s: &str) -> String {
         let replacement = match c {
             '"' => '\'',
             '\\' => '/',
-            '\n' => ' ',
-            '\t' => ' ',
-            '\r' => ' ',
+            '\n' | '\t' | '\r' => ' ',
             _ if c.is_control() => '_',
             _ => c,
         };
