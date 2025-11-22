@@ -102,7 +102,7 @@ def test_basic(node_factory, get_plugin):  # noqa: F811
         node.rpc.call("summars", {"summars-columns": 1})
 
     with pytest.raises(
-        RpcError, match="`test` not found in valid summars-columns names"
+        RpcError, match="`TEST` not found in valid summars-columns names"
     ):
         node.rpc.call("summars", {"summars-columns": "TEST"})
 
