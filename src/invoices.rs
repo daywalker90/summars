@@ -2,7 +2,10 @@ use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::{requests::*, responses::*},
+    model::{
+        requests::{ListinvoicesIndex, ListinvoicesRequest},
+        responses::ListinvoicesInvoicesStatus,
+    },
     primitives::Amount,
     ClnRpc,
 };
@@ -82,19 +85,17 @@ pub async fn recent_invoices(
     let mut filter_count = 0;
     let mut filter_amt_sum_msat = 0;
 
-    for invoice in invoices.into_iter() {
+    for invoice in invoices {
         if ListinvoicesInvoicesStatus::PAID == invoice.status {
-            let inv_paid_at = if let Some(p_at) = invoice.paid_at {
-                p_at
-            } else {
+            let Some(inv_paid_at) = invoice.paid_at else {
                 continue;
             };
             if inv_paid_at > now_utc - config_invoices_sec {
                 if let Some(inv_amt) = &mut totals.invoices_amount_received_msat {
-                    *inv_amt += invoice.amount_received_msat.unwrap().msat()
+                    *inv_amt += invoice.amount_received_msat.unwrap().msat();
                 } else {
                     totals.invoices_amount_received_msat =
-                        Some(invoice.amount_received_msat.unwrap().msat())
+                        Some(invoice.amount_received_msat.unwrap().msat());
                 }
 
                 if invoice.amount_received_msat.unwrap().msat() as i64
@@ -142,7 +143,7 @@ pub async fn recent_invoices(
         now.elapsed().as_millis()
     );
     if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
-        table = table.split_off(table.len() - (config.invoices_limit as usize))
+        table = table.split_off(table.len() - (config.invoices_limit as usize));
     }
     table.sort_by_key(|x| x.paid_at);
 
@@ -159,7 +160,7 @@ pub fn format_invoices(
     table: Vec<Invoices>,
     config: &Config,
     totals: &Totals,
-    filter_stats: InvoicesFilterStats,
+    filter_stats: &InvoicesFilterStats,
 ) -> Result<String, Error> {
     let count = table.len();
     let mut invoicestable = Table::new(table);
@@ -231,7 +232,7 @@ pub fn format_invoices(
         "invoices (last {}h, limit: {})",
         config.invoices,
         if config.invoices_limit > 0 {
-            format!("{}/{}", count, config.invoices_limit.to_string())
+            format!("{}/{}", count, config.invoices_limit)
         } else {
             "off".to_owned()
         }

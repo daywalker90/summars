@@ -55,7 +55,7 @@ pub async fn summars_refreshalias(
 ) -> Result<serde_json::Value, Error> {
     match refresh_alias(p.clone()).await {
         Ok(()) => Ok(json!({"result":"success"})),
-        Err(e) => Err(anyhow!("Error in refresh_alias thread: {}", e.to_string())),
+        Err(e) => Err(anyhow!("Error in refresh_alias thread: {e}")),
     }
 }
 
@@ -73,13 +73,13 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
         Err(e) => {
             warn!("Could not open {}: {}. Maybe this is the first time using summars? Creating new file.", availdbfile.to_str().unwrap(),e);
             match fs::create_dir(summarsdir.clone()).await {
-                Ok(_) => (),
+                Ok(()) => (),
                 Err(e) => warn!("Warning: Could not create summars folder:{e}"),
-            };
+            }
             File::create(availdbfile.clone()).await?;
             persistpeers = BTreeMap::new();
         }
-    };
+    }
 
     let summary_availability_window: f64;
     let summary_availability_interval: f64;
@@ -138,13 +138,13 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                         },
                     );
                     editpeer = persistpeers.get_mut(&chan.peer_id).unwrap();
-                };
+                }
                 if chan.peer_connected {
                     editpeer.connected = true;
                     editpeer.avail = 1.0 * alpha + editpeer.avail * beta;
                 } else {
                     editpeer.connected = false;
-                    editpeer.avail = 0.0 * alpha + editpeer.avail * beta
+                    editpeer.avail = 0.0 * alpha + editpeer.avail * beta;
                 }
                 editpeer.count += 1;
             }

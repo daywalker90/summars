@@ -10,7 +10,22 @@ use std::{
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::{requests::*, responses::*},
+    model::{
+        requests::{
+            GetinfoRequest,
+            ListchannelsRequest,
+            ListfundsRequest,
+            ListpeerchannelsRequest,
+            ListpeersRequest,
+            PingRequest,
+        },
+        responses::{
+            GetinfoAddressType,
+            GetinfoResponse,
+            ListfundsOutputsStatus,
+            ListpeerchannelsChannels,
+        },
+    },
     primitives::{Amount, ChannelState, PublicKey, ShortChannelId},
     ClnRpc,
 };
@@ -107,7 +122,7 @@ pub async fn summary(
     let mut utxo_amt: u64 = 0;
     for utxo in &funds.outputs {
         if let ListfundsOutputsStatus::CONFIRMED = utxo.status {
-            utxo_amt += Amount::msat(&utxo.amount_msat)
+            utxo_amt += Amount::msat(&utxo.amount_msat);
         }
     }
 
@@ -193,10 +208,10 @@ pub async fn summary(
             ChannelState::CHANNELD_NORMAL | ChannelState::CHANNELD_AWAITING_SPLICE
         ) {
             if our_reserve < to_us_msat {
-                avail_out += to_us_msat - our_reserve
+                avail_out += to_us_msat - our_reserve;
             }
             if their_reserve < total_msat - to_us_msat {
-                avail_in += total_msat - to_us_msat - their_reserve
+                avail_in += total_msat - to_us_msat - their_reserve;
             }
         }
 
@@ -219,14 +234,14 @@ pub async fn summary(
 
         if is_active_state(chan) {
             if chan.peer_connected {
-                num_connected += 1
+                num_connected += 1;
             }
             channel_count += 1;
         }
     }
     log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
 
-    get_pings(&rpc_path, &config, &getinfo.version, &mut table).await?;
+    get_pings(rpc_path, &config, &getinfo.version, &mut table).await?;
     log::debug!("Got pings. Total: {}ms", now.elapsed().as_millis());
 
     let mut table = table.into_values().collect::<Vec<Summary>>();
@@ -333,7 +348,7 @@ pub async fn summary(
         let mut result = sumtable.to_string();
         if config.forwards > 0 {
             result += &("\n\n".to_owned()
-                + &format_forwards(forwards, &config, &totals, forwards_filter_stats)?);
+                + &format_forwards(forwards, &config, &totals, &forwards_filter_stats)?);
         }
         log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
@@ -342,7 +357,7 @@ pub async fn summary(
         log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
             result += &("\n\n".to_owned()
-                + &format_invoices(invoices, &config, &totals, invoices_filter_stats)?);
+                + &format_invoices(invoices, &config, &totals, &invoices_filter_stats)?);
         }
         log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
@@ -466,7 +481,7 @@ async fn chan_to_summary(
         },
         peer_id: chan.peer_id,
         uptime: avail * 100.0,
-        htlcs: chan.htlcs.as_ref().map(|h| h.len()).unwrap_or(0),
+        htlcs: chan.htlcs.as_ref().map_or(0, Vec::len),
         state: statestr.to_string(),
         perc_us: (to_us_msat as f64 / total_msat as f64) * 100.0,
         ping: 0,
@@ -474,7 +489,7 @@ async fn chan_to_summary(
 }
 
 async fn get_pings(
-    rpc_path: &PathBuf,
+    rpc_path: PathBuf,
     config: &Config,
     version: &str,
     table: &mut HashMap<usize, Summary>,
@@ -487,21 +502,16 @@ async fn get_pings(
     {
         let mut peer_table: HashMap<PublicKey, Vec<usize>> = HashMap::with_capacity(table.len());
         for (id, chan) in table.iter() {
-            peer_table
-                .entry(chan.peer_id)
-                .or_insert_with(Vec::new)
-                .push(*id);
+            peer_table.entry(chan.peer_id).or_default().push(*id);
         }
         let concurrency_limit = std::cmp::max(peer_table.len() / 10, 5);
         let semaphore = Arc::new(Semaphore::new(concurrency_limit));
         let mut handles = Vec::new();
-        for (peer_id, internal_ids) in peer_table.into_iter() {
+        for (peer_id, internal_ids) in peer_table {
             let permit = semaphore.clone().acquire_owned().await?;
             let rpc_path_clone = rpc_path.clone();
             handles.push(tokio::spawn(async move {
-                let mut rpc = if let Ok(r) = ClnRpc::new(rpc_path_clone).await {
-                    r
-                } else {
+                let Ok(mut rpc) = ClnRpc::new(rpc_path_clone).await else {
                     log::warn!("Could not connect to CLN, skipping ping");
                     drop(permit);
                     return (internal_ids, 0);
@@ -510,7 +520,7 @@ async fn get_pings(
                     "Pinging {}: {}",
                     internal_ids
                         .iter()
-                        .map(|p| p.to_string())
+                        .map(std::string::ToString::to_string)
                         .collect::<Vec<String>>()
                         .join("/"),
                     peer_id
@@ -528,14 +538,14 @@ async fn get_pings(
                 let elapsed = if let Ok(a_p) = ping {
                     if let Ok(_p) = a_p {
                         let elap = now.elapsed().as_millis() as u64;
-                        log::trace!("Pinged {} in {}ms", peer_id, elap);
+                        log::trace!("Pinged {peer_id} in {elap}ms");
                         elap
                     } else {
-                        log::trace!("Pinging {} failed", peer_id);
+                        log::trace!("Pinging {peer_id} failed");
                         PING_TIMEOUT_MS + 1
                     }
                 } else {
-                    log::trace!("Pinging {} timed out", peer_id);
+                    log::trace!("Pinging {peer_id} timed out");
                     PING_TIMEOUT_MS + 1
                 };
 
@@ -563,51 +573,51 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
     match sort_by {
         col if col.eq("OUT_SATS") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.out_sats))
+                table.sort_by_key(|x| Reverse(x.out_sats));
             } else {
-                table.sort_by_key(|x| x.out_sats)
+                table.sort_by_key(|x| x.out_sats);
             }
         }
         col if col.eq("IN_SATS") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.in_sats))
+                table.sort_by_key(|x| Reverse(x.in_sats));
             } else {
-                table.sort_by_key(|x| x.in_sats)
+                table.sort_by_key(|x| x.in_sats);
             }
         }
         col if col.eq("TOTAL_SATS") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.total_sats))
+                table.sort_by_key(|x| Reverse(x.total_sats));
             } else {
-                table.sort_by_key(|x| x.total_sats)
+                table.sort_by_key(|x| x.total_sats);
             }
         }
         col if col.eq("MIN_HTLC") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.min_htlc))
+                table.sort_by_key(|x| Reverse(x.min_htlc));
             } else {
-                table.sort_by_key(|x| x.min_htlc)
+                table.sort_by_key(|x| x.min_htlc);
             }
         }
         col if col.eq("MAX_HTLC") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.max_htlc))
+                table.sort_by_key(|x| Reverse(x.max_htlc));
             } else {
-                table.sort_by_key(|x| x.max_htlc)
+                table.sort_by_key(|x| x.max_htlc);
             }
         }
         col if col.eq("FLAG") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.flag.clone()))
+                table.sort_by_key(|x| Reverse(x.flag.clone()));
             } else {
-                table.sort_by_key(|x| x.flag.clone())
+                table.sort_by_key(|x| x.flag.clone());
             }
         }
         col if col.eq("BASE") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.base))
+                table.sort_by_key(|x| Reverse(x.base));
             } else {
-                table.sort_by_key(|x| x.base)
+                table.sort_by_key(|x| x.base);
             }
         }
         col if col.eq("IN_BASE") => {
@@ -618,7 +628,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     } else {
                         u64::MAX
                     })
-                })
+                });
             } else {
                 table.sort_by_key(|x| {
                     if let Ok(v) = x.in_base.parse::<u64>() {
@@ -626,14 +636,14 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     } else {
                         u64::MAX
                     }
-                })
+                });
             }
         }
         col if col.eq("PPM") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.ppm))
+                table.sort_by_key(|x| Reverse(x.ppm));
             } else {
-                table.sort_by_key(|x| x.ppm)
+                table.sort_by_key(|x| x.ppm);
             }
         }
         col if col.eq("IN_PPM") => {
@@ -644,7 +654,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     } else {
                         u64::MAX
                     })
-                })
+                });
             } else {
                 table.sort_by_key(|x| {
                     if let Ok(v) = x.in_ppm.parse::<u64>() {
@@ -652,7 +662,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     } else {
                         u64::MAX
                     }
-                })
+                });
             }
         }
         col if col.eq("ALIAS") => {
@@ -665,7 +675,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                             .collect::<String>()
                             .to_ascii_lowercase(),
                     )
-                })
+                });
             } else {
                 table.sort_by_key(|x| {
                     x.alias
@@ -673,7 +683,7 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                         .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
                         .collect::<String>()
                         .to_ascii_lowercase()
-                })
+                });
             }
         }
         col if col.eq("UPTIME") => {
@@ -682,34 +692,34 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     y.uptime
                         .partial_cmp(&x.uptime)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                });
             } else {
                 table.sort_by(|x, y| {
                     x.uptime
                         .partial_cmp(&y.uptime)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                });
             }
         }
         col if col.eq("PEER_ID") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.peer_id))
+                table.sort_by_key(|x| Reverse(x.peer_id));
             } else {
-                table.sort_by_key(|x| x.peer_id)
+                table.sort_by_key(|x| x.peer_id);
             }
         }
         col if col.eq("HTLCS") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.htlcs))
+                table.sort_by_key(|x| Reverse(x.htlcs));
             } else {
-                table.sort_by_key(|x| x.htlcs)
+                table.sort_by_key(|x| x.htlcs);
             }
         }
         col if col.eq("STATE") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.state.clone()))
+                table.sort_by_key(|x| Reverse(x.state.clone()));
             } else {
-                table.sort_by_key(|x| x.state.clone())
+                table.sort_by_key(|x| x.state.clone());
             }
         }
         col if col.eq("PERC_US") => {
@@ -718,27 +728,27 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                     y.perc_us
                         .partial_cmp(&x.perc_us)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                });
             } else {
                 table.sort_by(|x, y| {
                     x.perc_us
                         .partial_cmp(&y.perc_us)
                         .unwrap_or(std::cmp::Ordering::Equal)
-                })
+                });
             }
         }
         col if col.eq("PING") => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.ping))
+                table.sort_by_key(|x| Reverse(x.ping));
             } else {
-                table.sort_by_key(|x| x.ping)
+                table.sort_by_key(|x| x.ping);
             }
         }
         _ => {
             if reverse {
-                table.sort_by_key(|x| Reverse(x.scid_raw))
+                table.sort_by_key(|x| Reverse(x.scid_raw));
             } else {
-                table.sort_by_key(|x| x.scid_raw)
+                table.sort_by_key(|x| x.scid_raw);
             }
         }
     }
@@ -876,7 +886,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new("PING").not(Rows::first())).with(Format::content(|s| {
             let ping = s.parse::<u64>().unwrap();
             if ping > PING_TIMEOUT_MS || ping == 0 {
-                return "N/A".to_owned();
+                "N/A".to_owned()
             } else {
                 u64_to_sat_string(config, ping).unwrap()
             }
@@ -900,9 +910,9 @@ fn get_addrstr(getinfo: &GetinfoResponse) -> String {
                         .find(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
                         .unwrap()
                         .clone(),
-                )
+                );
             } else {
-                address = Some(addr.first().unwrap().clone())
+                address = Some(addr.first().unwrap().clone());
             }
         }
     }
@@ -910,7 +920,7 @@ fn get_addrstr(getinfo: &GetinfoResponse) -> String {
     if address.is_none() {
         if let Some(bind) = &getinfo.binding {
             if !bind.is_empty() {
-                bindaddr = Some(bind.first().unwrap().clone())
+                bindaddr = Some(bind.first().unwrap().clone());
             }
         }
     }

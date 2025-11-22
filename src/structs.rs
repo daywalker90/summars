@@ -85,7 +85,7 @@ impl Config {
                         && t != &"in_channel"
                         && t != &"out_channel"
                 })
-                .map(|s| s.to_owned())
+                .map(std::borrow::ToOwned::to_owned)
                 .collect::<Vec<String>>(),
             forwards_filter_amt_msat: -1,
             forwards_filter_fee_msat: -1,
@@ -101,7 +101,7 @@ impl Config {
                         && t != &"msats_sent"
                         && t != &"fee_msats"
                 })
-                .map(|s| s.to_owned())
+                .map(std::borrow::ToOwned::to_owned)
                 .collect::<Vec<String>>(),
             max_desc_length: 30,
             invoices: 0,
@@ -109,7 +109,7 @@ impl Config {
             invoices_columns: Invoices::FIELD_NAMES_AS_ARRAY
                 .into_iter()
                 .filter(|t| t != &"description" && t != &"preimage" && t != &"msats_received")
-                .map(|s| s.to_owned())
+                .map(std::borrow::ToOwned::to_owned)
                 .collect::<Vec<String>>(),
             max_label_length: 30,
             invoices_filter_amt_msat: -1,
@@ -259,9 +259,9 @@ pub struct Forwards {
 
 #[derive(Debug, Clone, Default)]
 pub struct ForwardsFilterStats {
-    pub filter_amt_sum_msat: u64,
-    pub filter_fee_sum_msat: u64,
-    pub filter_count: u64,
+    pub amt_sum_msat: u64,
+    pub fee_sum_msat: u64,
+    pub count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -409,7 +409,7 @@ impl FromStr for Styles {
             "ascii_rounded" => Ok(Styles::AsciiRounded),
             "blank" => Ok(Styles::Blank),
             "empty" => Ok(Styles::Empty),
-            _ => Err(anyhow!("could not parse Style from {}", s)),
+            _ => Err(anyhow!("could not parse Style from {s}")),
         }
     }
 }
@@ -456,7 +456,7 @@ impl FromStr for ShortChannelState {
             "dual_commit_rdy" => Ok(ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMIT_READY)),
             "dual_await" => Ok(ShortChannelState(ChannelState::DUALOPEND_AWAITING_LOCKIN)),
             "await_splice" => Ok(ShortChannelState(ChannelState::CHANNELD_AWAITING_SPLICE)),
-            _ => Err(anyhow!("could not parse State from {}", s)),
+            _ => Err(anyhow!("could not parse State from {s}")),
         }
     }
 }

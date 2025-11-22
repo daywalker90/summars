@@ -4,7 +4,10 @@ use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::{requests::*, responses::*},
+    model::{
+        requests::{ListforwardsIndex, ListforwardsRequest, ListforwardsStatus},
+        responses::ListpeerchannelsChannels,
+    },
     primitives::{Amount, PublicKey, ShortChannelId},
     ClnRpc,
 };
@@ -118,7 +121,7 @@ pub async fn recent_forwards(
     let mut filter_fee_sum_msat = 0;
     let mut filter_count = 0;
 
-    for forward in settled_forwards.into_iter() {
+    for forward in settled_forwards {
         if forward.resolved_time.unwrap_or(0.0) as u64 > now_utc - config_forwards_sec {
             let inchan = chanmap
                 .get(&forward.in_channel)
@@ -152,17 +155,17 @@ pub async fn recent_forwards(
             if let Some(in_amt) = &mut totals.forwards_amount_in_msat {
                 *in_amt += forward.in_msat.msat();
             } else {
-                totals.forwards_amount_in_msat = Some(forward.in_msat.msat())
+                totals.forwards_amount_in_msat = Some(forward.in_msat.msat());
             }
             if let Some(out_amt) = &mut totals.forwards_amount_out_msat {
                 *out_amt += forward.out_msat.unwrap().msat();
             } else {
-                totals.forwards_amount_out_msat = Some(forward.out_msat.unwrap().msat())
+                totals.forwards_amount_out_msat = Some(forward.out_msat.unwrap().msat());
             }
             if let Some(fee_amt) = &mut totals.forwards_fees_msat {
                 *fee_amt += forward.fee_msat.unwrap().msat();
             } else {
-                totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat())
+                totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat());
             }
 
             if should_filter {
@@ -205,7 +208,7 @@ pub async fn recent_forwards(
                         forward.in_msat.msat(),
                         forward.out_msat.unwrap().msat(),
                     ),
-                })
+                });
             }
 
             if let Some(c_index) = forward.created_index {
@@ -223,15 +226,15 @@ pub async fn recent_forwards(
         now.elapsed().as_millis()
     );
     if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
-        table = table.split_off(table.len() - (config.forwards_limit as usize))
+        table = table.split_off(table.len() - (config.forwards_limit as usize));
     }
     table.sort_by_key(|x| x.resolved_time);
     Ok((
         table,
         ForwardsFilterStats {
-            filter_amt_sum_msat,
-            filter_fee_sum_msat,
-            filter_count,
+            amt_sum_msat: filter_amt_sum_msat,
+            fee_sum_msat: filter_fee_sum_msat,
+            count: filter_count,
         },
     ))
 }
@@ -240,7 +243,7 @@ pub fn format_forwards(
     table: Vec<Forwards>,
     config: &Config,
     totals: &Totals,
-    filter_stats: ForwardsFilterStats,
+    filter_stats: &ForwardsFilterStats,
 ) -> Result<String, Error> {
     let count = table.len();
     let mut fwtable = Table::new(table);
@@ -341,27 +344,23 @@ pub fn format_forwards(
         "forwards (last {}h, limit: {})",
         config.forwards,
         if config.forwards_limit > 0 {
-            format!("{}/{}", count, config.forwards_limit.to_string())
+            format!("{}/{}", count, config.forwards_limit)
         } else {
             "off".to_owned()
         }
     )));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
-    if filter_stats.filter_count > 0 {
+    if filter_stats.count > 0 {
         let filter_sum_result = format!(
             "\nFiltered {} forward{} with {} sats routed and {} msat fees.",
-            filter_stats.filter_count,
-            if filter_stats.filter_count == 1 {
-                ""
-            } else {
-                "s"
-            },
+            filter_stats.count,
+            if filter_stats.count == 1 { "" } else { "s" },
             u64_to_sat_string(
                 config,
-                ((filter_stats.filter_amt_sum_msat as f64) / 1_000.0).round() as u64
+                ((filter_stats.amt_sum_msat as f64) / 1_000.0).round() as u64
             )?,
-            u64_to_sat_string(config, filter_stats.filter_fee_sum_msat)?,
+            u64_to_sat_string(config, filter_stats.fee_sum_msat)?,
         );
         fwtable.with(Panel::footer(filter_sum_result));
     }

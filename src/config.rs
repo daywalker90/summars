@@ -121,7 +121,7 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
                     return Ok(options::Value::Integer(n_neg_i64));
                 }
             }
-            Err(anyhow!("{} is not a valid integer!", n))
+            Err(anyhow!("{n} is not a valid integer!"))
         }
         n if n.eq(OPT_UTF8) || n.eq(OPT_JSON) => {
             if let Some(n_bool) = value.as_bool() {
@@ -131,13 +131,13 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
                     return Ok(options::Value::Boolean(n_str_bool));
                 }
             }
-            Err(anyhow!("{} is not a valid boolean!", n))
+            Err(anyhow!("{n} is not a valid boolean!"))
         }
         _ => {
             if value.is_string() {
                 Ok(options::Value::String(value.as_str().unwrap().to_owned()))
             } else {
-                Err(anyhow!("{} is not a valid string!", name))
+                Err(anyhow!("{name} is not a valid string!"))
             }
         }
     }
@@ -158,17 +158,13 @@ fn validate_columns_input(
     let mut uniq = HashSet::new();
     for i in &split_input {
         if !uniq.insert(i) {
-            return Err(anyhow!(
-                "Duplicate entry detected in {}: {}",
-                column_name,
-                i
-            ));
+            return Err(anyhow!("Duplicate entry detected in {column_name}: {i}"));
         }
     }
 
     for i in &split_input {
         if !columns.contains(i) {
-            return Err(anyhow!("`{}` not found in valid {} names!", i, column_name));
+            return Err(anyhow!("`{i}` not found in valid {column_name} names!"));
         }
     }
 
@@ -197,7 +193,7 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
             Summary::FIELD_NAMES_AS_ARRAY
                 .iter()
                 .filter(|t| t != &&"graph_sats")
-                .map(|s| s.to_owned())
+                .map(std::borrow::ToOwned::to_owned)
                 .collect::<Vec<_>>()
                 .join(", ")
         ))
@@ -224,15 +220,15 @@ fn validate_exclude_states_input(input: &str) -> Result<ExcludeStates, Error> {
         if let Ok(state) = ShortChannelState::from_str(i) {
             parsed_input.push(state);
         } else if i.eq(&"PUBLIC") {
-            parsed_visibility = Some(ChannelVisibility::Public)
+            parsed_visibility = Some(ChannelVisibility::Public);
         } else if i.eq(&"PRIVATE") {
-            parsed_visibility = Some(ChannelVisibility::Private)
+            parsed_visibility = Some(ChannelVisibility::Private);
         } else if i.eq(&"ONLINE") {
-            parsed_connection_status = Some(ConnectionStatus::Online)
+            parsed_connection_status = Some(ConnectionStatus::Online);
         } else if i.eq(&"OFFLINE") {
-            parsed_connection_status = Some(ConnectionStatus::Offline)
+            parsed_connection_status = Some(ConnectionStatus::Offline);
         } else {
-            return Err(anyhow!("Could not parse channel state: `{}`", i));
+            return Err(anyhow!("Could not parse channel state: `{i}`"));
         }
     }
     Ok(ExcludeStates {
@@ -250,9 +246,7 @@ fn validate_u64_input(
 ) -> Result<u64, Error> {
     if n < gteq {
         return Err(anyhow!(
-            "{} must be greater than or equal to {}",
-            var_name,
-            gteq
+            "{var_name} must be greater than or equal to {gteq}"
         ));
     }
 
@@ -272,9 +266,7 @@ fn validate_u64_input(
 fn validate_i64_input(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
     if n < gteq {
         return Err(anyhow!(
-            "{} must be greater than or equal to {}",
-            var_name,
-            gteq
+            "{var_name} must be greater than or equal to {gteq}"
         ));
     }
 
@@ -284,9 +276,7 @@ fn validate_i64_input(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
 fn validate_i64_input_absolute(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
     if n.abs() < gteq {
         return Err(anyhow!(
-            "{} must be greater than or equal to |{}|",
-            var_name,
-            gteq
+            "{var_name} must be greater than or equal to |{gteq}|"
         ));
     }
 
@@ -303,22 +293,20 @@ fn options_value_to_u64(
         validate_u64_input(value as u64, name, gteq, check_valid_time)
     } else {
         Err(anyhow!(
-            "{} needs to be a positive number and not `{}`.",
-            name,
-            value
+            "{name} needs to be a positive number and not `{value}`."
         ))
     }
 }
 
 pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), Error> {
     if let serde_json::Value::Object(i) = args {
-        for (key, value) in i.iter() {
+        for (key, value) in &i {
             match key {
                 name if name.eq(OPT_COLUMNS) => {
-                    check_option(config, OPT_COLUMNS, &parse_option(OPT_COLUMNS, value)?)?
+                    check_option(config, OPT_COLUMNS, &parse_option(OPT_COLUMNS, value)?)?;
                 }
                 name if name.eq(OPT_SORT_BY) => {
-                    check_option(config, OPT_SORT_BY, &parse_option(OPT_SORT_BY, value)?)?
+                    check_option(config, OPT_SORT_BY, &parse_option(OPT_SORT_BY, value)?)?;
                 }
                 name if name.eq(OPT_EXCLUDE_CHANNEL_STATES) => check_option(
                     config,
@@ -326,7 +314,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_EXCLUDE_CHANNEL_STATES, value)?,
                 )?,
                 name if name.eq(OPT_FORWARDS) => {
-                    check_option(config, OPT_FORWARDS, &parse_option(OPT_FORWARDS, value)?)?
+                    check_option(config, OPT_FORWARDS, &parse_option(OPT_FORWARDS, value)?)?;
                 }
                 name if name.eq(OPT_FORWARDS_LIMIT) => check_option(
                     config,
@@ -349,7 +337,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_FORWARDS_FILTER_FEE, value)?,
                 )?,
                 name if name.eq(OPT_PAYS) => {
-                    check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?
+                    check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?;
                 }
                 name if name.eq(OPT_PAYS_LIMIT) => check_option(
                     config,
@@ -367,7 +355,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_MAX_DESC_LENGTH, value)?,
                 )?,
                 name if name.eq(OPT_INVOICES) => {
-                    check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?
+                    check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?;
                 }
                 name if name.eq(OPT_INVOICES_LIMIT) => check_option(
                     config,
@@ -390,7 +378,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_INVOICES_FILTER_AMT, value)?,
                 )?,
                 name if name.eq(OPT_LOCALE) => {
-                    check_option(config, OPT_LOCALE, &parse_option(OPT_LOCALE, value)?)?
+                    check_option(config, OPT_LOCALE, &parse_option(OPT_LOCALE, value)?)?;
                 }
                 name if name.eq(OPT_MAX_ALIAS_LENGTH) => check_option(
                     config,
@@ -398,10 +386,10 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_MAX_ALIAS_LENGTH, value)?,
                 )?,
                 name if name.eq(OPT_UTF8) => {
-                    check_option(config, OPT_UTF8, &parse_option(OPT_UTF8, value)?)?
+                    check_option(config, OPT_UTF8, &parse_option(OPT_UTF8, value)?)?;
                 }
                 name if name.eq(OPT_STYLE) => {
-                    check_option(config, OPT_STYLE, &parse_option(OPT_STYLE, value)?)?
+                    check_option(config, OPT_STYLE, &parse_option(OPT_STYLE, value)?)?;
                 }
                 name if name.eq(OPT_FLOW_STYLE) => check_option(
                     config,
@@ -409,7 +397,7 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                     &parse_option(OPT_FLOW_STYLE, value)?,
                 )?,
                 name if name.eq(OPT_JSON) => {
-                    check_option(config, OPT_JSON, &parse_option(OPT_JSON, value)?)?
+                    check_option(config, OPT_JSON, &parse_option(OPT_JSON, value)?)?;
                 }
                 name if name.eq(OPT_REFRESH_ALIAS)
                     || name.eq(OPT_AVAILABILITY_INTERVAL)
@@ -420,10 +408,10 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
                 not make sense, please use one of the more longer lasting methods!"
                     ))
                 }
-                other => return Err(anyhow!("option not found:{}", other)),
-            };
+                other => return Err(anyhow!("option not found:{other}")),
+            }
         }
-    };
+    }
     check_options_dependencies(config)?;
 
     Ok(())
@@ -431,89 +419,89 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
 
 pub fn get_startup_options(
     plugin: &ConfiguredPlugin<PluginState, tokio::io::Stdin, tokio::io::Stdout>,
-    state: PluginState,
+    state: &PluginState,
 ) -> Result<(), Error> {
     {
         let mut config = state.config.lock();
 
         if let Some(cols) = plugin.option_str(OPT_COLUMNS)? {
             check_option(&mut config, OPT_COLUMNS, &cols)?;
-        };
+        }
         if let Some(sort_by) = plugin.option_str(OPT_SORT_BY)? {
             check_option(&mut config, OPT_SORT_BY, &sort_by)?;
-        };
+        }
         if let Some(states) = plugin.option_str(OPT_EXCLUDE_CHANNEL_STATES)? {
             check_option(&mut config, OPT_EXCLUDE_CHANNEL_STATES, &states)?;
-        };
+        }
         if let Some(fws) = plugin.option_str(OPT_FORWARDS)? {
             check_option(&mut config, OPT_FORWARDS, &fws)?;
-        };
+        }
         if let Some(fwsl) = plugin.option_str(OPT_FORWARDS_LIMIT)? {
             check_option(&mut config, OPT_FORWARDS_LIMIT, &fwsl)?;
-        };
+        }
         if let Some(cols) = plugin.option_str(OPT_FORWARDS_COLUMNS)? {
             check_option(&mut config, OPT_FORWARDS_COLUMNS, &cols)?;
-        };
+        }
         if let Some(ffa) = plugin.option_str(OPT_FORWARDS_FILTER_AMT)? {
             check_option(&mut config, OPT_FORWARDS_FILTER_AMT, &ffa)?;
-        };
+        }
         if let Some(fff) = plugin.option_str(OPT_FORWARDS_FILTER_FEE)? {
             check_option(&mut config, OPT_FORWARDS_FILTER_FEE, &fff)?;
-        };
+        }
         if let Some(pays) = plugin.option_str(OPT_PAYS)? {
             check_option(&mut config, OPT_PAYS, &pays)?;
-        };
+        }
         if let Some(paysl) = plugin.option_str(OPT_PAYS_LIMIT)? {
             check_option(&mut config, OPT_PAYS_LIMIT, &paysl)?;
-        };
+        }
         if let Some(cols) = plugin.option_str(OPT_PAYS_COLUMNS)? {
             check_option(&mut config, OPT_PAYS_COLUMNS, &cols)?;
-        };
+        }
         if let Some(mdl) = plugin.option_str(OPT_MAX_DESC_LENGTH)? {
             check_option(&mut config, OPT_MAX_DESC_LENGTH, &mdl)?;
-        };
+        }
         if let Some(invs) = plugin.option_str(OPT_INVOICES)? {
             check_option(&mut config, OPT_INVOICES, &invs)?;
-        };
+        }
         if let Some(invsl) = plugin.option_str(OPT_INVOICES_LIMIT)? {
             check_option(&mut config, OPT_INVOICES_LIMIT, &invsl)?;
-        };
+        }
         if let Some(cols) = plugin.option_str(OPT_INVOICES_COLUMNS)? {
             check_option(&mut config, OPT_INVOICES_COLUMNS, &cols)?;
-        };
+        }
         if let Some(mll) = plugin.option_str(OPT_MAX_LABEL_LENGTH)? {
             check_option(&mut config, OPT_MAX_LABEL_LENGTH, &mll)?;
-        };
+        }
         if let Some(invfa) = plugin.option_str(OPT_INVOICES_FILTER_AMT)? {
             check_option(&mut config, OPT_INVOICES_FILTER_AMT, &invfa)?;
-        };
+        }
         if let Some(loc) = plugin.option_str(OPT_LOCALE)? {
             check_option(&mut config, OPT_LOCALE, &loc)?;
-        };
+        }
         if let Some(ra) = plugin.option_str(OPT_REFRESH_ALIAS)? {
             check_option(&mut config, OPT_REFRESH_ALIAS, &ra)?;
-        };
+        }
         if let Some(mal) = plugin.option_str(OPT_MAX_ALIAS_LENGTH)? {
             check_option(&mut config, OPT_MAX_ALIAS_LENGTH, &mal)?;
-        };
+        }
         if let Some(ai) = plugin.option_str(OPT_AVAILABILITY_INTERVAL)? {
             check_option(&mut config, OPT_AVAILABILITY_INTERVAL, &ai)?;
-        };
+        }
         if let Some(aw) = plugin.option_str(OPT_AVAILABILITY_WINDOW)? {
             check_option(&mut config, OPT_AVAILABILITY_WINDOW, &aw)?;
-        };
+        }
         if let Some(utf8) = plugin.option_str(OPT_UTF8)? {
             check_option(&mut config, OPT_UTF8, &utf8)?;
-        };
+        }
         if let Some(style) = plugin.option_str(OPT_STYLE)? {
             check_option(&mut config, OPT_STYLE, &style)?;
-        };
+        }
         if let Some(fstyle) = plugin.option_str(OPT_FLOW_STYLE)? {
             check_option(&mut config, OPT_FLOW_STYLE, &fstyle)?;
-        };
+        }
         if let Some(js) = plugin.option_str(OPT_JSON)? {
             check_option(&mut config, OPT_JSON, &js)?;
-        };
+        }
     }
     Ok(())
 }
@@ -554,7 +542,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_FEE, -1)?;
         }
         n if n.eq(OPT_PAYS) => {
-            config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?
+            config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?;
         }
         n if n.eq(OPT_PAYS_LIMIT) => {
             config.pays_limit =
@@ -569,10 +557,10 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_MAX_DESC_LENGTH) => {
             config.max_desc_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_DESC_LENGTH, 5)?
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_DESC_LENGTH, 5)?;
         }
         n if n.eq(OPT_INVOICES) => {
-            config.invoices = options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?
+            config.invoices = options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?;
         }
         n if n.eq(OPT_INVOICES_LIMIT) => {
             config.invoices_limit =
@@ -587,11 +575,11 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_MAX_LABEL_LENGTH) => {
             config.max_label_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?;
         }
         n if n.eq(OPT_INVOICES_FILTER_AMT) => {
             config.invoices_filter_amt_msat =
-                validate_i64_input(value.as_i64().unwrap(), OPT_INVOICES_FILTER_AMT, -1)?
+                validate_i64_input(value.as_i64().unwrap(), OPT_INVOICES_FILTER_AMT, -1)?;
         }
         n if n.eq(OPT_LOCALE) => {
             config.locale = match Locale::from_str(value.as_str().unwrap()) {
@@ -607,25 +595,25 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_REFRESH_ALIAS) => {
             config.refresh_alias =
-                options_value_to_u64(OPT_REFRESH_ALIAS, value.as_i64().unwrap(), 1, false)?
+                options_value_to_u64(OPT_REFRESH_ALIAS, value.as_i64().unwrap(), 1, false)?;
         }
         n if n.eq(OPT_MAX_ALIAS_LENGTH) => {
             config.max_alias_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_ALIAS_LENGTH, 5)?
+                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_ALIAS_LENGTH, 5)?;
         }
         n if n.eq(OPT_AVAILABILITY_INTERVAL) => {
             config.availability_interval =
-                options_value_to_u64(OPT_AVAILABILITY_INTERVAL, value.as_i64().unwrap(), 1, false)?
+                options_value_to_u64(OPT_AVAILABILITY_INTERVAL, value.as_i64().unwrap(), 1, false)?;
         }
         n if n.eq(OPT_AVAILABILITY_WINDOW) => {
             config.availability_window =
-                options_value_to_u64(OPT_AVAILABILITY_WINDOW, value.as_i64().unwrap(), 1, false)?
+                options_value_to_u64(OPT_AVAILABILITY_WINDOW, value.as_i64().unwrap(), 1, false)?;
         }
         n if n.eq(OPT_UTF8) => config.utf8 = value.as_bool().unwrap(),
         n if n.eq(OPT_STYLE) => config.style = Styles::from_str(value.as_str().unwrap())?,
         n if n.eq(OPT_FLOW_STYLE) => config.flow_style = Styles::from_str(value.as_str().unwrap())?,
         n if n.eq(OPT_JSON) => config.json = value.as_bool().unwrap(),
-        _ => return Err(anyhow!("Unknown option: {}", name)),
+        _ => return Err(anyhow!("Unknown option: {name}")),
     }
     Ok(())
 }
@@ -633,23 +621,17 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
 fn check_options_dependencies(config: &Config) -> Result<(), Error> {
     if config.forwards_limit > 0 && config.forwards == 0 {
         return Err(anyhow!(
-            "You must set `{}` for `{}` to have an effect!",
-            OPT_FORWARDS,
-            OPT_FORWARDS_LIMIT
+            "You must set `{OPT_FORWARDS}` for `{OPT_FORWARDS_LIMIT}` to have an effect!"
         ));
     }
     if config.pays_limit > 0 && config.pays == 0 {
         return Err(anyhow!(
-            "You must set `{}` for `{}` to have an effect!",
-            OPT_PAYS,
-            OPT_PAYS_LIMIT
+            "You must set `{OPT_PAYS}` for `{OPT_PAYS_LIMIT}` to have an effect!"
         ));
     }
     if config.invoices_limit > 0 && config.invoices == 0 {
         return Err(anyhow!(
-            "You must set `{}` for `{}` to have an effect!",
-            OPT_INVOICES,
-            OPT_INVOICES_LIMIT
+            "You must set `{OPT_INVOICES}` for `{OPT_INVOICES_LIMIT}` to have an effect!"
         ));
     }
     Ok(())

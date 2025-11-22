@@ -5,7 +5,7 @@ use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
-        requests::*,
+        requests::{DecodeRequest, ListpaysIndex, ListpaysRequest, ListpaysStatus},
         responses::{GetinfoResponse, ListpeerchannelsChannels},
     },
     primitives::Amount,
@@ -141,7 +141,7 @@ pub async fn recent_pays(
     let description_wanted = config.pays_columns.contains(&"description".to_owned()) || config.json;
     let destination_wanted = config.pays_columns.contains(&"destination".to_owned()) || config.json;
 
-    for pay in pays.into_iter() {
+    for pay in pays {
         if pay.completed_at.unwrap() <= Utc::now().timestamp() as u64 - config_pays_sec {
             continue;
         }
@@ -182,7 +182,7 @@ pub async fn recent_pays(
             if dest == getinfo.id {
                 continue;
             }
-            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?)
+            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?);
         }
 
         if let Some(amount_msat) = msats_requested {
@@ -191,22 +191,22 @@ pub async fn recent_pays(
             sats_requested = Some(((amount_msat as f64) / 1_000.0).round() as u64);
 
             if let Some(fee_amt) = &mut totals.pays_fees_msat {
-                *fee_amt += fee_msats.unwrap()
+                *fee_amt += fee_msats.unwrap();
             } else {
-                totals.pays_fees_msat = fee_msats
+                totals.pays_fees_msat = fee_msats;
             }
 
             if let Some(pay_amt) = &mut totals.pays_amount_msat {
-                *pay_amt += amount_msat
+                *pay_amt += amount_msat;
             } else {
-                totals.pays_amount_msat = Some(amount_msat)
+                totals.pays_amount_msat = Some(amount_msat);
             }
-        };
+        }
 
         if let Some(pay_amt_sent) = &mut totals.pays_amount_sent_msat {
-            *pay_amt_sent += pay.amount_sent_msat.unwrap().msat()
+            *pay_amt_sent += pay.amount_sent_msat.unwrap().msat();
         } else {
-            totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat())
+            totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat());
         }
 
         table.push(Pays {
@@ -249,7 +249,7 @@ pub async fn recent_pays(
     }
     debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
     if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
-        table = table.split_off(table.len() - (config.pays_limit as usize))
+        table = table.split_off(table.len() - (config.pays_limit as usize));
     }
     table.sort_by_key(|x| x.completed_at);
     Ok(table)
@@ -372,7 +372,7 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         "pays (last {}h, limit: {})",
         config.pays,
         if config.pays_limit > 0 {
-            format!("{}/{}", count, config.pays_limit.to_string())
+            format!("{}/{}", count, config.pays_limit)
         } else {
             "off".to_owned()
         }

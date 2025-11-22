@@ -242,7 +242,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .await?
     {
         Some(plugin) => {
-            match get_startup_options(&plugin, state.clone()) {
+            match get_startup_options(&plugin, &state) {
                 Ok(()) => &(),
                 Err(e) => return plugin.disable(format!("{e}").as_str()).await,
             };
@@ -251,7 +251,7 @@ async fn main() -> Result<(), anyhow::Error> {
             confplugin = plugin;
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
-    };
+    }
     if let Ok(plugin) = confplugin.start(state).await {
         info!("starting uptime task");
         let traceclone = plugin.clone();
@@ -259,7 +259,7 @@ async fn main() -> Result<(), anyhow::Error> {
             match tasks::trace_availability(traceclone).await {
                 Ok(()) => (),
                 Err(e) => warn!("Error in trace_availability thread: {e}"),
-            };
+            }
         });
 
         info!("starting refresh alias task");
@@ -270,7 +270,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 match tasks::refresh_alias(aliasclone.clone()).await {
                     Ok(()) => (),
                     Err(e) => warn!("Error in refresh_alias thread: {e}"),
-                };
+                }
                 time::sleep(Duration::from_secs(alias_refresh_freq * 60 * 60)).await;
             }
         });
