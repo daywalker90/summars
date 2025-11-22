@@ -11,9 +11,16 @@ use cln_rpc::primitives::{ChannelState, PublicKey, ShortChannelId};
 use icu_locale::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use struct_field_names_as_array::FieldNamesAsArray;
 use sys_locale::get_locales;
 use tabled::{settings::Style, Table, Tabled};
+
+use crate::{
+    impl_table_column,
+    OPT_COLUMNS,
+    OPT_FORWARDS_COLUMNS,
+    OPT_INVOICES_COLUMNS,
+    OPT_PAYS_COLUMNS,
+};
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
@@ -21,21 +28,22 @@ pub const MISSING_VALUE: &str = "N/A";
 
 #[derive(Clone, Debug)]
 pub struct Config {
-    pub columns: Vec<String>,
-    pub sort_by: String,
+    pub columns: Vec<SummaryColumns>,
+    pub sort_by: SummaryColumns,
+    pub sort_reverse: bool,
     pub exclude_channel_states: ExcludeStates,
     pub forwards: u64,
     pub forwards_limit: u64,
-    pub forwards_columns: Vec<String>,
+    pub forwards_columns: Vec<ForwardsColumns>,
     pub forwards_filter_amt_msat: i64,
     pub forwards_filter_fee_msat: i64,
     pub pays: u64,
     pub pays_limit: u64,
-    pub pays_columns: Vec<String>,
+    pub pays_columns: Vec<PaysColumns>,
     pub max_desc_length: i64,
     pub invoices: u64,
     pub invoices_limit: u64,
-    pub invoices_columns: Vec<String>,
+    pub invoices_columns: Vec<InvoicesColumns>,
     pub max_label_length: i64,
     pub invoices_filter_amt_msat: i64,
     pub locale: Locale,
@@ -51,22 +59,9 @@ pub struct Config {
 impl Config {
     pub fn new() -> Config {
         Config {
-            columns: {
-                Summary::FIELD_NAMES_AS_ARRAY
-                    .into_iter()
-                    .filter(|t| {
-                        t != &"graph_sats"
-                            && t != &"perc_us"
-                            && t != &"total_sats"
-                            && t != &"min_htlc"
-                            && t != &"in_base"
-                            && t != &"in_ppm"
-                            && t != &"ping"
-                    })
-                    .map(ToString::to_string)
-                    .collect::<Vec<String>>()
-            },
-            sort_by: "SCID".to_owned(),
+            columns: { SummaryColumns::default_columns() },
+            sort_by: SummaryColumns::SCID,
+            sort_reverse: false,
             exclude_channel_states: ExcludeStates {
                 channel_states: Vec::new(),
                 channel_visibility: None,
@@ -74,43 +69,16 @@ impl Config {
             },
             forwards: 0,
             forwards_limit: 0,
-            forwards_columns: Forwards::FIELD_NAMES_AS_ARRAY
-                .into_iter()
-                .filter(|t| {
-                    t != &"received_time"
-                        && t != &"in_msats"
-                        && t != &"out_msats"
-                        && t != &"fee_sats"
-                        && t != &"eff_fee_ppm"
-                        && t != &"in_channel"
-                        && t != &"out_channel"
-                })
-                .map(std::borrow::ToOwned::to_owned)
-                .collect::<Vec<String>>(),
+            forwards_columns: ForwardsColumns::default_columns(),
             forwards_filter_amt_msat: -1,
             forwards_filter_fee_msat: -1,
             pays: 0,
             pays_limit: 0,
-            pays_columns: Pays::FIELD_NAMES_AS_ARRAY
-                .into_iter()
-                .filter(|t| {
-                    t != &"description"
-                        && t != &"preimage"
-                        && t != &"sats_requested"
-                        && t != &"msats_requested"
-                        && t != &"msats_sent"
-                        && t != &"fee_msats"
-                })
-                .map(std::borrow::ToOwned::to_owned)
-                .collect::<Vec<String>>(),
+            pays_columns: PaysColumns::default_columns(),
             max_desc_length: 30,
             invoices: 0,
             invoices_limit: 0,
-            invoices_columns: Invoices::FIELD_NAMES_AS_ARRAY
-                .into_iter()
-                .filter(|t| t != &"description" && t != &"preimage" && t != &"msats_received")
-                .map(std::borrow::ToOwned::to_owned)
-                .collect::<Vec<String>>(),
+            invoices_columns: InvoicesColumns::default_columns(),
             max_label_length: 30,
             invoices_filter_amt_msat: -1,
             locale: {
@@ -189,7 +157,17 @@ pub struct PeerAvailability {
     pub avail: f64,
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
+pub trait TableColumn: Copy + Eq + std::hash::Hash + Display + FromStr + 'static {
+    const NUMERICAL: &[Self];
+    const OPTIONAL_NUMERICAL: &[Self];
+    fn default_columns() -> Vec<Self>;
+    fn parse_column(input: &str) -> Result<Self, Error>;
+    fn parse_columns(input: &str) -> Result<Vec<Self>, Error>;
+    // fn all_list_string() -> String;
+    fn to_list_string(columns: &[Self]) -> String;
+}
+
+#[derive(Debug, Tabled, Serialize)]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Summary {
     #[serde(skip_serializing)]
@@ -199,7 +177,6 @@ pub struct Summary {
     pub total_sats: u64,
     #[tabled(skip)]
     #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
     pub scid_raw: ShortChannelId,
     pub scid: String,
     pub max_htlc: u64,
@@ -207,10 +184,8 @@ pub struct Summary {
     #[serde(skip_serializing)]
     pub flag: String,
     #[tabled(skip)]
-    #[field_names_as_array(skip)]
     pub private: bool,
     #[tabled(skip)]
-    #[field_names_as_array(skip)]
     pub offline: bool,
     pub base: u64,
     #[serde(skip_serializing)]
@@ -227,19 +202,52 @@ pub struct Summary {
     pub ping: u64,
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::Display,
+)]
+#[allow(non_camel_case_types)]
+#[strum(ascii_case_insensitive)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum SummaryColumns {
+    GRAPH_SATS,
+    OUT_SATS,
+    IN_SATS,
+    TOTAL_SATS,
+    SCID,
+    MAX_HTLC,
+    MIN_HTLC,
+    FLAG,
+    BASE,
+    IN_BASE,
+    PPM,
+    IN_PPM,
+    ALIAS,
+    PEER_ID,
+    UPTIME,
+    HTLCS,
+    STATE,
+    PERC_US,
+    PING,
+}
+impl_table_column!(
+    SummaryColumns,
+    env_var = OPT_COLUMNS,
+    exclude_default = [GRAPH_SATS, PERC_US, TOTAL_SATS, MIN_HTLC, IN_BASE, IN_PPM, PING],
+    numerical = [OUT_SATS, IN_SATS, TOTAL_SATS, MIN_HTLC, MAX_HTLC, BASE, PPM],
+    optional_numerical = [IN_BASE, IN_PPM],
+);
+
+#[derive(Debug, Tabled, Serialize)]
 pub struct Forwards {
     #[tabled(skip)]
     pub received_time: u64,
     #[tabled(rename = "received_time")]
     #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
     pub received_time_str: String,
     #[tabled(skip)]
     pub resolved_time: u64,
     #[tabled(rename = "resolved_time")]
     #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
     pub resolved_time_str: String,
     pub in_alias: String,
     pub out_alias: String,
@@ -256,6 +264,50 @@ pub struct Forwards {
     pub fee_sats: u64,
     pub eff_fee_ppm: u32,
 }
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::Display,
+)]
+#[allow(non_camel_case_types)]
+#[strum(ascii_case_insensitive)]
+pub enum ForwardsColumns {
+    received_time,
+    resolved_time,
+    in_alias,
+    out_alias,
+    in_channel,
+    out_channel,
+    in_msats,
+    out_msats,
+    in_sats,
+    out_sats,
+    fee_msats,
+    fee_sats,
+    eff_fee_ppm,
+}
+impl_table_column!(
+    ForwardsColumns,
+    env_var = OPT_FORWARDS_COLUMNS,
+    exclude_default = [
+        received_time,
+        in_msats,
+        out_msats,
+        fee_sats,
+        eff_fee_ppm,
+        in_channel,
+        out_channel
+    ],
+    numerical = [
+        in_sats,
+        in_msats,
+        out_sats,
+        out_msats,
+        fee_sats,
+        fee_msats,
+        eff_fee_ppm
+    ],
+    optional_numerical = [],
+);
 
 #[derive(Debug, Clone, Default)]
 pub struct ForwardsFilterStats {
@@ -278,13 +330,12 @@ impl PagingIndex {
     }
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
+#[derive(Debug, Tabled, Serialize)]
 pub struct Pays {
     #[tabled(skip)]
     pub completed_at: u64,
     #[tabled(rename = "completed_at")]
     #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
     pub completed_at_str: String,
     pub payment_hash: String,
     #[tabled(display = "fmt_option")]
@@ -311,6 +362,39 @@ pub struct Pays {
     pub preimage: String,
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::Display,
+)]
+#[allow(non_camel_case_types)]
+#[strum(ascii_case_insensitive)]
+pub enum PaysColumns {
+    completed_at,
+    payment_hash,
+    msats_requested,
+    sats_requested,
+    msats_sent,
+    sats_sent,
+    fee_msats,
+    fee_sats,
+    destination,
+    description,
+    preimage,
+}
+impl_table_column!(
+    PaysColumns,
+    env_var = OPT_PAYS_COLUMNS,
+    exclude_default = [
+        description,
+        preimage,
+        sats_requested,
+        msats_requested,
+        msats_sent,
+        fee_msats,
+    ],
+    numerical = [sats_sent, msats_sent],
+    optional_numerical = [sats_requested, msats_requested, fee_sats, fee_msats],
+);
+
 fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
         Some(s) => format!("{s}"),
@@ -318,13 +402,12 @@ fn fmt_option<T: Display>(o: &Option<T>) -> String {
     }
 }
 
-#[derive(Debug, Tabled, FieldNamesAsArray, Serialize)]
+#[derive(Debug, Tabled, Serialize)]
 pub struct Invoices {
     #[tabled(skip)]
     pub paid_at: u64,
     #[tabled(rename = "paid_at")]
     #[serde(skip_serializing)]
-    #[field_names_as_array(skip)]
     pub paid_at_str: String,
     pub label: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -335,6 +418,28 @@ pub struct Invoices {
     pub payment_hash: String,
     pub preimage: String,
 }
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::Display,
+)]
+#[allow(non_camel_case_types)]
+#[strum(ascii_case_insensitive)]
+pub enum InvoicesColumns {
+    paid_at,
+    label,
+    description,
+    msats_received,
+    sats_received,
+    payment_hash,
+    preimage,
+}
+impl_table_column!(
+    InvoicesColumns,
+    env_var = OPT_INVOICES_COLUMNS,
+    exclude_default = [description, preimage, msats_received],
+    numerical = [sats_received, msats_received],
+    optional_numerical = [],
+);
 
 #[derive(Debug, Clone, Default)]
 pub struct InvoicesFilterStats {

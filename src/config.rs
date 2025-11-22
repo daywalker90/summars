@@ -1,4 +1,4 @@
-use std::{collections::HashSet, str::FromStr};
+use std::str::FromStr;
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
@@ -10,7 +10,7 @@ use cln_plugin::{
 use cln_rpc::RpcError;
 use icu_locale::Locale;
 use serde_json::json;
-use struct_field_names_as_array::FieldNamesAsArray;
+use strum::IntoEnumIterator;
 
 use crate::{
     structs::{
@@ -18,12 +18,13 @@ use crate::{
         Config,
         ConnectionStatus,
         ExcludeStates,
-        Forwards,
-        Invoices,
-        Pays,
+        ForwardsColumns,
+        InvoicesColumns,
+        PaysColumns,
         ShortChannelState,
         Styles,
-        Summary,
+        SummaryColumns,
+        TableColumn,
     },
     PluginState,
     OPT_AVAILABILITY_INTERVAL,
@@ -143,36 +144,7 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
     }
 }
 
-fn validate_columns_input(
-    input: &str,
-    column_name: &str,
-    columns: &[&'static str],
-) -> Result<Vec<String>, Error> {
-    let cleaned_input: String = input
-        .chars()
-        .filter(|&c| !c.is_whitespace())
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let split_input: Vec<&str> = cleaned_input.split(',').collect();
-
-    let mut uniq = HashSet::new();
-    for i in &split_input {
-        if !uniq.insert(i) {
-            return Err(anyhow!("Duplicate entry detected in {column_name}: {i}"));
-        }
-    }
-
-    for i in &split_input {
-        if !columns.contains(i) {
-            return Err(anyhow!("`{i}` not found in valid {column_name} names!"));
-        }
-    }
-
-    let cleaned_strings: Vec<String> = split_input.into_iter().map(String::from).collect();
-    Ok(cleaned_strings)
-}
-
-fn validate_sort_input(input: &str) -> Result<String, Error> {
+fn parse_sort_input(input: &str) -> Result<(SummaryColumns, bool), Error> {
     let reverse = input.starts_with('-');
     let input_sane = if reverse {
         input[1..].to_ascii_lowercase()
@@ -184,16 +156,15 @@ fn validate_sort_input(input: &str) -> Result<String, Error> {
         Err(anyhow!(
             "Can not sort by `GRAPH_SATS`, use `IN_SATS`, `OUT_SATS` or `TOTAL_SATS` instead!"
         ))
-    } else if Summary::FIELD_NAMES_AS_ARRAY.contains(&input_sane.as_str()) {
-        Ok(input.to_ascii_uppercase())
+    } else if let Ok(col) = SummaryColumns::parse_column(&input_sane) {
+        Ok((col, reverse))
     } else {
         Err(anyhow!(
             "`{}` is invalid. Can only sort by valid columns. Must be one of: {}",
-            input.to_ascii_lowercase(),
-            Summary::FIELD_NAMES_AS_ARRAY
-                .iter()
-                .filter(|t| t != &&"graph_sats")
-                .map(std::borrow::ToOwned::to_owned)
+            input.to_ascii_uppercase(),
+            SummaryColumns::iter()
+                .filter(|t| t != &SummaryColumns::GRAPH_SATS)
+                .map(|c| c.to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         ))
@@ -509,13 +480,11 @@ pub fn get_startup_options(
 fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Result<(), Error> {
     match name {
         n if n.eq(OPT_COLUMNS) => {
-            config.columns = validate_columns_input(
-                value.as_str().unwrap(),
-                OPT_COLUMNS,
-                &Summary::FIELD_NAMES_AS_ARRAY,
-            )?;
+            config.columns = SummaryColumns::parse_columns(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_SORT_BY) => config.sort_by = validate_sort_input(value.as_str().unwrap())?,
+        n if n.eq(OPT_SORT_BY) => {
+            (config.sort_by, config.sort_reverse) = parse_sort_input(value.as_str().unwrap())?;
+        }
         n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
             config.exclude_channel_states = validate_exclude_states_input(value.as_str().unwrap())?;
         }
@@ -527,11 +496,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 options_value_to_u64(OPT_FORWARDS_LIMIT, value.as_i64().unwrap(), 0, false)?;
         }
         n if n.eq(OPT_FORWARDS_COLUMNS) => {
-            config.forwards_columns = validate_columns_input(
-                value.as_str().unwrap(),
-                OPT_FORWARDS_COLUMNS,
-                &Forwards::FIELD_NAMES_AS_ARRAY,
-            )?;
+            config.forwards_columns = ForwardsColumns::parse_columns(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
             config.forwards_filter_amt_msat =
@@ -549,11 +514,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 options_value_to_u64(OPT_PAYS_LIMIT, value.as_i64().unwrap(), 0, false)?;
         }
         n if n.eq(OPT_PAYS_COLUMNS) => {
-            config.pays_columns = validate_columns_input(
-                value.as_str().unwrap(),
-                OPT_PAYS_COLUMNS,
-                &Pays::FIELD_NAMES_AS_ARRAY,
-            )?;
+            config.pays_columns = PaysColumns::parse_columns(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_MAX_DESC_LENGTH) => {
             config.max_desc_length =
@@ -567,11 +528,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 options_value_to_u64(OPT_INVOICES_LIMIT, value.as_i64().unwrap(), 0, false)?;
         }
         n if n.eq(OPT_INVOICES_COLUMNS) => {
-            config.invoices_columns = validate_columns_input(
-                value.as_str().unwrap(),
-                OPT_INVOICES_COLUMNS,
-                &Invoices::FIELD_NAMES_AS_ARRAY,
-            )?;
+            config.invoices_columns = InvoicesColumns::parse_columns(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_MAX_LABEL_LENGTH) => {
             config.max_label_length =

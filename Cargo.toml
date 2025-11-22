@@ -30,9 +30,10 @@ icu_datetime = "2"
 icu_calendar = "2"
 icu_time = "2"
 
-struct-field-names-as-array = "0.3"
 chrono = "0.4"
 parking_lot = "0.12"
+
+strum = { version = "0.27", features = ["derive"] }
 
 [profile.optimized]
 inherits = "release"

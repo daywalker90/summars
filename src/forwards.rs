@@ -11,8 +11,7 @@ use cln_rpc::{
     primitives::{Amount, PublicKey, ShortChannelId},
     ClnRpc,
 };
-use log::debug;
-use struct_field_names_as_array::FieldNamesAsArray;
+use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
     settings::{
@@ -33,9 +32,11 @@ use crate::{
     structs::{
         Config,
         Forwards,
+        ForwardsColumns,
         ForwardsFilterStats,
         PagingIndex,
         PluginState,
+        TableColumn,
         Totals,
         NO_ALIAS_SET,
     },
@@ -60,13 +61,14 @@ pub async fn recent_forwards(
     {
         if plugin.state().fw_index.lock().timestamp > now_utc - config_forwards_sec {
             *plugin.state().fw_index.lock() = PagingIndex::new();
-            debug!("fw_index: forwards-age increased, resetting index");
+            log::debug!("fw_index: forwards-age increased, resetting index");
         }
     }
     let mut fw_index = plugin.state().fw_index.lock().clone();
-    debug!(
+    log::debug!(
         "fw_index: start:{} timestamp:{}",
-        fw_index.start, fw_index.timestamp
+        fw_index.start,
+        fw_index.timestamp
     );
     let settled_forwards = rpc
         .call_typed(&ListforwardsRequest {
@@ -90,7 +92,7 @@ pub async fn recent_forwards(
         })
         .await?
         .forwards;
-    debug!(
+    log::debug!(
         "List {} forwards. Total: {}ms",
         settled_forwards.len(),
         now.elapsed().as_millis()
@@ -221,7 +223,7 @@ pub async fn recent_forwards(
     if fw_index.start < u64::MAX {
         *plugin.state().fw_index.lock() = fw_index;
     }
-    debug!(
+    log::debug!(
         "Build forwards table. Total: {}ms",
         now.elapsed().as_millis()
     );
@@ -248,9 +250,9 @@ pub fn format_forwards(
     let count = table.len();
     let mut fwtable = Table::new(table);
     config.flow_style.apply(&mut fwtable);
-    for head in Forwards::FIELD_NAMES_AS_ARRAY {
-        if !config.forwards_columns.contains(&head.to_owned()) {
-            fwtable.with(Remove::column(ByColumnName::new(head)));
+    for head in ForwardsColumns::iter() {
+        if !config.forwards_columns.contains(&head) {
+            fwtable.with(Remove::column(ByColumnName::new(head.to_string())));
         }
     }
     let headers = fwtable
@@ -259,86 +261,53 @@ pub fn format_forwards(
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_owned())
-        .collect::<Vec<String>>();
+        .map(|s| ForwardsColumns::parse_column(s.text()).unwrap())
+        .collect::<Vec<ForwardsColumns>>();
     let records = fwtable.get_records_mut();
     if headers.len() != config.forwards_columns.len() {
         return Err(anyhow!(
             "Error formatting forwards! Length difference detected: {} {}",
-            headers.join(","),
-            config.forwards_columns.join(",")
+            ForwardsColumns::to_list_string(&headers),
+            ForwardsColumns::to_list_string(&config.forwards_columns)
         ));
     }
     sort_columns(records, &headers, &config.forwards_columns);
 
+    for numerical in ForwardsColumns::NUMERICAL {
+        fwtable
+            .with(Modify::new(ByColumnName::new(numerical.to_string())).with(Alignment::right()));
+        fwtable.with(
+            Modify::new(ByColumnName::new(numerical.to_string()).not(Rows::first())).with(
+                Format::content(|s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()),
+            ),
+        );
+    }
+
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_alias")).with(
+            Modify::new(ByColumnName::new(ForwardsColumns::in_alias.to_string())).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         fwtable.with(
-            Modify::new(ByColumnName::new("in_alias"))
+            Modify::new(ByColumnName::new(ForwardsColumns::in_alias.to_string()))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
     if config.max_alias_length < 0 {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_alias")).with(
+            Modify::new(ByColumnName::new(ForwardsColumns::out_alias.to_string())).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         fwtable.with(
-            Modify::new(ByColumnName::new("out_alias"))
+            Modify::new(ByColumnName::new(ForwardsColumns::out_alias.to_string()))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
-
-    fwtable.with(Modify::new(ByColumnName::new("in_sats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("in_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("in_msats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("in_msats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("out_sats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("out_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("out_msats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("out_msats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    fwtable.with(Modify::new(ByColumnName::new("eff_fee_ppm")).with(Alignment::right()));
-    fwtable.with(
-        Modify::new(ByColumnName::new("eff_fee_ppm").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
-        )),
-    );
 
     fwtable.with(Panel::header(format!(
         "forwards (last {}h, limit: {})",

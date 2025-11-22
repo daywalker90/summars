@@ -11,8 +11,7 @@ use cln_rpc::{
     primitives::Amount,
     ClnRpc,
 };
-use log::debug;
-use struct_field_names_as_array::FieldNamesAsArray;
+use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
     settings::{
@@ -30,7 +29,17 @@ use tabled::{
 use tokio::time::Instant;
 
 use crate::{
-    structs::{Config, PagingIndex, Pays, PluginState, Totals, MISSING_VALUE, NODE_GOSSIP_MISS},
+    structs::{
+        Config,
+        PagingIndex,
+        Pays,
+        PaysColumns,
+        PluginState,
+        TableColumn,
+        Totals,
+        MISSING_VALUE,
+        NODE_GOSSIP_MISS,
+    },
     util::{
         at_or_above_version,
         get_alias,
@@ -56,7 +65,7 @@ pub async fn recent_pays(
     {
         if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
             *plugin.state().pay_index.lock() = PagingIndex::new();
-            debug!("pay_index: pays-age increased, resetting index");
+            log::debug!("pay_index: pays-age increased, resetting index");
         }
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
@@ -64,9 +73,10 @@ pub async fn recent_pays(
     let mut pending_pays = Vec::new();
     let mut pending_hashes = HashSet::new();
     let pays = if at_or_above_version(&getinfo.version, "24.11")? {
-        debug!(
+        log::debug!(
             "pay_index: start:{} timestamp:{}",
-            pay_index.start, pay_index.timestamp
+            pay_index.start,
+            pay_index.timestamp
         );
         pending_pays = rpc
             .call_typed(&ListpaysRequest {
@@ -109,7 +119,7 @@ pub async fn recent_pays(
         .pays
     };
 
-    debug!(
+    log::debug!(
         "List {} pays. Total: {}ms",
         pays.len(),
         now.elapsed().as_millis()
@@ -138,8 +148,8 @@ pub async fn recent_pays(
 
     let mut table = Vec::new();
 
-    let description_wanted = config.pays_columns.contains(&"description".to_owned()) || config.json;
-    let destination_wanted = config.pays_columns.contains(&"destination".to_owned()) || config.json;
+    let description_wanted = config.pays_columns.contains(&PaysColumns::description) || config.json;
+    let destination_wanted = config.pays_columns.contains(&PaysColumns::destination) || config.json;
 
     for pay in pays {
         if pay.completed_at.unwrap() <= Utc::now().timestamp() as u64 - config_pays_sec {
@@ -247,7 +257,7 @@ pub async fn recent_pays(
     if pay_index.start < u64::MAX {
         *plugin.state().pay_index.lock() = pay_index;
     }
-    debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
+    log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
     if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
         table = table.split_off(table.len() - (config.pays_limit as usize));
     }
@@ -259,9 +269,9 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     let count = table.len();
     let mut paystable = Table::new(table);
     config.flow_style.apply(&mut paystable);
-    for head in Pays::FIELD_NAMES_AS_ARRAY {
-        if !config.pays_columns.contains(&head.to_owned()) {
-            paystable.with(Remove::column(ByColumnName::new(head)));
+    for head in PaysColumns::iter() {
+        if !config.pays_columns.contains(&head) {
+            paystable.with(Remove::column(ByColumnName::new(head.to_string())));
         }
     }
     let headers = paystable
@@ -270,99 +280,65 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_owned())
-        .collect::<Vec<String>>();
+        .map(|s| PaysColumns::parse_column(s.text()).unwrap())
+        .collect::<Vec<PaysColumns>>();
     let records = paystable.get_records_mut();
     if headers.len() != config.pays_columns.len() {
         return Err(anyhow!(
             "Error formatting pays! Length difference detected: {} {}",
-            headers.join(","),
-            config.pays_columns.join(",")
+            PaysColumns::to_list_string(&headers),
+            PaysColumns::to_list_string(&config.pays_columns)
         ));
     }
     sort_columns(records, &headers, &config.pays_columns);
 
+    for numerical in PaysColumns::NUMERICAL {
+        paystable
+            .with(Modify::new(ByColumnName::new(numerical.to_string())).with(Alignment::right()));
+        paystable.with(
+            Modify::new(ByColumnName::new(numerical.to_string()).not(Rows::first())).with(
+                Format::content(|s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()),
+            ),
+        );
+    }
+
+    for opt_num in PaysColumns::OPTIONAL_NUMERICAL {
+        paystable
+            .with(Modify::new(ByColumnName::new(opt_num.to_string())).with(Alignment::right()));
+        paystable.with(
+            Modify::new(ByColumnName::new(opt_num.to_string()).not(Rows::first())).with(
+                Format::content(|s| {
+                    if s.eq_ignore_ascii_case(MISSING_VALUE) {
+                        s.to_owned()
+                    } else {
+                        u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
+                    }
+                }),
+            ),
+        );
+    }
+
     if config.max_alias_length < 0 {
         paystable.with(
-            Modify::new(ByColumnName::new("destination")).with(
+            Modify::new(ByColumnName::new(PaysColumns::destination.to_string())).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         paystable.with(
-            Modify::new(ByColumnName::new("destination"))
+            Modify::new(ByColumnName::new(PaysColumns::destination.to_string()))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
-
-    paystable.with(Modify::new(ByColumnName::new("sats_sent")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("sats_sent").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    paystable.with(Modify::new(ByColumnName::new("msats_sent")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("msats_sent").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
-        )),
-    );
-
-    paystable.with(Modify::new(ByColumnName::new("sats_requested")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("sats_requested").not(Rows::first())).with(Format::content(
-            |s| {
-                if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                    s.to_owned()
-                } else {
-                    u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-                }
-            },
-        )),
-    );
-    paystable.with(Modify::new(ByColumnName::new("msats_requested")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("msats_requested").not(Rows::first())).with(Format::content(
-            |s| {
-                if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                    s.to_owned()
-                } else {
-                    u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-                }
-            },
-        )),
-    );
-
-    paystable.with(Modify::new(ByColumnName::new("fee_sats")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("fee_sats").not(Rows::first())).with(Format::content(|s| {
-            if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                s.to_owned()
-            } else {
-                u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-            }
-        })),
-    );
-    paystable.with(Modify::new(ByColumnName::new("fee_msats")).with(Alignment::right()));
-    paystable.with(
-        Modify::new(ByColumnName::new("fee_msats").not(Rows::first())).with(Format::content(|s| {
-            if s.eq_ignore_ascii_case(MISSING_VALUE) {
-                s.to_owned()
-            } else {
-                u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-            }
-        })),
-    );
-
     if config.max_desc_length < 0 {
         paystable.with(
-            Modify::new(ByColumnName::new("description"))
+            Modify::new(ByColumnName::new(PaysColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
                 .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
         );
     } else {
         paystable.with(
-            Modify::new(ByColumnName::new("description"))
+            Modify::new(ByColumnName::new(PaysColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
                 .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
