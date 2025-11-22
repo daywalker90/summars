@@ -9,8 +9,7 @@ use cln_rpc::{
     primitives::Amount,
     ClnRpc,
 };
-use log::debug;
-use struct_field_names_as_array::FieldNamesAsArray;
+use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
     settings::{
@@ -28,7 +27,16 @@ use tabled::{
 use tokio::time::Instant;
 
 use crate::{
-    structs::{Config, Invoices, InvoicesFilterStats, PagingIndex, PluginState, Totals},
+    structs::{
+        Config,
+        Invoices,
+        InvoicesColumns,
+        InvoicesFilterStats,
+        PagingIndex,
+        PluginState,
+        TableColumn,
+        Totals,
+    },
     util::{
         hex_encode,
         replace_escaping_chars,
@@ -50,13 +58,14 @@ pub async fn recent_invoices(
     {
         if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
             *plugin.state().inv_index.lock() = PagingIndex::new();
-            debug!("inv_index: invoices-age increased, resetting index");
+            log::debug!("inv_index: invoices-age increased, resetting index");
         }
     }
     let mut inv_index = plugin.state().inv_index.lock().clone();
-    debug!(
+    log::debug!(
         "inv_index: start:{} timestamp:{}",
-        inv_index.start, inv_index.timestamp
+        inv_index.start,
+        inv_index.timestamp
     );
     let invoices = rpc
         .call_typed(&ListinvoicesRequest {
@@ -70,7 +79,7 @@ pub async fn recent_invoices(
         })
         .await?
         .invoices;
-    debug!(
+    log::debug!(
         "List {} invoices. Total: {}ms",
         invoices.len(),
         now.elapsed().as_millis()
@@ -138,7 +147,7 @@ pub async fn recent_invoices(
     if inv_index.start < u64::MAX {
         *plugin.state().inv_index.lock() = inv_index;
     }
-    debug!(
+    log::debug!(
         "Build invoices table. Total: {}ms",
         now.elapsed().as_millis()
     );
@@ -165,9 +174,9 @@ pub fn format_invoices(
     let count = table.len();
     let mut invoicestable = Table::new(table);
     config.flow_style.apply(&mut invoicestable);
-    for head in Invoices::FIELD_NAMES_AS_ARRAY {
-        if !config.invoices_columns.contains(&head.to_owned()) {
-            invoicestable.with(Remove::column(ByColumnName::new(head)));
+    for head in InvoicesColumns::iter() {
+        if !config.invoices_columns.contains(&head) {
+            invoicestable.with(Remove::column(ByColumnName::new(head.to_string())));
         }
     }
     let headers = invoicestable
@@ -176,27 +185,37 @@ pub fn format_invoices(
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_owned())
-        .collect::<Vec<String>>();
+        .map(|s| InvoicesColumns::parse_column(s.text()).unwrap())
+        .collect::<Vec<InvoicesColumns>>();
     let records = invoicestable.get_records_mut();
     if headers.len() != config.invoices_columns.len() {
         return Err(anyhow!(
             "Error formatting invoices! Length difference detected: {} {}",
-            headers.join(","),
-            config.invoices_columns.join(",")
+            InvoicesColumns::to_list_string(&headers),
+            InvoicesColumns::to_list_string(&config.invoices_columns)
         ));
     }
     sort_columns(records, &headers, &config.invoices_columns);
 
+    for numerical in InvoicesColumns::NUMERICAL {
+        invoicestable
+            .with(Modify::new(ByColumnName::new(numerical.to_string())).with(Alignment::right()));
+        invoicestable.with(
+            Modify::new(ByColumnName::new(numerical.to_string()).not(Rows::first())).with(
+                Format::content(|s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()),
+            ),
+        );
+    }
+
     if config.max_desc_length < 0 {
         invoicestable.with(
-            Modify::new(ByColumnName::new("description"))
+            Modify::new(ByColumnName::new(InvoicesColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
                 .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
         );
     } else {
         invoicestable.with(
-            Modify::new(ByColumnName::new("description"))
+            Modify::new(ByColumnName::new(InvoicesColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
                 .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
         );
@@ -204,29 +223,16 @@ pub fn format_invoices(
 
     if config.max_label_length < 0 {
         invoicestable.with(
-            Modify::new(ByColumnName::new("label")).with(
+            Modify::new(ByColumnName::new(InvoicesColumns::label.to_string())).with(
                 Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         invoicestable.with(
-            Modify::new(ByColumnName::new("label"))
+            Modify::new(ByColumnName::new(InvoicesColumns::label.to_string()))
                 .with(Width::truncate(config.max_label_length as usize).suffix("[..]")),
         );
     }
-
-    invoicestable.with(Modify::new(ByColumnName::new("sats_received")).with(Alignment::right()));
-    invoicestable.with(
-        Modify::new(ByColumnName::new("sats_received").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
-        )),
-    );
-    invoicestable.with(Modify::new(ByColumnName::new("msats_received")).with(Alignment::right()));
-    invoicestable.with(
-        Modify::new(ByColumnName::new("msats_received").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
-        )),
-    );
 
     invoicestable.with(Panel::header(format!(
         "invoices (last {}h, limit: {})",

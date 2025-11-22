@@ -30,7 +30,7 @@ use cln_rpc::{
     ClnRpc,
 };
 use serde_json::json;
-use struct_field_names_as_array::FieldNamesAsArray;
+use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
     settings::{
@@ -65,6 +65,8 @@ use crate::{
         PluginState,
         ShortChannelState,
         Summary,
+        SummaryColumns,
+        TableColumn,
         Totals,
     },
     util::{
@@ -416,10 +418,10 @@ async fn chan_to_summary(
 
     let mut in_base = "N/A".to_owned();
     let mut in_ppm = "N/A".to_owned();
-    if config.columns.contains(&"in_base".to_owned())
-        || config.columns.contains(&"in_ppm".to_owned())
-        || config.sort_by.eq_ignore_ascii_case("in_base")
-        || config.sort_by.eq_ignore_ascii_case("in_ppm")
+    if config.columns.contains(&SummaryColumns::IN_BASE)
+        || config.columns.contains(&SummaryColumns::IN_PPM)
+        || config.sort_by == SummaryColumns::IN_BASE
+        || config.sort_by == SummaryColumns::IN_PPM
     {
         if at_or_above_version(version, "24.02")? {
             if let Some(upd) = &chan.updates {
@@ -446,7 +448,7 @@ async fn chan_to_summary(
         }
     }
 
-    let graph_sats = if config.columns.contains(&"graph_sats".to_owned()) {
+    let graph_sats = if config.columns.contains(&SummaryColumns::GRAPH_SATS) {
         draw_chans_graph(config, total_msat, to_us_msat, graph_max_chan_side_msat)
     } else {
         String::new()
@@ -497,8 +499,8 @@ async fn get_pings(
     if !at_or_above_version(version, "25.09")? {
         log::info!("Not using ping on pre-v25.09 CLN");
         return Ok(());
-    } else if config.columns.contains(&"ping".to_owned())
-        || config.sort_by.eq_ignore_ascii_case("ping")
+    } else if config.columns.contains(&SummaryColumns::PING)
+        || config.sort_by == SummaryColumns::PING
     {
         let mut peer_table: HashMap<PublicKey, Vec<usize>> = HashMap::with_capacity(table.len());
         for (id, chan) in table.iter() {
@@ -564,64 +566,58 @@ async fn get_pings(
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
-    let reverse = config.sort_by.starts_with('-');
-    let sort_by = if reverse {
-        &config.sort_by[1..]
-    } else {
-        &config.sort_by
-    };
-    match sort_by {
-        col if col.eq("OUT_SATS") => {
-            if reverse {
+    match config.sort_by {
+        SummaryColumns::OUT_SATS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.out_sats));
             } else {
                 table.sort_by_key(|x| x.out_sats);
             }
         }
-        col if col.eq("IN_SATS") => {
-            if reverse {
+        SummaryColumns::IN_SATS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.in_sats));
             } else {
                 table.sort_by_key(|x| x.in_sats);
             }
         }
-        col if col.eq("TOTAL_SATS") => {
-            if reverse {
+        SummaryColumns::TOTAL_SATS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.total_sats));
             } else {
                 table.sort_by_key(|x| x.total_sats);
             }
         }
-        col if col.eq("MIN_HTLC") => {
-            if reverse {
+        SummaryColumns::MIN_HTLC => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.min_htlc));
             } else {
                 table.sort_by_key(|x| x.min_htlc);
             }
         }
-        col if col.eq("MAX_HTLC") => {
-            if reverse {
+        SummaryColumns::MAX_HTLC => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.max_htlc));
             } else {
                 table.sort_by_key(|x| x.max_htlc);
             }
         }
-        col if col.eq("FLAG") => {
-            if reverse {
+        SummaryColumns::FLAG => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.flag.clone()));
             } else {
                 table.sort_by_key(|x| x.flag.clone());
             }
         }
-        col if col.eq("BASE") => {
-            if reverse {
+        SummaryColumns::BASE => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.base));
             } else {
                 table.sort_by_key(|x| x.base);
             }
         }
-        col if col.eq("IN_BASE") => {
-            if reverse {
+        SummaryColumns::IN_BASE => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| {
                     Reverse(if let Ok(v) = x.in_base.parse::<u64>() {
                         v
@@ -639,15 +635,15 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 });
             }
         }
-        col if col.eq("PPM") => {
-            if reverse {
+        SummaryColumns::PPM => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.ppm));
             } else {
                 table.sort_by_key(|x| x.ppm);
             }
         }
-        col if col.eq("IN_PPM") => {
-            if reverse {
+        SummaryColumns::IN_PPM => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| {
                     Reverse(if let Ok(v) = x.in_ppm.parse::<u64>() {
                         v
@@ -665,8 +661,8 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 });
             }
         }
-        col if col.eq("ALIAS") => {
-            if reverse {
+        SummaryColumns::ALIAS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| {
                     Reverse(
                         x.alias
@@ -686,8 +682,8 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 });
             }
         }
-        col if col.eq("UPTIME") => {
-            if reverse {
+        SummaryColumns::UPTIME => {
+            if config.sort_reverse {
                 table.sort_by(|x, y| {
                     y.uptime
                         .partial_cmp(&x.uptime)
@@ -701,29 +697,29 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 });
             }
         }
-        col if col.eq("PEER_ID") => {
-            if reverse {
+        SummaryColumns::PEER_ID => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.peer_id));
             } else {
                 table.sort_by_key(|x| x.peer_id);
             }
         }
-        col if col.eq("HTLCS") => {
-            if reverse {
+        SummaryColumns::HTLCS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.htlcs));
             } else {
                 table.sort_by_key(|x| x.htlcs);
             }
         }
-        col if col.eq("STATE") => {
-            if reverse {
+        SummaryColumns::STATE => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.state.clone()));
             } else {
                 table.sort_by_key(|x| x.state.clone());
             }
         }
-        col if col.eq("PERC_US") => {
-            if reverse {
+        SummaryColumns::PERC_US => {
+            if config.sort_reverse {
                 table.sort_by(|x, y| {
                     y.perc_us
                         .partial_cmp(&x.perc_us)
@@ -737,15 +733,15 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
                 });
             }
         }
-        col if col.eq("PING") => {
-            if reverse {
+        SummaryColumns::PING => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.ping));
             } else {
                 table.sort_by_key(|x| x.ping);
             }
         }
-        _ => {
-            if reverse {
+        SummaryColumns::SCID | SummaryColumns::GRAPH_SATS => {
+            if config.sort_reverse {
                 table.sort_by_key(|x| Reverse(x.scid_raw));
             } else {
                 table.sort_by_key(|x| x.scid_raw);
@@ -756,9 +752,9 @@ fn sort_summary(config: &Config, table: &mut [Summary]) {
 
 fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.apply(sumtable);
-    for head in Summary::FIELD_NAMES_AS_ARRAY {
-        if !config.columns.contains(&head.to_owned()) {
-            sumtable.with(Remove::column(ByColumnName::new(head.to_ascii_uppercase())));
+    for head in SummaryColumns::iter() {
+        if !config.columns.contains(&head) {
+            sumtable.with(Remove::column(ByColumnName::new(head.to_string())));
         }
     }
 
@@ -768,129 +764,110 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         .next()
         .unwrap()
         .iter()
-        .map(|s| s.text().to_owned())
-        .collect::<Vec<String>>();
+        .map(|s| SummaryColumns::parse_column(s.text()).unwrap())
+        .collect::<Vec<SummaryColumns>>();
     let records = sumtable.get_records_mut();
     if headers.len() != config.columns.len() {
         return Err(anyhow!(
             "Error formatting channels! Length difference detected: {} {}",
-            headers.join(","),
-            config.columns.join(",")
+            SummaryColumns::to_list_string(&headers),
+            SummaryColumns::to_list_string(&config.columns)
         ));
     }
     sort_columns(records, &headers, &config.columns);
 
+    for numerical in SummaryColumns::NUMERICAL {
+        sumtable
+            .with(Modify::new(ByColumnName::new(numerical.to_string())).with(Alignment::right()));
+        sumtable.with(
+            Modify::new(ByColumnName::new(numerical.to_string()).not(Rows::first())).with(
+                Format::content(|s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()),
+            ),
+        );
+    }
+
+    for opt_num in SummaryColumns::OPTIONAL_NUMERICAL {
+        sumtable.with(Modify::new(ByColumnName::new(opt_num.to_string())).with(Alignment::right()));
+        sumtable.with(
+            Modify::new(ByColumnName::new(opt_num.to_string()).not(Rows::first())).with(
+                Format::content(|s| {
+                    if let Ok(b) = s.parse::<u64>() {
+                        u64_to_sat_string(config, b).unwrap()
+                    } else {
+                        s.to_owned()
+                    }
+                }),
+            ),
+        );
+    }
+
     if config.max_alias_length < 0 {
         sumtable.with(
-            Modify::new(ByColumnName::new("ALIAS")).with(
+            Modify::new(ByColumnName::new(SummaryColumns::ALIAS.to_string())).with(
                 Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
             ),
         );
     } else {
         sumtable.with(
-            Modify::new(ByColumnName::new("ALIAS"))
+            Modify::new(ByColumnName::new(SummaryColumns::ALIAS.to_string()))
                 .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
         );
     }
 
-    sumtable.with(Modify::new(ByColumnName::new("OUT_SATS")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("IN_SATS")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("TOTAL_SATS")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("MIN_HTLC")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("MAX_HTLC")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("FLAG")).with(Alignment::center()));
-    sumtable.with(Modify::new(ByColumnName::new("BASE")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("IN_BASE")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("PPM")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("IN_PPM")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("UPTIME")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("PERC_US")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("HTLCS")).with(Alignment::right()));
-    sumtable.with(Modify::new(ByColumnName::new("STATE")).with(Alignment::center()));
-    sumtable.with(Modify::new(ByColumnName::new("PING")).with(Alignment::right()));
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::FLAG.to_string())).with(Alignment::center()),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::UPTIME.to_string())).with(Alignment::right()),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::PERC_US.to_string()))
+            .with(Alignment::right()),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::HTLCS.to_string())).with(Alignment::right()),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::STATE.to_string())).with(Alignment::center()),
+    );
+    sumtable.with(
+        Modify::new(ByColumnName::new(SummaryColumns::PING.to_string())).with(Alignment::right()),
+    );
 
     sumtable.with(
-        Modify::new(ByColumnName::new("UPTIME").not(Rows::first())).with(Format::content(|s| {
-            let av = s.parse::<f64>().unwrap_or(-1.0);
-            if av < 0.0 {
-                "N/A".to_owned()
-            } else {
-                format!("{}%", av.round())
-            }
-        })),
+        Modify::new(ByColumnName::new(SummaryColumns::UPTIME.to_string()).not(Rows::first())).with(
+            Format::content(|s| {
+                let av = s.parse::<f64>().unwrap_or(-1.0);
+                if av < 0.0 {
+                    "N/A".to_owned()
+                } else {
+                    format!("{}%", av.round())
+                }
+            }),
+        ),
     );
     sumtable.with(
-        Modify::new(ByColumnName::new("PERC_US").not(Rows::first())).with(Format::content(|s| {
-            let av = s.parse::<f64>().unwrap_or(-1.0);
-            if av < 0.0 {
-                "N/A".to_owned()
-            } else {
-                format!("{av:.1}%")
-            }
-        })),
+        Modify::new(ByColumnName::new(SummaryColumns::PERC_US.to_string()).not(Rows::first()))
+            .with(Format::content(|s| {
+                let av = s.parse::<f64>().unwrap_or(-1.0);
+                if av < 0.0 {
+                    "N/A".to_owned()
+                } else {
+                    format!("{av:.1}%")
+                }
+            })),
     );
     sumtable.with(
-        Modify::new(ByColumnName::new("OUT_SATS").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("IN_SATS").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("TOTAL_SATS").not(Rows::first())).with(Format::content(
-            |s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap(),
-        )),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("MIN_HTLC").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("MAX_HTLC").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("BASE").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("IN_BASE").not(Rows::first())).with(Format::content(|s| {
-            if let Ok(b) = s.parse::<u64>() {
-                u64_to_sat_string(config, b).unwrap()
-            } else {
-                s.to_owned()
-            }
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("PPM").not(Rows::first())).with(Format::content(|s| {
-            u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("IN_PPM").not(Rows::first())).with(Format::content(|s| {
-            if let Ok(b) = s.parse::<u64>() {
-                u64_to_sat_string(config, b).unwrap()
-            } else {
-                s.to_owned()
-            }
-        })),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new("PING").not(Rows::first())).with(Format::content(|s| {
-            let ping = s.parse::<u64>().unwrap();
-            if ping > PING_TIMEOUT_MS || ping == 0 {
-                "N/A".to_owned()
-            } else {
-                u64_to_sat_string(config, ping).unwrap()
-            }
-        })),
+        Modify::new(ByColumnName::new(SummaryColumns::PING.to_string()).not(Rows::first())).with(
+            Format::content(|s| {
+                let ping = s.parse::<u64>().unwrap();
+                if ping > PING_TIMEOUT_MS || ping == 0 {
+                    "N/A".to_owned()
+                } else {
+                    u64_to_sat_string(config, ping).unwrap()
+                }
+            }),
+        ),
     );
 
     sumtable.with(Modify::new(Rows::first()).with(Alignment::center()));

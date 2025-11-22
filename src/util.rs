@@ -20,7 +20,14 @@ use tabled::grid::records::{
     Resizable,
 };
 
-use crate::structs::{Config, GraphCharset, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET};
+use crate::structs::{
+    Config,
+    GraphCharset,
+    PluginState,
+    TableColumn,
+    NODE_GOSSIP_MISS,
+    NO_ALIAS_SET,
+};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
@@ -172,16 +179,16 @@ pub fn hex_encode(bytes: &[u8]) -> String {
     hex_string
 }
 
-pub fn sort_columns(
+pub fn sort_columns<C: TableColumn>(
     records: &mut VecRecords<Text<String>>,
-    headers: &[String],
-    config_columns: &[String],
+    headers: &[C],
+    config_columns: &[C],
 ) {
     let mut target_index_map = Vec::new();
 
     for head in headers {
         for (j, prehead) in config_columns.iter().enumerate() {
-            if head.eq_ignore_ascii_case(prehead) {
+            if head == prehead {
                 target_index_map.push(j);
                 break;
             }
@@ -277,6 +284,70 @@ pub fn replace_escaping_chars(s: &str) -> String {
     }
 
     result
+}
+
+#[macro_export]
+macro_rules! impl_table_column {
+    (
+        $enum_name:ty,
+        env_var = $env_var:expr,
+        exclude_default = [$($exclude:ident),+ $(,)?],
+        numerical = [$($numerical:ident),+ $(,)?],
+        optional_numerical = [$($optional_numerical:ident),* $(,)?],
+    ) => {
+        impl $crate::structs::TableColumn for $enum_name {
+            const NUMERICAL: &'static [Self] = &[$(Self::$numerical),+];
+            const OPTIONAL_NUMERICAL: &'static [Self] = &[$(Self::$optional_numerical),*];
+
+            fn default_columns() -> Vec<Self> {
+                let mut all = <$enum_name as strum::IntoEnumIterator>::iter().collect::<Vec<_>>();
+                all.retain(|c| {
+                    !($(c == &Self::$exclude)||*)
+                });
+                all
+            }
+
+            fn parse_column(input: &str) -> Result<Self, Error> {
+                Self::from_str(input).map_err(|_| {
+                    anyhow!("`{}` not found in valid {} names!", input, $env_var)
+                })
+            }
+
+            fn parse_columns(input: &str) -> Result<Vec<Self>, Error> {
+                let cleaned: String = input.chars().filter(|c| !c.is_whitespace()).collect();
+                let parts: Vec<&str> = cleaned.split(',').filter(|s| !s.is_empty()).collect();
+
+                let mut seen = std::collections::HashSet::new();
+                for &part in &parts {
+                    if !seen.insert(part) {
+                        return Err(anyhow::anyhow!(
+                            "Duplicate entry detected in {}: {}",
+                            $env_var, part
+                        ));
+                    }
+                }
+
+                parts.iter()
+                    .map(|&s| Self::parse_column(s))
+                    .collect()
+            }
+
+            // fn all_list_string() -> String {
+            //     use strum::IntoEnumIterator;
+            //     <$enum_name as IntoEnumIterator>::iter()
+            //         .map(|c| c.to_string())
+            //         .collect::<Vec<String>>()
+            //         .join(",")
+            // }
+
+            fn to_list_string(columns: &[Self]) -> String {
+                columns.iter()
+                    .map(|c| c.to_string())
+                    .collect::<Vec<String>>()
+                    .join(",")
+            }
+        }
+    };
 }
 
 #[test]
