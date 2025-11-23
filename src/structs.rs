@@ -33,19 +33,19 @@ pub struct Config {
     pub sort_reverse: bool,
     pub exclude_channel_states: ExcludeStates,
     pub forwards: u64,
-    pub forwards_limit: u64,
+    pub forwards_limit: usize,
     pub forwards_columns: Vec<ForwardsColumns>,
-    pub forwards_filter_amt_msat: i64,
-    pub forwards_filter_fee_msat: i64,
+    pub forwards_filter_amt_msat: Option<u64>,
+    pub forwards_filter_fee_msat: Option<u64>,
     pub pays: u64,
-    pub pays_limit: u64,
+    pub pays_limit: usize,
     pub pays_columns: Vec<PaysColumns>,
     pub max_desc_length: i64,
     pub invoices: u64,
-    pub invoices_limit: u64,
+    pub invoices_limit: usize,
     pub invoices_columns: Vec<InvoicesColumns>,
     pub max_label_length: i64,
-    pub invoices_filter_amt_msat: i64,
+    pub invoices_filter_amt_msat: Option<u64>,
     pub locale: Locale,
     pub refresh_alias: u64,
     pub max_alias_length: i64,
@@ -70,8 +70,8 @@ impl Config {
             forwards: 0,
             forwards_limit: 0,
             forwards_columns: ForwardsColumns::default_columns(),
-            forwards_filter_amt_msat: -1,
-            forwards_filter_fee_msat: -1,
+            forwards_filter_amt_msat: None,
+            forwards_filter_fee_msat: None,
             pays: 0,
             pays_limit: 0,
             pays_columns: PaysColumns::default_columns(),
@@ -80,7 +80,7 @@ impl Config {
             invoices_limit: 0,
             invoices_columns: InvoicesColumns::default_columns(),
             max_label_length: 30,
-            invoices_filter_amt_msat: -1,
+            invoices_filter_amt_msat: None,
             locale: {
                 let mut valid_locale = None;
                 for loc in get_locales() {
@@ -150,11 +150,57 @@ impl PluginState {
     }
 }
 
+#[derive(Debug)]
+pub struct FullNodeData {
+    pub node_summary: NodeSummary,
+    pub channels: Vec<Summary>,
+    pub forwards: Vec<Forwards>,
+    pub forwards_filter_stats: ForwardsFilterStats,
+    pub pays: Vec<Pays>,
+    pub invoices: Vec<Invoices>,
+    pub invoices_filter_stats: InvoicesFilterStats,
+    pub totals: Totals,
+    pub graph_max_chan_side_msat: u64,
+    pub cln_version: String,
+    pub my_pubkey: PublicKey,
+}
+impl FullNodeData {
+    pub fn new(
+        my_pubkey: PublicKey,
+        cln_version: String,
+        graph_max_chan_side_msat: u64,
+    ) -> FullNodeData {
+        FullNodeData {
+            node_summary: NodeSummary::default(),
+            channels: Vec::new(),
+            forwards: Vec::new(),
+            forwards_filter_stats: ForwardsFilterStats::default(),
+            pays: Vec::new(),
+            invoices: Vec::new(),
+            invoices_filter_stats: InvoicesFilterStats::default(),
+            totals: Totals::default(),
+            graph_max_chan_side_msat,
+            cln_version,
+            my_pubkey,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize, Copy, Clone)]
 pub struct PeerAvailability {
     pub count: u64,
     pub connected: bool,
     pub avail: f64,
+}
+
+#[derive(Debug, Copy, Clone, Default)]
+pub struct NodeSummary {
+    pub channel_count: u32,
+    pub num_connected: u32,
+    pub num_gossipers: usize,
+    pub avail_in: u64,
+    pub avail_out: u64,
+    pub filter_count: u32,
 }
 
 pub trait TableColumn: Copy + Eq + std::hash::Hash + Display + FromStr + 'static {
@@ -395,6 +441,7 @@ impl_table_column!(
     optional_numerical = [sats_requested, msats_requested, fee_sats, fee_msats],
 );
 
+#[allow(clippy::ref_option)]
 fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
         Some(s) => format!("{s}"),
@@ -447,7 +494,8 @@ pub struct InvoicesFilterStats {
     pub filter_count: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[allow(clippy::struct_field_names)]
+#[derive(Debug, Serialize, Default, Clone, Copy)]
 pub struct Totals {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_amount_msat: Option<u64>,

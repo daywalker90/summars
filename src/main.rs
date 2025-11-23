@@ -51,6 +51,7 @@ const OPT_STYLE: &str = "summars-style";
 const OPT_FLOW_STYLE: &str = "summars-flow-style";
 const OPT_JSON: &str = "summars-json";
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,trace");

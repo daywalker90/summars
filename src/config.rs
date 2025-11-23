@@ -226,7 +226,7 @@ fn validate_u64_input(
             "{} needs to be a positive number and smaller than {}, \
             not `{}`.",
             var_name,
-            (Utc::now().timestamp() as u64) / 60 / 60,
+            Utc::now().timestamp().unsigned_abs() / 60 / 60,
             n
         ));
     }
@@ -234,14 +234,13 @@ fn validate_u64_input(
     Ok(n)
 }
 
-fn validate_i64_input(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
-    if n < gteq {
-        return Err(anyhow!(
-            "{var_name} must be greater than or equal to {gteq}"
-        ));
+#[allow(clippy::cast_sign_loss)]
+fn validate_i64_as_u64_input(n: i64) -> Option<u64> {
+    if n < 0 {
+        None
+    } else {
+        Some(n as u64)
     }
-
-    Ok(n)
 }
 
 fn validate_i64_input_absolute(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
@@ -261,7 +260,17 @@ fn options_value_to_u64(
     check_valid_time: bool,
 ) -> Result<u64, Error> {
     if value >= 0 {
-        validate_u64_input(value as u64, name, gteq, check_valid_time)
+        validate_u64_input(value.unsigned_abs(), name, gteq, check_valid_time)
+    } else {
+        Err(anyhow!(
+            "{name} needs to be a positive number and not `{value}`."
+        ))
+    }
+}
+
+fn options_value_to_usize(name: &str, value: i64) -> Result<usize, Error> {
+    if value >= 0 {
+        Ok(usize::try_from(value)?)
     } else {
         Err(anyhow!(
             "{name} needs to be a positive number and not `{value}`."
@@ -270,119 +279,59 @@ fn options_value_to_u64(
 }
 
 pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), Error> {
-    if let serde_json::Value::Object(i) = args {
-        for (key, value) in &i {
-            match key {
-                name if name.eq(OPT_COLUMNS) => {
-                    check_option(config, OPT_COLUMNS, &parse_option(OPT_COLUMNS, value)?)?;
-                }
-                name if name.eq(OPT_SORT_BY) => {
-                    check_option(config, OPT_SORT_BY, &parse_option(OPT_SORT_BY, value)?)?;
-                }
-                name if name.eq(OPT_EXCLUDE_CHANNEL_STATES) => check_option(
-                    config,
-                    OPT_EXCLUDE_CHANNEL_STATES,
-                    &parse_option(OPT_EXCLUDE_CHANNEL_STATES, value)?,
-                )?,
-                name if name.eq(OPT_FORWARDS) => {
-                    check_option(config, OPT_FORWARDS, &parse_option(OPT_FORWARDS, value)?)?;
-                }
-                name if name.eq(OPT_FORWARDS_LIMIT) => check_option(
-                    config,
-                    OPT_FORWARDS_LIMIT,
-                    &parse_option(OPT_FORWARDS_LIMIT, value)?,
-                )?,
-                name if name.eq(OPT_FORWARDS_COLUMNS) => check_option(
-                    config,
-                    OPT_FORWARDS_COLUMNS,
-                    &parse_option(OPT_FORWARDS_COLUMNS, value)?,
-                )?,
-                name if name.eq(OPT_FORWARDS_FILTER_AMT) => check_option(
-                    config,
-                    OPT_FORWARDS_FILTER_AMT,
-                    &parse_option(OPT_FORWARDS_FILTER_AMT, value)?,
-                )?,
-                name if name.eq(OPT_FORWARDS_FILTER_FEE) => check_option(
-                    config,
-                    OPT_FORWARDS_FILTER_FEE,
-                    &parse_option(OPT_FORWARDS_FILTER_FEE, value)?,
-                )?,
-                name if name.eq(OPT_PAYS) => {
-                    check_option(config, OPT_PAYS, &parse_option(OPT_PAYS, value)?)?;
-                }
-                name if name.eq(OPT_PAYS_LIMIT) => check_option(
-                    config,
-                    OPT_PAYS_LIMIT,
-                    &parse_option(OPT_PAYS_LIMIT, value)?,
-                )?,
-                name if name.eq(OPT_PAYS_COLUMNS) => check_option(
-                    config,
-                    OPT_PAYS_COLUMNS,
-                    &parse_option(OPT_PAYS_COLUMNS, value)?,
-                )?,
-                name if name.eq(OPT_MAX_DESC_LENGTH) => check_option(
-                    config,
-                    OPT_MAX_DESC_LENGTH,
-                    &parse_option(OPT_MAX_DESC_LENGTH, value)?,
-                )?,
-                name if name.eq(OPT_INVOICES) => {
-                    check_option(config, OPT_INVOICES, &parse_option(OPT_INVOICES, value)?)?;
-                }
-                name if name.eq(OPT_INVOICES_LIMIT) => check_option(
-                    config,
-                    OPT_INVOICES_LIMIT,
-                    &parse_option(OPT_INVOICES_LIMIT, value)?,
-                )?,
-                name if name.eq(OPT_INVOICES_COLUMNS) => check_option(
-                    config,
-                    OPT_INVOICES_COLUMNS,
-                    &parse_option(OPT_INVOICES_COLUMNS, value)?,
-                )?,
-                name if name.eq(OPT_MAX_LABEL_LENGTH) => check_option(
-                    config,
-                    OPT_MAX_LABEL_LENGTH,
-                    &parse_option(OPT_MAX_LABEL_LENGTH, value)?,
-                )?,
-                name if name.eq(OPT_INVOICES_FILTER_AMT) => check_option(
-                    config,
-                    OPT_INVOICES_FILTER_AMT,
-                    &parse_option(OPT_INVOICES_FILTER_AMT, value)?,
-                )?,
-                name if name.eq(OPT_LOCALE) => {
-                    check_option(config, OPT_LOCALE, &parse_option(OPT_LOCALE, value)?)?;
-                }
-                name if name.eq(OPT_MAX_ALIAS_LENGTH) => check_option(
-                    config,
-                    OPT_MAX_ALIAS_LENGTH,
-                    &parse_option(OPT_MAX_ALIAS_LENGTH, value)?,
-                )?,
-                name if name.eq(OPT_UTF8) => {
-                    check_option(config, OPT_UTF8, &parse_option(OPT_UTF8, value)?)?;
-                }
-                name if name.eq(OPT_STYLE) => {
-                    check_option(config, OPT_STYLE, &parse_option(OPT_STYLE, value)?)?;
-                }
-                name if name.eq(OPT_FLOW_STYLE) => check_option(
-                    config,
-                    OPT_FLOW_STYLE,
-                    &parse_option(OPT_FLOW_STYLE, value)?,
-                )?,
-                name if name.eq(OPT_JSON) => {
-                    check_option(config, OPT_JSON, &parse_option(OPT_JSON, value)?)?;
-                }
-                name if name.eq(OPT_REFRESH_ALIAS)
-                    || name.eq(OPT_AVAILABILITY_INTERVAL)
-                    || name.eq(OPT_AVAILABILITY_WINDOW) =>
-                {
-                    return Err(anyhow!(
-                        "Setting {name} here does \
-                not make sense, please use one of the more longer lasting methods!"
-                    ))
-                }
-                other => return Err(anyhow!("option not found:{other}")),
-            }
+    let serde_json::Value::Object(map) = args else {
+        return Ok(());
+    };
+
+    let valid_options: [&str; 23] = [
+        OPT_COLUMNS,
+        OPT_SORT_BY,
+        OPT_EXCLUDE_CHANNEL_STATES,
+        OPT_FORWARDS,
+        OPT_FORWARDS_LIMIT,
+        OPT_FORWARDS_COLUMNS,
+        OPT_FORWARDS_FILTER_AMT,
+        OPT_FORWARDS_FILTER_FEE,
+        OPT_PAYS,
+        OPT_PAYS_LIMIT,
+        OPT_PAYS_COLUMNS,
+        OPT_MAX_DESC_LENGTH,
+        OPT_INVOICES,
+        OPT_INVOICES_LIMIT,
+        OPT_INVOICES_COLUMNS,
+        OPT_MAX_LABEL_LENGTH,
+        OPT_INVOICES_FILTER_AMT,
+        OPT_LOCALE,
+        OPT_MAX_ALIAS_LENGTH,
+        OPT_UTF8,
+        OPT_STYLE,
+        OPT_FLOW_STYLE,
+        OPT_JSON,
+    ];
+
+    let forbidden_here: [&str; 3] = [
+        OPT_REFRESH_ALIAS,
+        OPT_AVAILABILITY_INTERVAL,
+        OPT_AVAILABILITY_WINDOW,
+    ];
+
+    for (key, value) in map {
+        let key = key.as_str();
+
+        if forbidden_here.contains(&key) {
+            return Err(anyhow!(
+                "Setting {key} here does not make sense, please use a longer-lasting method!"
+            ));
+        }
+
+        if valid_options.contains(&key) {
+            let parsed = parse_option(key, &value)?;
+            check_option(config, key, &parsed)?;
+        } else {
+            return Err(anyhow!("option not found: {key}"));
         }
     }
+
     check_options_dependencies(config)?;
 
     Ok(())
@@ -493,25 +442,22 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_FORWARDS_LIMIT) => {
             config.forwards_limit =
-                options_value_to_u64(OPT_FORWARDS_LIMIT, value.as_i64().unwrap(), 0, false)?;
+                options_value_to_usize(OPT_FORWARDS_LIMIT, value.as_i64().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS_COLUMNS) => {
             config.forwards_columns = ForwardsColumns::parse_columns(value.as_str().unwrap())?;
         }
         n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
-            config.forwards_filter_amt_msat =
-                validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_AMT, -1)?;
+            config.forwards_filter_amt_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
         n if n.eq(OPT_FORWARDS_FILTER_FEE) => {
-            config.forwards_filter_fee_msat =
-                validate_i64_input(value.as_i64().unwrap(), OPT_FORWARDS_FILTER_FEE, -1)?;
+            config.forwards_filter_fee_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
         n if n.eq(OPT_PAYS) => {
             config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?;
         }
         n if n.eq(OPT_PAYS_LIMIT) => {
-            config.pays_limit =
-                options_value_to_u64(OPT_PAYS_LIMIT, value.as_i64().unwrap(), 0, false)?;
+            config.pays_limit = options_value_to_usize(OPT_PAYS_LIMIT, value.as_i64().unwrap())?;
         }
         n if n.eq(OPT_PAYS_COLUMNS) => {
             config.pays_columns = PaysColumns::parse_columns(value.as_str().unwrap())?;
@@ -525,7 +471,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
         }
         n if n.eq(OPT_INVOICES_LIMIT) => {
             config.invoices_limit =
-                options_value_to_u64(OPT_INVOICES_LIMIT, value.as_i64().unwrap(), 0, false)?;
+                options_value_to_usize(OPT_INVOICES_LIMIT, value.as_i64().unwrap())?;
         }
         n if n.eq(OPT_INVOICES_COLUMNS) => {
             config.invoices_columns = InvoicesColumns::parse_columns(value.as_str().unwrap())?;
@@ -535,8 +481,7 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?;
         }
         n if n.eq(OPT_INVOICES_FILTER_AMT) => {
-            config.invoices_filter_amt_msat =
-                validate_i64_input(value.as_i64().unwrap(), OPT_INVOICES_FILTER_AMT, -1)?;
+            config.invoices_filter_amt_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
         n if n.eq(OPT_LOCALE) => {
             config.locale = match Locale::from_str(value.as_str().unwrap()) {
@@ -595,5 +540,5 @@ fn check_options_dependencies(config: &Config) -> Result<(), Error> {
 }
 
 fn is_valid_hour_timestamp(val: u64) -> bool {
-    Utc::now().timestamp() as u64 > val * 60 * 60
+    Utc::now().timestamp().unsigned_abs() > val * 60 * 60
 }

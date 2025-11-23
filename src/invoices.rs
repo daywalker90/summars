@@ -4,7 +4,7 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{ListinvoicesIndex, ListinvoicesRequest},
-        responses::ListinvoicesInvoicesStatus,
+        responses::{ListinvoicesInvoices, ListinvoicesInvoicesStatus},
     },
     primitives::Amount,
     ClnRpc,
@@ -29,34 +29,35 @@ use tokio::time::Instant;
 use crate::{
     structs::{
         Config,
+        FullNodeData,
         Invoices,
         InvoicesColumns,
-        InvoicesFilterStats,
         PagingIndex,
         PluginState,
         TableColumn,
-        Totals,
     },
     util::{
         hex_encode,
         replace_escaping_chars,
+        rounded_div_u64,
         sort_columns,
         timestamp_to_localized_datetime_string,
         u64_to_sat_string,
     },
 };
 
-pub async fn recent_invoices(
+pub async fn gather_invoices_data(
     plugin: Plugin<PluginState>,
     rpc: &mut ClnRpc,
     config: &Config,
-    totals: &mut Totals,
     now: Instant,
-) -> Result<(Vec<Invoices>, InvoicesFilterStats), Error> {
-    let now_utc = Utc::now().timestamp() as u64;
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let now_utc = Utc::now().timestamp().unsigned_abs();
     let config_invoices_sec = config.invoices * 60 * 60;
+    let cutoff_timestamp = now_utc - config_invoices_sec;
     {
-        if plugin.state().inv_index.lock().timestamp > now_utc - config_invoices_sec {
+        if plugin.state().inv_index.lock().timestamp > cutoff_timestamp {
             *plugin.state().inv_index.lock() = PagingIndex::new();
             log::debug!("inv_index: invoices-age increased, resetting index");
         }
@@ -85,51 +86,75 @@ pub async fn recent_invoices(
         now.elapsed().as_millis()
     );
 
-    inv_index.timestamp = now_utc - config_invoices_sec;
+    inv_index.timestamp = cutoff_timestamp;
     if let Some(last_inv) = invoices.last() {
         inv_index.start = last_inv.created_index.unwrap_or(u64::MAX);
     }
 
-    let mut table = Vec::new();
-    let mut filter_count = 0;
-    let mut filter_amt_sum_msat = 0;
+    build_invoices_table(invoices, &mut inv_index, full_node_data, config)?;
 
+    if inv_index.start < u64::MAX {
+        *plugin.state().inv_index.lock() = inv_index;
+    }
+    log::debug!(
+        "Build invoices table. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+    if config.invoices_limit > 0 && full_node_data.invoices.len() > config.invoices_limit {
+        full_node_data.invoices = full_node_data
+            .invoices
+            .split_off(full_node_data.invoices.len() - config.invoices_limit);
+    }
+    full_node_data.invoices.sort_by_key(|x| x.paid_at);
+
+    Ok(())
+}
+
+fn build_invoices_table(
+    invoices: Vec<ListinvoicesInvoices>,
+    inv_index: &mut PagingIndex,
+    full_node_data: &mut FullNodeData,
+    config: &Config,
+) -> Result<(), Error> {
     for invoice in invoices {
         if ListinvoicesInvoicesStatus::PAID == invoice.status {
             let Some(inv_paid_at) = invoice.paid_at else {
                 continue;
             };
-            if inv_paid_at > now_utc - config_invoices_sec {
-                if let Some(inv_amt) = &mut totals.invoices_amount_received_msat {
+            if inv_paid_at > inv_index.timestamp {
+                if let Some(inv_amt) = &mut full_node_data.totals.invoices_amount_received_msat {
                     *inv_amt += invoice.amount_received_msat.unwrap().msat();
                 } else {
-                    totals.invoices_amount_received_msat =
+                    full_node_data.totals.invoices_amount_received_msat =
                         Some(invoice.amount_received_msat.unwrap().msat());
                 }
 
-                if invoice.amount_received_msat.unwrap().msat() as i64
-                    <= config.invoices_filter_amt_msat
-                {
-                    filter_count += 1;
-                    filter_amt_sum_msat += invoice.amount_received_msat.unwrap().msat();
-                } else {
-                    table.push(Invoices {
-                        paid_at: invoice.paid_at.unwrap(),
-                        paid_at_str: timestamp_to_localized_datetime_string(
-                            config,
-                            invoice.paid_at.unwrap(),
-                        )?,
-                        label: invoice.label,
-                        msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
-                        sats_received: ((Amount::msat(&invoice.amount_received_msat.unwrap())
-                            as f64)
-                            / 1_000.0)
-                            .round() as u64,
-                        description: invoice.description.unwrap_or_default(),
-                        payment_hash: invoice.payment_hash.to_string(),
-                        preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
-                    });
+                if let Some(if_amt) = config.invoices_filter_amt_msat {
+                    if invoice.amount_received_msat.unwrap().msat() <= if_amt {
+                        full_node_data.invoices_filter_stats.filter_count += 1;
+                        full_node_data.invoices_filter_stats.filter_amt_sum_msat +=
+                            invoice.amount_received_msat.unwrap().msat();
+                        continue;
+                    }
                 }
+
+                full_node_data.invoices.push(Invoices {
+                    paid_at: invoice.paid_at.unwrap(),
+                    paid_at_str: timestamp_to_localized_datetime_string(
+                        config,
+                        invoice.paid_at.unwrap(),
+                    )?,
+                    label: invoice.label,
+                    msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
+                    sats_received: rounded_div_u64(
+                        invoice.amount_received_msat.unwrap().msat(),
+                        1_000,
+                    ),
+                    description: invoice.description.unwrap_or_default(),
+                    payment_hash: invoice.payment_hash.to_string(),
+                    preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
+                });
+
                 if let Some(c_index) = invoice.created_index {
                     if c_index < inv_index.start {
                         inv_index.start = c_index;
@@ -144,35 +169,16 @@ pub async fn recent_invoices(
             }
         }
     }
-    if inv_index.start < u64::MAX {
-        *plugin.state().inv_index.lock() = inv_index;
-    }
-    log::debug!(
-        "Build invoices table. Total: {}ms",
-        now.elapsed().as_millis()
-    );
-    if config.invoices_limit > 0 && (table.len() as u64) > config.invoices_limit {
-        table = table.split_off(table.len() - (config.invoices_limit as usize));
-    }
-    table.sort_by_key(|x| x.paid_at);
-
-    Ok((
-        table,
-        InvoicesFilterStats {
-            filter_amt_sum_msat,
-            filter_count,
-        },
-    ))
+    Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn format_invoices(
-    table: Vec<Invoices>,
     config: &Config,
-    totals: &Totals,
-    filter_stats: &InvoicesFilterStats,
+    full_node_data: &mut FullNodeData,
 ) -> Result<String, Error> {
-    let count = table.len();
-    let mut invoicestable = Table::new(table);
+    let count = full_node_data.invoices.len();
+    let mut invoicestable = Table::new(&full_node_data.invoices);
     config.flow_style.apply(&mut invoicestable);
     for head in InvoicesColumns::iter() {
         if !config.invoices_columns.contains(&head) {
@@ -211,26 +217,30 @@ pub fn format_invoices(
         invoicestable.with(
             Modify::new(ByColumnName::new(InvoicesColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
-                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
+                .with(
+                    Width::wrap(usize::try_from(config.max_desc_length.unsigned_abs())?)
+                        .keep_words(true),
+                ),
         );
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new(InvoicesColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
-                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_desc_length)?).suffix("[..]")),
         );
     }
 
     if config.max_label_length < 0 {
         invoicestable.with(
             Modify::new(ByColumnName::new(InvoicesColumns::label.to_string())).with(
-                Width::wrap(config.max_label_length.unsigned_abs() as usize).keep_words(true),
+                Width::wrap(usize::try_from(config.max_label_length.unsigned_abs())?)
+                    .keep_words(true),
             ),
         );
     } else {
         invoicestable.with(
             Modify::new(ByColumnName::new(InvoicesColumns::label.to_string()))
-                .with(Width::truncate(config.max_label_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_label_length)?).suffix("[..]")),
         );
     }
 
@@ -245,28 +255,31 @@ pub fn format_invoices(
     )));
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
-    if filter_stats.filter_count > 0 {
+    if full_node_data.invoices_filter_stats.filter_count > 0 {
         let filter_sum_result = format!(
             "\nFiltered {} invoice{} with {} sats total.",
-            filter_stats.filter_count,
-            if filter_stats.filter_count == 1 {
+            full_node_data.invoices_filter_stats.filter_count,
+            if full_node_data.invoices_filter_stats.filter_count == 1 {
                 ""
             } else {
                 "s"
             },
             u64_to_sat_string(
                 config,
-                ((filter_stats.filter_amt_sum_msat as f64) / 1_000.0).round() as u64
+                rounded_div_u64(
+                    full_node_data.invoices_filter_stats.filter_amt_sum_msat,
+                    1_000
+                )
             )?
         );
         invoicestable.with(Panel::footer(filter_sum_result));
     }
 
-    if let Some(inv_total) = totals.invoices_amount_received_msat {
+    if let Some(inv_total) = full_node_data.totals.invoices_amount_received_msat {
         let invoices_total = format!(
             "\nTotal invoices stats in the last {}h: {} sats_received",
             config.invoices,
-            u64_to_sat_string(config, ((inv_total as f64) / 1000.0).round() as u64)?,
+            u64_to_sat_string(config, rounded_div_u64(inv_total, 1000))?,
         );
         invoicestable.with(Panel::footer(invoices_total));
     }

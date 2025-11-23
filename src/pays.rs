@@ -6,7 +6,7 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{DecodeRequest, ListpaysIndex, ListpaysRequest, ListpaysStatus},
-        responses::{GetinfoResponse, ListpeerchannelsChannels},
+        responses::{ListpaysPays, ListpeerchannelsChannels},
     },
     primitives::Amount,
     ClnRpc,
@@ -31,72 +31,51 @@ use tokio::time::Instant;
 use crate::{
     structs::{
         Config,
+        FullNodeData,
         PagingIndex,
         Pays,
         PaysColumns,
         PluginState,
         TableColumn,
-        Totals,
         MISSING_VALUE,
         NODE_GOSSIP_MISS,
     },
     util::{
-        at_or_above_version,
-        get_alias,
         hex_encode,
         replace_escaping_chars,
+        rounded_div_u64,
         sort_columns,
         timestamp_to_localized_datetime_string,
         u64_to_sat_string,
     },
 };
 
-pub async fn recent_pays(
+pub async fn gather_pays_data(
     rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
     config: &Config,
     peer_channels: &[ListpeerchannelsChannels],
-    totals: &mut Totals,
     now: Instant,
-    getinfo: &GetinfoResponse,
-) -> Result<Vec<Pays>, Error> {
-    let now_utc = Utc::now().timestamp() as u64;
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let now_utc = Utc::now().timestamp().unsigned_abs();
     let config_pays_sec = config.pays * 60 * 60;
+    let cutoff_timestamp = now_utc - config_pays_sec;
     {
-        if plugin.state().pay_index.lock().timestamp > now_utc - config_pays_sec {
+        if plugin.state().pay_index.lock().timestamp > cutoff_timestamp {
             *plugin.state().pay_index.lock() = PagingIndex::new();
             log::debug!("pay_index: pays-age increased, resetting index");
         }
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
 
-    let mut pending_pays = Vec::new();
-    let mut pending_hashes = HashSet::new();
-    let pays = if at_or_above_version(&getinfo.version, "24.11")? {
-        log::debug!(
-            "pay_index: start:{} timestamp:{}",
-            pay_index.start,
-            pay_index.timestamp
-        );
-        pending_pays = rpc
-            .call_typed(&ListpaysRequest {
-                bolt11: None,
-                payment_hash: None,
-                status: Some(ListpaysStatus::PENDING),
-                index: Some(ListpaysIndex::CREATED),
-                start: Some(pay_index.start),
-                limit: None,
-            })
-            .await?
-            .pays;
-        for chan in peer_channels {
-            if let Some(htlcs) = &chan.htlcs {
-                for htlc in htlcs {
-                    pending_hashes.insert(htlc.payment_hash);
-                }
-            }
-        }
-        rpc.call_typed(&ListpaysRequest {
+    log::debug!(
+        "pay_index: start:{} timestamp:{}",
+        pay_index.start,
+        pay_index.timestamp
+    );
+    let pays = rpc
+        .call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
             status: Some(ListpaysStatus::COMPLETE),
@@ -105,19 +84,28 @@ pub async fn recent_pays(
             limit: None,
         })
         .await?
-        .pays
-    } else {
-        rpc.call_typed(&ListpaysRequest {
+        .pays;
+
+    let pending_pays = rpc
+        .call_typed(&ListpaysRequest {
             bolt11: None,
             payment_hash: None,
-            status: Some(ListpaysStatus::COMPLETE),
-            index: None,
-            start: None,
+            status: Some(ListpaysStatus::PENDING),
+            index: Some(ListpaysIndex::CREATED),
+            start: Some(pay_index.start),
             limit: None,
         })
         .await?
-        .pays
-    };
+        .pays;
+
+    let mut pending_hashes = HashSet::new();
+    for chan in peer_channels {
+        if let Some(htlcs) = &chan.htlcs {
+            for htlc in htlcs {
+                pending_hashes.insert(htlc.payment_hash);
+            }
+        }
+    }
 
     log::debug!(
         "List {} pays. Total: {}ms",
@@ -125,14 +113,14 @@ pub async fn recent_pays(
         now.elapsed().as_millis()
     );
 
-    pay_index.timestamp = now_utc - config_pays_sec;
+    pay_index.timestamp = cutoff_timestamp;
     if let Some(last_pay) = pays.last() {
         pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
     }
 
     for pay in &pending_pays {
         if let Some(dest) = pay.destination {
-            if dest == getinfo.id {
+            if dest == full_node_data.my_pubkey {
                 continue;
             }
         }
@@ -146,22 +134,52 @@ pub async fn recent_pays(
         }
     }
 
-    let mut table = Vec::new();
+    build_pays_table(
+        config,
+        pays,
+        &mut pay_index,
+        full_node_data,
+        rpc,
+        plugin.clone(),
+    )
+    .await?;
 
+    if pay_index.start < u64::MAX {
+        *plugin.state().pay_index.lock() = pay_index;
+    }
+    log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
+    if config.pays_limit > 0 && full_node_data.pays.len() > config.pays_limit {
+        full_node_data.pays = full_node_data
+            .pays
+            .split_off(full_node_data.pays.len() - config.pays_limit);
+    }
+    full_node_data.pays.sort_by_key(|x| x.completed_at);
+
+    Ok(())
+}
+
+async fn build_pays_table(
+    config: &Config,
+    pays: Vec<ListpaysPays>,
+    pay_index: &mut PagingIndex,
+    full_node_data: &mut FullNodeData,
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
+) -> Result<(), Error> {
     let description_wanted = config.pays_columns.contains(&PaysColumns::description) || config.json;
     let destination_wanted = config.pays_columns.contains(&PaysColumns::destination) || config.json;
 
     for pay in pays {
-        if pay.completed_at.unwrap() <= Utc::now().timestamp() as u64 - config_pays_sec {
+        if pay.completed_at.unwrap() <= pay_index.timestamp {
             continue;
         }
         if let Some(dest) = pay.destination {
-            if dest == getinfo.id {
+            if dest == full_node_data.my_pubkey {
                 continue;
             }
         }
 
-        let mut fee_msats = None;
+        let mut fee_msat = None;
         let mut fee_sats = None;
         let mut msats_requested = pay.amount_msat.map(|a| a.msat());
         let mut sats_requested = None;
@@ -189,37 +207,38 @@ pub async fn recent_pays(
         }
 
         if let Some(dest) = destination {
-            if dest == getinfo.id {
+            if dest == full_node_data.my_pubkey {
                 continue;
             }
-            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?);
+            destination_alias = plugin.state().alias_map.lock().get(&dest).cloned();
         }
 
         if let Some(amount_msat) = msats_requested {
-            fee_msats = Some(pay.amount_sent_msat.unwrap().msat() - amount_msat);
-            fee_sats = Some(((fee_msats.unwrap() as f64) / 1_000.0).round() as u64);
-            sats_requested = Some(((amount_msat as f64) / 1_000.0).round() as u64);
+            fee_msat = Some(pay.amount_sent_msat.unwrap().msat() - amount_msat);
+            fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
+            sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
 
-            if let Some(fee_amt) = &mut totals.pays_fees_msat {
-                *fee_amt += fee_msats.unwrap();
+            if let Some(fee_amt) = &mut full_node_data.totals.pays_fees_msat {
+                *fee_amt += fee_msat.unwrap();
             } else {
-                totals.pays_fees_msat = fee_msats;
+                full_node_data.totals.pays_fees_msat = fee_msat;
             }
 
-            if let Some(pay_amt) = &mut totals.pays_amount_msat {
+            if let Some(pay_amt) = &mut full_node_data.totals.pays_amount_msat {
                 *pay_amt += amount_msat;
             } else {
-                totals.pays_amount_msat = Some(amount_msat);
+                full_node_data.totals.pays_amount_msat = Some(amount_msat);
             }
         }
 
-        if let Some(pay_amt_sent) = &mut totals.pays_amount_sent_msat {
+        if let Some(pay_amt_sent) = &mut full_node_data.totals.pays_amount_sent_msat {
             *pay_amt_sent += pay.amount_sent_msat.unwrap().msat();
         } else {
-            totals.pays_amount_sent_msat = Some(pay.amount_sent_msat.unwrap().msat());
+            full_node_data.totals.pays_amount_sent_msat =
+                Some(pay.amount_sent_msat.unwrap().msat());
         }
 
-        table.push(Pays {
+        full_node_data.pays.push(Pays {
             completed_at: pay.completed_at.unwrap(),
             completed_at_str: timestamp_to_localized_datetime_string(
                 config,
@@ -227,13 +246,12 @@ pub async fn recent_pays(
             )?,
             payment_hash: pay.payment_hash.to_string(),
             msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-            sats_sent: ((Amount::msat(&pay.amount_sent_msat.unwrap()) as f64) / 1_000.0).round()
-                as u64,
-            destination: if let Some(dest) = &destination_alias {
+            sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
+            destination: if let Some(dest) = destination_alias {
                 if dest == NODE_GOSSIP_MISS {
                     Some(destination.unwrap().to_string())
                 } else if config.utf8 {
-                    destination_alias
+                    Some(dest)
                 } else {
                     Some(dest.replace(|c: char| !c.is_ascii(), "?"))
                 }
@@ -244,7 +262,7 @@ pub async fn recent_pays(
             preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
             msats_requested,
             sats_requested,
-            fee_msats,
+            fee_msats: fee_msat,
             fee_sats,
         });
 
@@ -254,20 +272,13 @@ pub async fn recent_pays(
             }
         }
     }
-    if pay_index.start < u64::MAX {
-        *plugin.state().pay_index.lock() = pay_index;
-    }
-    log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
-    if config.pays_limit > 0 && (table.len() as u64) > config.pays_limit {
-        table = table.split_off(table.len() - (config.pays_limit as usize));
-    }
-    table.sort_by_key(|x| x.completed_at);
-    Ok(table)
+    Ok(())
 }
 
-pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result<String, Error> {
-    let count = table.len();
-    let mut paystable = Table::new(table);
+#[allow(clippy::too_many_lines)]
+pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result<String, Error> {
+    let count = full_node_data.pays.len();
+    let mut paystable = Table::new(&full_node_data.pays);
     config.flow_style.apply(&mut paystable);
     for head in PaysColumns::iter() {
         if !config.pays_columns.contains(&head) {
@@ -321,26 +332,30 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     if config.max_alias_length < 0 {
         paystable.with(
             Modify::new(ByColumnName::new(PaysColumns::destination.to_string())).with(
-                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+                Width::wrap(usize::try_from(config.max_alias_length.unsigned_abs())?)
+                    .keep_words(true),
             ),
         );
     } else {
         paystable.with(
             Modify::new(ByColumnName::new(PaysColumns::destination.to_string()))
-                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_alias_length)?).suffix("[..]")),
         );
     }
     if config.max_desc_length < 0 {
         paystable.with(
             Modify::new(ByColumnName::new(PaysColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
-                .with(Width::wrap(config.max_desc_length.unsigned_abs() as usize).keep_words(true)),
+                .with(
+                    Width::wrap(usize::try_from(config.max_desc_length.unsigned_abs())?)
+                        .keep_words(true),
+                ),
         );
     } else {
         paystable.with(
             Modify::new(ByColumnName::new(PaysColumns::description.to_string()))
                 .with(Format::content(replace_escaping_chars))
-                .with(Width::truncate(config.max_desc_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_desc_length)?).suffix("[..]")),
         );
     }
 
@@ -355,21 +370,21 @@ pub fn format_pays(table: Vec<Pays>, config: &Config, totals: &Totals) -> Result
     )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
-    if totals.pays_amount_sent_msat.is_some() {
+    if full_node_data.totals.pays_amount_sent_msat.is_some() {
         let pays_totals = format!(
             "\nTotal pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
             config.pays,
-            if let Some(amt) = totals.pays_amount_msat {
-                u64_to_sat_string(config, ((amt as f64) / 1000.0).round() as u64)?
+            if let Some(amt) = full_node_data.totals.pays_amount_msat {
+                u64_to_sat_string(config, rounded_div_u64(amt, 1_000))?
             } else {
                 MISSING_VALUE.to_owned()
             },
             u64_to_sat_string(
                 config,
-                ((totals.pays_amount_sent_msat.unwrap() as f64) / 1000.0).round() as u64
+                rounded_div_u64(full_node_data.totals.pays_amount_sent_msat.unwrap(), 1_000)
             )?,
-            if let Some(fee) = totals.pays_fees_msat {
-                u64_to_sat_string(config, ((fee as f64) / 1000.0).round() as u64)?
+            if let Some(fee) = full_node_data.totals.pays_fees_msat {
+                u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
             } else {
                 MISSING_VALUE.to_owned()
             },

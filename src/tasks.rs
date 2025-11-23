@@ -15,7 +15,7 @@ use tokio::{
 };
 
 use crate::{
-    structs::{PeerAvailability, PluginState, NO_ALIAS_SET},
+    structs::{PeerAvailability, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET},
     util::{is_active_state, make_rpc_path},
 };
 
@@ -35,15 +35,23 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
         .await?
         .peers
     {
-        let alias = rpc
+        let node_response = rpc
             .call_typed(&ListnodesRequest { id: Some(peer.id) })
             .await?
-            .nodes
-            .first()
-            .map(|node| node.alias.clone().unwrap_or(NO_ALIAS_SET.to_owned()));
-        if let Some(a) = alias {
-            plugin.state().alias_map.lock().insert(peer.id, a);
-        }
+            .nodes;
+        let alias = if let Some(node) = node_response.first() {
+            match &node.alias {
+                Some(a) => a,
+                None => NO_ALIAS_SET,
+            }
+        } else {
+            NODE_GOSSIP_MISS
+        };
+        plugin
+            .state()
+            .alias_map
+            .lock()
+            .insert(peer.id, alias.to_owned());
     }
 
     info!("Alias map refresh done in: {}ms", now.elapsed().as_millis());
@@ -59,6 +67,9 @@ pub async fn summars_refreshalias(
     }
 }
 
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
