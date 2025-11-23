@@ -6,7 +6,7 @@ use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{ListforwardsIndex, ListforwardsRequest, ListforwardsStatus},
-        responses::ListpeerchannelsChannels,
+        responses::{ListforwardsForwards, ListpeerchannelsChannels},
     },
     primitives::{Amount, PublicKey, ShortChannelId},
     ClnRpc,
@@ -33,33 +33,35 @@ use crate::{
         Config,
         Forwards,
         ForwardsColumns,
-        ForwardsFilterStats,
+        FullNodeData,
         PagingIndex,
         PluginState,
         TableColumn,
-        Totals,
-        NO_ALIAS_SET,
     },
     util::{
+        f64_to_u64_trunc,
         feeppm_effective_from_amts,
+        get_alias_from_scid,
+        rounded_div_u64,
         sort_columns,
         timestamp_to_localized_datetime_string,
         u64_to_sat_string,
     },
 };
 
-pub async fn recent_forwards(
+pub async fn gather_forwards_data(
     rpc: &mut ClnRpc,
     peer_channels: &[ListpeerchannelsChannels],
     plugin: Plugin<PluginState>,
     config: &Config,
-    totals: &mut Totals,
     now: Instant,
-) -> Result<(Vec<Forwards>, ForwardsFilterStats), Error> {
-    let now_utc = Utc::now().timestamp() as u64;
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let now_utc = Utc::now().timestamp().unsigned_abs();
     let config_forwards_sec = config.forwards * 60 * 60;
+    let cutoff_timestamp = now_utc - config_forwards_sec;
     {
-        if plugin.state().fw_index.lock().timestamp > now_utc - config_forwards_sec {
+        if plugin.state().fw_index.lock().timestamp > cutoff_timestamp {
             *plugin.state().fw_index.lock() = PagingIndex::new();
             log::debug!("fw_index: forwards-age increased, resetting index");
         }
@@ -98,7 +100,7 @@ pub async fn recent_forwards(
         now.elapsed().as_millis()
     );
 
-    fw_index.timestamp = now_utc - config_forwards_sec;
+    fw_index.timestamp = cutoff_timestamp;
     if let Some(last_fw) = settled_forwards.last() {
         fw_index.start = last_fw.created_index.unwrap_or(u64::MAX);
     }
@@ -118,73 +120,94 @@ pub async fn recent_forwards(
 
     let alias_map = plugin.state().alias_map.lock();
 
-    let mut table = Vec::new();
-    let mut filter_amt_sum_msat = 0;
-    let mut filter_fee_sum_msat = 0;
-    let mut filter_count = 0;
+    build_forwards_table(
+        &mut fw_index,
+        config,
+        settled_forwards,
+        &chanmap,
+        &alias_map,
+        cutoff_timestamp,
+        full_node_data,
+    )?;
 
+    if fw_index.start < u64::MAX {
+        *plugin.state().fw_index.lock() = fw_index;
+    }
+    log::debug!(
+        "Build forwards table. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+    if config.forwards_limit > 0 && full_node_data.forwards.len() > config.forwards_limit {
+        full_node_data.forwards = full_node_data
+            .forwards
+            .split_off(full_node_data.forwards.len() - config.forwards_limit);
+    }
+    full_node_data.forwards.sort_by_key(|x| x.resolved_time);
+
+    Ok(())
+}
+
+fn build_forwards_table(
+    fw_index: &mut PagingIndex,
+    config: &Config,
+    settled_forwards: Vec<ListforwardsForwards>,
+    chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
+    alias_map: &BTreeMap<PublicKey, String>,
+    cutoff_timestamp: u64,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
     for forward in settled_forwards {
-        if forward.resolved_time.unwrap_or(0.0) as u64 > now_utc - config_forwards_sec {
-            let inchan = chanmap
-                .get(&forward.in_channel)
-                .and_then(|chan| {
-                    alias_map
-                        .get::<PublicKey>(&chan.peer_id)
-                        .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
-                        .cloned()
-                })
-                .unwrap_or_else(|| forward.in_channel.to_string());
+        if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > cutoff_timestamp {
+            let inchan = get_alias_from_scid(forward.in_channel, chanmap, alias_map);
 
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = chanmap
-                .get(&fw_outchan)
-                .and_then(|chan| {
-                    alias_map
-                        .get::<PublicKey>(&chan.peer_id)
-                        .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
-                        .cloned()
-                })
-                .unwrap_or_else(|| fw_outchan.to_string());
+            let outchan = get_alias_from_scid(fw_outchan, chanmap, alias_map);
 
             let mut should_filter = false;
-            if forward.in_msat.msat() as i64 <= config.forwards_filter_amt_msat {
-                should_filter = true;
+            if let Some(ff_msat) = config.forwards_filter_amt_msat {
+                if forward.in_msat.msat() <= ff_msat {
+                    should_filter = true;
+                }
             }
-            if forward.fee_msat.unwrap().msat() as i64 <= config.forwards_filter_fee_msat {
-                should_filter = true;
+            if let Some(ff_msat) = config.forwards_filter_fee_msat {
+                if forward.fee_msat.unwrap().msat() <= ff_msat {
+                    should_filter = true;
+                }
             }
 
-            if let Some(in_amt) = &mut totals.forwards_amount_in_msat {
+            if let Some(in_amt) = &mut full_node_data.totals.forwards_amount_in_msat {
                 *in_amt += forward.in_msat.msat();
             } else {
-                totals.forwards_amount_in_msat = Some(forward.in_msat.msat());
+                full_node_data.totals.forwards_amount_in_msat = Some(forward.in_msat.msat());
             }
-            if let Some(out_amt) = &mut totals.forwards_amount_out_msat {
+            if let Some(out_amt) = &mut full_node_data.totals.forwards_amount_out_msat {
                 *out_amt += forward.out_msat.unwrap().msat();
             } else {
-                totals.forwards_amount_out_msat = Some(forward.out_msat.unwrap().msat());
+                full_node_data.totals.forwards_amount_out_msat =
+                    Some(forward.out_msat.unwrap().msat());
             }
-            if let Some(fee_amt) = &mut totals.forwards_fees_msat {
+            if let Some(fee_amt) = &mut full_node_data.totals.forwards_fees_msat {
                 *fee_amt += forward.fee_msat.unwrap().msat();
             } else {
-                totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat());
+                full_node_data.totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat());
             }
 
             if should_filter {
-                filter_amt_sum_msat += forward.in_msat.msat();
-                filter_fee_sum_msat += forward.fee_msat.unwrap().msat();
-                filter_count += 1;
+                full_node_data.forwards_filter_stats.amt_sum_msat += forward.in_msat.msat();
+                full_node_data.forwards_filter_stats.fee_sum_msat +=
+                    forward.fee_msat.unwrap().msat();
+                full_node_data.forwards_filter_stats.count += 1;
             } else {
-                table.push(Forwards {
-                    received_time: (forward.received_time * 1_000.0) as u64,
+                full_node_data.forwards.push(Forwards {
+                    received_time: f64_to_u64_trunc(forward.received_time) * 1_000,
                     received_time_str: timestamp_to_localized_datetime_string(
                         config,
-                        forward.received_time as u64,
+                        f64_to_u64_trunc(forward.received_time),
                     )?,
-                    resolved_time: (forward.resolved_time.unwrap() * 1_000.0) as u64,
+                    resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
                     resolved_time_str: timestamp_to_localized_datetime_string(
                         config,
-                        forward.resolved_time.unwrap() as u64,
+                        f64_to_u64_trunc(forward.resolved_time.unwrap()),
                     )?,
                     in_alias: if config.utf8 {
                         inchan
@@ -201,11 +224,9 @@ pub async fn recent_forwards(
                     in_msats: Amount::msat(&forward.in_msat),
                     out_msats: Amount::msat(&forward.out_msat.unwrap()),
                     fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
-                    in_sats: ((Amount::msat(&forward.in_msat) as f64) / 1_000.0).round() as u64,
-                    out_sats: ((Amount::msat(&forward.out_msat.unwrap()) as f64) / 1_000.0).round()
-                        as u64,
-                    fee_sats: ((Amount::msat(&forward.fee_msat.unwrap()) as f64) / 1_000.0).round()
-                        as u64,
+                    in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
+                    out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
+                    fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
                     eff_fee_ppm: feeppm_effective_from_amts(
                         forward.in_msat.msat(),
                         forward.out_msat.unwrap().msat(),
@@ -220,35 +241,16 @@ pub async fn recent_forwards(
             }
         }
     }
-    if fw_index.start < u64::MAX {
-        *plugin.state().fw_index.lock() = fw_index;
-    }
-    log::debug!(
-        "Build forwards table. Total: {}ms",
-        now.elapsed().as_millis()
-    );
-    if config.forwards_limit > 0 && (table.len() as u64) > config.forwards_limit {
-        table = table.split_off(table.len() - (config.forwards_limit as usize));
-    }
-    table.sort_by_key(|x| x.resolved_time);
-    Ok((
-        table,
-        ForwardsFilterStats {
-            amt_sum_msat: filter_amt_sum_msat,
-            fee_sum_msat: filter_fee_sum_msat,
-            count: filter_count,
-        },
-    ))
+    Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn format_forwards(
-    table: Vec<Forwards>,
     config: &Config,
-    totals: &Totals,
-    filter_stats: &ForwardsFilterStats,
+    full_node_data: &mut FullNodeData,
 ) -> Result<String, Error> {
-    let count = table.len();
-    let mut fwtable = Table::new(table);
+    let count = full_node_data.forwards.len();
+    let mut fwtable = Table::new(&full_node_data.forwards);
     config.flow_style.apply(&mut fwtable);
     for head in ForwardsColumns::iter() {
         if !config.forwards_columns.contains(&head) {
@@ -286,26 +288,28 @@ pub fn format_forwards(
     if config.max_alias_length < 0 {
         fwtable.with(
             Modify::new(ByColumnName::new(ForwardsColumns::in_alias.to_string())).with(
-                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+                Width::wrap(usize::try_from(config.max_alias_length.unsigned_abs())?)
+                    .keep_words(true),
             ),
         );
     } else {
         fwtable.with(
             Modify::new(ByColumnName::new(ForwardsColumns::in_alias.to_string()))
-                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_alias_length)?).suffix("[..]")),
         );
     }
 
     if config.max_alias_length < 0 {
         fwtable.with(
             Modify::new(ByColumnName::new(ForwardsColumns::out_alias.to_string())).with(
-                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+                Width::wrap(usize::try_from(config.max_alias_length.unsigned_abs())?)
+                    .keep_words(true),
             ),
         );
     } else {
         fwtable.with(
             Modify::new(ByColumnName::new(ForwardsColumns::out_alias.to_string()))
-                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_alias_length)?).suffix("[..]")),
         );
     }
 
@@ -320,34 +324,41 @@ pub fn format_forwards(
     )));
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
-    if filter_stats.count > 0 {
+    if full_node_data.forwards_filter_stats.count > 0 {
         let filter_sum_result = format!(
             "\nFiltered {} forward{} with {} sats routed and {} msat fees.",
-            filter_stats.count,
-            if filter_stats.count == 1 { "" } else { "s" },
+            full_node_data.forwards_filter_stats.count,
+            if full_node_data.forwards_filter_stats.count == 1 {
+                ""
+            } else {
+                "s"
+            },
             u64_to_sat_string(
                 config,
-                ((filter_stats.amt_sum_msat as f64) / 1_000.0).round() as u64
+                rounded_div_u64(full_node_data.forwards_filter_stats.amt_sum_msat, 1_000)
             )?,
-            u64_to_sat_string(config, filter_stats.fee_sum_msat)?,
+            u64_to_sat_string(config, full_node_data.forwards_filter_stats.fee_sum_msat)?,
         );
         fwtable.with(Panel::footer(filter_sum_result));
     }
-    if totals.forwards_amount_in_msat.is_some() {
+    if full_node_data.totals.forwards_amount_in_msat.is_some() {
         let forwards_totals = format!(
             "\nTotal forwards stats in the last {}h: {} in_sats {} out_sats {} fee_sats",
             config.forwards,
             u64_to_sat_string(
                 config,
-                ((totals.forwards_amount_in_msat.unwrap() as f64) / 1000.0).round() as u64
+                rounded_div_u64(full_node_data.totals.forwards_amount_in_msat.unwrap(), 1000)
             )?,
             u64_to_sat_string(
                 config,
-                ((totals.forwards_amount_out_msat.unwrap() as f64) / 1000.0).round() as u64
+                rounded_div_u64(
+                    full_node_data.totals.forwards_amount_out_msat.unwrap(),
+                    1000
+                )
             )?,
             u64_to_sat_string(
                 config,
-                ((totals.forwards_fees_msat.unwrap() as f64) / 1000.0).round() as u64
+                rounded_div_u64(full_node_data.totals.forwards_fees_msat.unwrap(), 1000)
             )?
         );
         fwtable.with(Panel::footer(forwards_totals));

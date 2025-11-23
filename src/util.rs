@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fmt::Write,
     path::{Path, PathBuf},
     time::{Duration, UNIX_EPOCH},
@@ -8,9 +9,8 @@ use anyhow::anyhow;
 use chrono::{Datelike, Local, Timelike};
 use cln_plugin::{Error, Plugin};
 use cln_rpc::{
-    model::{requests::ListnodesRequest, responses::ListpeerchannelsChannels},
-    primitives::{ChannelState, PublicKey},
-    ClnRpc,
+    model::responses::ListpeerchannelsChannels,
+    primitives::{ChannelState, PublicKey, ShortChannelId},
 };
 use fixed_decimal::{FixedInteger, Sign, UnsignedDecimal};
 use icu_datetime::{fieldsets, DateTimeFormatter};
@@ -20,14 +20,7 @@ use tabled::grid::records::{
     Resizable,
 };
 
-use crate::structs::{
-    Config,
-    GraphCharset,
-    PluginState,
-    TableColumn,
-    NODE_GOSSIP_MISS,
-    NO_ALIAS_SET,
-};
+use crate::structs::{Config, GraphCharset, PluginState, TableColumn, NO_ALIAS_SET};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
@@ -59,6 +52,9 @@ pub fn make_channel_flags(private: bool, offline: bool) -> String {
     flags
 }
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
+#[allow(clippy::cast_precision_loss)]
 pub fn draw_chans_graph(
     config: &Config,
     total_msat: u64,
@@ -155,13 +151,13 @@ pub fn timestamp_to_localized_datetime_string(
     let datetime_iso = icu_time::DateTime {
         date: icu_calendar::Date::try_new_gregorian(
             datetime.year(),
-            datetime.month() as u8,
-            datetime.day() as u8,
+            u8::try_from(datetime.month())?,
+            u8::try_from(datetime.day())?,
         )?,
         time: icu_time::Time::try_new(
-            datetime.hour() as u8,
-            datetime.minute() as u8,
-            datetime.second() as u8,
+            u8::try_from(datetime.hour())?,
+            u8::try_from(datetime.minute())?,
+            u8::try_from(datetime.second())?,
             datetime.nanosecond(),
         )?,
     };
@@ -232,34 +228,25 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     Ok(my_version_parts.len() >= min_version_parts.len())
 }
 
-pub async fn get_alias(
-    rpc: &mut ClnRpc,
-    p: Plugin<PluginState>,
-    peer_id: PublicKey,
-) -> Result<String, Error> {
-    let alias_map = p.state().alias_map.lock().clone();
-    let alias;
-    match alias_map.get::<PublicKey>(&peer_id) {
-        Some(a) => alias = a.clone(),
-        None => match rpc
-            .call_typed(&ListnodesRequest { id: Some(peer_id) })
-            .await?
-            .nodes
-            .first()
-        {
-            Some(node) => {
-                match &node.alias {
-                    Some(newalias) => alias = newalias.clone(),
-                    None => alias = NO_ALIAS_SET.to_owned(),
-                }
-                p.state().alias_map.lock().insert(peer_id, alias.clone());
-            }
-            None => alias = NODE_GOSSIP_MISS.to_owned(),
-        },
-    }
-    Ok(alias)
+pub fn get_alias_from_scid(
+    scid: ShortChannelId,
+    chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
+    alias_map: &BTreeMap<PublicKey, String>,
+) -> String {
+    chanmap
+        .get(&scid)
+        .and_then(|chan| {
+            alias_map
+                .get::<PublicKey>(&chan.peer_id)
+                .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
+                .cloned()
+        })
+        .unwrap_or_else(|| scid.to_string())
 }
 
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 pub fn feeppm_effective_from_amts(amount_msat_start: u64, amount_msat_end: u64) -> u32 {
     assert!(
         amount_msat_start >= amount_msat_end,
@@ -348,6 +335,26 @@ macro_rules! impl_table_column {
             }
         }
     };
+}
+
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
+#[inline]
+pub const fn f64_to_u64_trunc(f: f64) -> u64 {
+    f as u64
+}
+
+#[allow(clippy::cast_precision_loss)]
+#[inline]
+pub const fn perc_trunc_u64(dividend: u64, divisor: u64) -> f64 {
+    (dividend as f64 / divisor as f64) * 100.0
+}
+
+#[inline]
+pub const fn rounded_div_u64(dividend: u64, divisor: u64) -> u64 {
+    let quotient = dividend / divisor;
+    let remainder = dividend % divisor;
+    quotient + (remainder << 1 >= divisor) as u64
 }
 
 #[test]

@@ -1,11 +1,4 @@
-use std::{
-    cmp::Reverse,
-    collections::HashMap,
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-    time::Duration,
-};
+use std::{cmp::Reverse, collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
@@ -13,7 +6,6 @@ use cln_rpc::{
     model::{
         requests::{
             GetinfoRequest,
-            ListchannelsRequest,
             ListfundsRequest,
             ListpeerchannelsRequest,
             ListpeersRequest,
@@ -23,7 +15,9 @@ use cln_rpc::{
             GetinfoAddressType,
             GetinfoResponse,
             ListfundsOutputsStatus,
+            ListfundsResponse,
             ListpeerchannelsChannels,
+            ListpeersPeers,
         },
     },
     primitives::{Amount, ChannelState, PublicKey, ShortChannelId},
@@ -52,30 +46,31 @@ use tokio::{
 
 use crate::{
     config::validateargs,
-    forwards::{format_forwards, recent_forwards},
-    invoices::{format_invoices, recent_invoices},
-    pays::{format_pays, recent_pays},
+    forwards::{format_forwards, gather_forwards_data},
+    invoices::{format_invoices, gather_invoices_data},
+    pays::{format_pays, gather_pays_data},
     structs::{
         ChannelVisibility,
         Config,
         ConnectionStatus,
-        ForwardsFilterStats,
+        FullNodeData,
         GraphCharset,
-        InvoicesFilterStats,
+        NodeSummary,
         PluginState,
         ShortChannelState,
         Summary,
         SummaryColumns,
         TableColumn,
-        Totals,
+        NODE_GOSSIP_MISS,
     },
     util::{
         at_or_above_version,
         draw_chans_graph,
-        get_alias,
         is_active_state,
         make_channel_flags,
         make_rpc_path,
+        perc_trunc_u64,
+        rounded_div_u64,
         sort_columns,
         u64_to_btc_string,
         u64_to_sat_string,
@@ -85,16 +80,17 @@ use crate::{
 const PING_TIMEOUT_MS: u64 = 5000;
 
 pub async fn summary(
-    p: Plugin<PluginState>,
-    v: serde_json::Value,
+    plugin: Plugin<PluginState>,
+    args: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     let now = Instant::now();
 
-    let rpc_path = make_rpc_path(&p);
+    let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
-    let mut config = p.state().config.lock().clone();
-    validateargs(v, &mut config)?;
+    let mut config = plugin.state().config.lock().clone();
+    validateargs(args, &mut config)?;
+    log::debug!("Args validated. Total: {}ms", now.elapsed().as_millis());
 
     let getinfo = rpc.call_typed(&GetinfoRequest {}).await?;
     log::debug!("Getinfo. Total: {}ms", now.elapsed().as_millis());
@@ -121,13 +117,6 @@ pub async fn summary(
         .await?;
     log::debug!("Listfunds. Total: {}ms", now.elapsed().as_millis());
 
-    let mut utxo_amt: u64 = 0;
-    for utxo in &funds.outputs {
-        if let ListfundsOutputsStatus::CONFIRMED = utxo.status {
-            utxo_amt += Amount::msat(&utxo.amount_msat);
-        }
-    }
-
     let max_chan_sides: Vec<u64> = peer_channels
         .iter()
         .flat_map(|channel| {
@@ -145,254 +134,328 @@ pub async fn summary(
         .max()
         .unwrap_or(u64::default());
 
-    let mut channel_count = 0;
-    let mut num_connected = 0;
-    let mut avail_in = 0;
-    let mut avail_out = 0;
+    let mut full_node_data = FullNodeData::new(
+        getinfo.id,
+        getinfo.version.clone(),
+        graph_max_chan_side_msat,
+    );
 
-    let mut filter_count = 0;
+    build_node_data(
+        now,
+        &peer_channels,
+        &peers,
+        &config,
+        &mut rpc,
+        plugin.clone(),
+        &mut full_node_data,
+    )
+    .await?;
 
-    let mut table = HashMap::with_capacity(peer_channels.len());
+    node_data_to_output(now, &config, &mut full_node_data, &getinfo, &funds)
+}
 
-    let num_gossipers = peers
-        .iter()
-        .filter(|s| s.num_channels.unwrap() == 0)
-        .count();
+async fn build_node_data(
+    now: Instant,
+    peer_channels: &[ListpeerchannelsChannels],
+    peers: &[ListpeersPeers],
+    config: &Config,
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    process_channels_data(
+        now,
+        peer_channels,
+        peers,
+        config,
+        plugin.clone(),
+        full_node_data,
+    )
+    .await?;
+    log::debug!(
+        "End of channels table. Total: {}ms",
+        now.elapsed().as_millis()
+    );
 
-    for (id, chan) in peer_channels.iter().enumerate() {
-        if config
-            .exclude_channel_states
-            .channel_states
-            .contains(&ShortChannelState(chan.state))
-            || if let Some(excl_vis) = &config.exclude_channel_states.channel_visibility {
-                match excl_vis {
-                    ChannelVisibility::Private => chan.private.unwrap(),
-                    ChannelVisibility::Public => !chan.private.unwrap(),
-                }
-            } else {
-                false
-            }
-            || if let Some(excl_conn) = &config.exclude_channel_states.connection_status {
-                match excl_conn {
-                    ConnectionStatus::Online => chan.peer_connected,
-                    ConnectionStatus::Offline => !chan.peer_connected,
-                }
-            } else {
-                false
-            }
-        {
-            filter_count += 1;
-            continue;
-        }
-        let alias = get_alias(&mut rpc, p.clone(), chan.peer_id).await?;
-
-        let to_us_msat = Amount::msat(
-            &chan
-                .to_us_msat
-                .ok_or(anyhow!("Channel with {} has no msats to us!", chan.peer_id))?,
-        );
-        let total_msat = Amount::msat(&chan.total_msat.ok_or(anyhow!(
-            "Channel with {} has no total amount!",
-            chan.peer_id
-        ))?);
-        let our_reserve = Amount::msat(
-            &chan
-                .our_reserve_msat
-                .ok_or(anyhow!("Channel with {} has no our_reserve!", chan.peer_id))?,
-        );
-        let their_reserve = Amount::msat(&chan.their_reserve_msat.ok_or(anyhow!(
-            "Channel with {} has no their_reserve!",
-            chan.peer_id
-        ))?);
-
-        if matches!(
-            chan.state,
-            ChannelState::CHANNELD_NORMAL | ChannelState::CHANNELD_AWAITING_SPLICE
-        ) {
-            if our_reserve < to_us_msat {
-                avail_out += to_us_msat - our_reserve;
-            }
-            if their_reserve < total_msat - to_us_msat {
-                avail_in += total_msat - to_us_msat - their_reserve;
-            }
-        }
-
-        let avail = match p.state().avail.lock().get(&chan.peer_id) {
-            Some(a) => a.avail,
-            None => -1.0,
-        };
-
-        let summary = chan_to_summary(
-            &rpc_path,
-            &config,
-            &getinfo.version,
-            chan,
-            alias,
-            avail,
-            graph_max_chan_side_msat,
-        )
-        .await?;
-        table.insert(id, summary);
-
-        if is_active_state(chan) {
-            if chan.peer_connected {
-                num_connected += 1;
-            }
-            channel_count += 1;
-        }
-    }
-    log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
-
-    get_pings(rpc_path, &config, &getinfo.version, &mut table).await?;
-    log::debug!("Got pings. Total: {}ms", now.elapsed().as_millis());
-
-    let mut table = table.into_values().collect::<Vec<Summary>>();
-
-    sort_summary(&config, &mut table);
-    log::debug!("Sort summary. Total: {}ms", now.elapsed().as_millis());
-
-    let mut totals = Totals {
-        pays_amount_msat: None,
-        pays_amount_sent_msat: None,
-        pays_fees_msat: None,
-        invoices_amount_received_msat: None,
-        forwards_amount_in_msat: None,
-        forwards_amount_out_msat: None,
-        forwards_fees_msat: None,
-    };
-
-    let forwards;
-    let forwards_filter_stats;
     if config.forwards > 0 {
-        (forwards, forwards_filter_stats) = recent_forwards(
-            &mut rpc,
-            &peer_channels,
-            p.clone(),
-            &config,
-            &mut totals,
+        gather_forwards_data(
+            rpc,
+            peer_channels,
+            plugin.clone(),
+            config,
             now,
+            full_node_data,
         )
         .await?;
         log::debug!(
             "End of forwards table. Total: {}ms",
             now.elapsed().as_millis()
         );
-    } else {
-        forwards = Vec::new();
-        forwards_filter_stats = ForwardsFilterStats::default();
     }
 
-    let pays;
     if config.pays > 0 {
-        pays = recent_pays(
-            &mut rpc,
-            p.clone(),
-            &config,
-            &peer_channels,
-            &mut totals,
+        gather_pays_data(
+            rpc,
+            plugin.clone(),
+            config,
+            peer_channels,
             now,
-            &getinfo,
+            full_node_data,
         )
         .await?;
         log::debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
-    } else {
-        pays = Vec::new();
     }
 
-    let invoices;
-    let invoices_filter_stats;
     if config.invoices > 0 {
-        (invoices, invoices_filter_stats) =
-            recent_invoices(p.clone(), &mut rpc, &config, &mut totals, now).await?;
+        gather_invoices_data(plugin.clone(), rpc, config, now, full_node_data).await?;
         log::debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis()
         );
-    } else {
-        invoices = Vec::new();
-        invoices_filter_stats = InvoicesFilterStats::default();
     }
 
-    let addr_str = get_addrstr(&getinfo);
+    Ok(())
+}
+
+fn node_data_to_output(
+    now: Instant,
+    config: &Config,
+    node_data: &mut FullNodeData,
+    getinfo: &GetinfoResponse,
+    funds: &ListfundsResponse,
+) -> Result<serde_json::Value, Error> {
+    let addr_str = get_addrstr(getinfo);
+
+    let mut utxo_amt: u64 = 0;
+    for utxo in &funds.outputs {
+        if let ListfundsOutputsStatus::CONFIRMED = utxo.status {
+            utxo_amt += Amount::msat(&utxo.amount_msat);
+        }
+    }
+
+    let utxo_amount = format!("{} BTC", u64_to_btc_string(config, utxo_amt)?);
+    let avail_out = format!(
+        "{} BTC",
+        u64_to_btc_string(config, node_data.node_summary.avail_out)?
+    );
+    let avail_in = format!(
+        "{} BTC",
+        u64_to_btc_string(config, node_data.node_summary.avail_in)?
+    );
+    let fees_collected = format!(
+        "{} BTC",
+        u64_to_btc_string(config, Amount::msat(&getinfo.fees_collected_msat))?
+    );
 
     if config.json {
         Ok(json!({"info":{
             "address":addr_str,
             "num_utxos":funds.outputs.len(),
-            "utxo_amount": format!("{} BTC",u64_to_btc_string(&config, utxo_amt)?),
-            "num_channels":channel_count,
-            "num_connected":num_connected,
-            "num_gossipers":num_gossipers,
-            "avail_out":format!("{} BTC",u64_to_btc_string(&config, avail_out)?),
-            "avail_in":format!("{} BTC",u64_to_btc_string(&config, avail_in)?),
-            "fees_collected":format!("{} BTC",u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?),
+            "utxo_amount": utxo_amount,
+            "num_channels":node_data.node_summary.channel_count,
+            "num_connected":node_data.node_summary.num_connected,
+            "num_gossipers":node_data.node_summary.num_gossipers,
+            "avail_out":avail_out,
+            "avail_in":avail_in,
+            "fees_collected":fees_collected,
         },
-        "channels":table,
-        "forwards":forwards,
-        "pays":pays,
-        "invoices":invoices,
-        "totals":totals}))
+        "channels":node_data.channels,
+        "forwards":node_data.forwards,
+        "pays":node_data.pays,
+        "invoices":node_data.invoices,
+        "totals":node_data.totals}))
     } else {
-        let mut sumtable = Table::new(table);
-        format_summary(&config, &mut sumtable)?;
-        draw_graph_sats_name(&config, &mut sumtable, graph_max_chan_side_msat)?;
+        let mut sumtable = Table::new(&node_data.channels);
+        format_summary(config, &mut sumtable)?;
+        draw_graph_sats_name(config, &mut sumtable, node_data.graph_max_chan_side_msat)?;
         log::debug!("Format summary. Total: {}ms", now.elapsed().as_millis());
 
-        if filter_count > 0 {
+        if node_data.node_summary.filter_count > 0 {
             sumtable.with(Panel::footer(format!(
                 "\n {} channel{} filtered.",
-                filter_count,
-                if filter_count == 1 { "" } else { "s" }
+                node_data.node_summary.filter_count,
+                if node_data.node_summary.filter_count == 1 {
+                    ""
+                } else {
+                    "s"
+                }
             )));
             sumtable.with(Modify::new(Rows::last()).with(Alignment::left()));
         }
 
         let mut result = sumtable.to_string();
         if config.forwards > 0 {
-            result += &("\n\n".to_owned()
-                + &format_forwards(forwards, &config, &totals, &forwards_filter_stats)?);
+            result += &("\n\n".to_owned() + &format_forwards(config, node_data)?);
         }
         log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
-            result += &("\n\n".to_owned() + &format_pays(pays, &config, &totals)?);
+            result += &("\n\n".to_owned() + &format_pays(config, node_data)?);
         }
         log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
-            result += &("\n\n".to_owned()
-                + &format_invoices(invoices, &config, &totals, &invoices_filter_stats)?);
+            result += &("\n\n".to_owned() + &format_invoices(config, node_data)?);
         }
         log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
         Ok(json!({"format-hint":"simple","result":format!(
             "address={}
 num_utxos={}
-utxo_amount={} BTC
+utxo_amount={}
 num_channels={}
 num_connected={}
 num_gossipers={}
-avail_out={} BTC
-avail_in={} BTC
-fees_collected={} BTC
+avail_out={}
+avail_in={}
+fees_collected={}
 channels_flags=P:private O:offline
 {}",
             addr_str,
             funds.outputs.len(),
-            u64_to_btc_string(&config, utxo_amt)?,
-            channel_count,
-            num_connected,
-            num_gossipers,
-            u64_to_btc_string(&config, avail_out)?,
-            u64_to_btc_string(&config, avail_in)?,
-            u64_to_btc_string(&config, Amount::msat(&getinfo.fees_collected_msat))?,
+            utxo_amount,
+            node_data.node_summary.channel_count,
+            node_data.node_summary.num_connected,
+            node_data.node_summary.num_gossipers,
+            avail_out,
+            avail_in,
+            fees_collected,
             result,
         )}))
     }
 }
 
-async fn chan_to_summary(
-    rpc_path: &PathBuf,
+async fn process_channels_data(
+    now: Instant,
+    peer_channels: &[ListpeerchannelsChannels],
+    peers: &[ListpeersPeers],
     config: &Config,
-    version: &str,
+    plugin: Plugin<PluginState>,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    full_node_data.node_summary = NodeSummary {
+        num_gossipers: peers
+            .iter()
+            .filter(|s| s.num_channels.unwrap() == 0)
+            .count(),
+        ..Default::default()
+    };
+
+    let mut channel_map = HashMap::with_capacity(peer_channels.len());
+    {
+        let alias_map = plugin.state().alias_map.lock();
+
+        for (id, chan) in peer_channels.iter().enumerate() {
+            if is_chan_filtered(config, chan) {
+                full_node_data.node_summary.filter_count += 1;
+                continue;
+            }
+            let alias = alias_map
+                .get(&chan.peer_id)
+                .cloned()
+                .unwrap_or(NODE_GOSSIP_MISS.to_owned());
+
+            let to_us_msat = Amount::msat(
+                &chan
+                    .to_us_msat
+                    .ok_or(anyhow!("Channel with {} has no msats to us!", chan.peer_id))?,
+            );
+            let total_msat = Amount::msat(&chan.total_msat.ok_or(anyhow!(
+                "Channel with {} has no total amount!",
+                chan.peer_id
+            ))?);
+            let our_reserve = Amount::msat(
+                &chan
+                    .our_reserve_msat
+                    .ok_or(anyhow!("Channel with {} has no our_reserve!", chan.peer_id))?,
+            );
+            let their_reserve = Amount::msat(&chan.their_reserve_msat.ok_or(anyhow!(
+                "Channel with {} has no their_reserve!",
+                chan.peer_id
+            ))?);
+
+            if matches!(
+                chan.state,
+                ChannelState::CHANNELD_NORMAL | ChannelState::CHANNELD_AWAITING_SPLICE
+            ) {
+                if our_reserve < to_us_msat {
+                    full_node_data.node_summary.avail_out += to_us_msat - our_reserve;
+                }
+                if their_reserve < total_msat - to_us_msat {
+                    full_node_data.node_summary.avail_in += total_msat - to_us_msat - their_reserve;
+                }
+            }
+
+            let avail = match plugin.state().avail.lock().get(&chan.peer_id) {
+                Some(a) => a.avail,
+                None => -1.0,
+            };
+
+            let summary = chan_to_summary(
+                config,
+                chan,
+                alias,
+                avail,
+                full_node_data.graph_max_chan_side_msat,
+            )?;
+            channel_map.insert(id, summary);
+
+            if is_active_state(chan) {
+                if chan.peer_connected {
+                    full_node_data.node_summary.num_connected += 1;
+                }
+                full_node_data.node_summary.channel_count += 1;
+            }
+        }
+    }
+    log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
+
+    get_pings(
+        plugin.clone(),
+        config,
+        &full_node_data.cln_version,
+        &mut channel_map,
+    )
+    .await?;
+    log::debug!("Got pings. Total: {}ms", now.elapsed().as_millis());
+
+    let mut channel_vec = channel_map.into_values().collect::<Vec<Summary>>();
+    sort_summary(config, &mut channel_vec);
+
+    full_node_data.channels = channel_vec;
+
+    Ok(())
+}
+
+fn is_chan_filtered(config: &Config, chan: &ListpeerchannelsChannels) -> bool {
+    let is_excluded_state = config
+        .exclude_channel_states
+        .channel_states
+        .contains(&ShortChannelState(chan.state));
+
+    let is_chan_vis_filtered =
+        if let Some(excl_vis) = &config.exclude_channel_states.channel_visibility {
+            match excl_vis {
+                ChannelVisibility::Private => chan.private.unwrap(),
+                ChannelVisibility::Public => !chan.private.unwrap(),
+            }
+        } else {
+            false
+        };
+
+    let is_chan_con_status_filtered =
+        if let Some(excl_conn) = &config.exclude_channel_states.connection_status {
+            match excl_conn {
+                ConnectionStatus::Online => chan.peer_connected,
+                ConnectionStatus::Offline => !chan.peer_connected,
+            }
+        } else {
+            false
+        };
+
+    is_excluded_state || is_chan_vis_filtered || is_chan_con_status_filtered
+}
+
+fn chan_to_summary(
+    config: &Config,
     chan: &ListpeerchannelsChannels,
     alias: String,
     avail: f64,
@@ -423,27 +486,10 @@ async fn chan_to_summary(
         || config.sort_by == SummaryColumns::IN_BASE
         || config.sort_by == SummaryColumns::IN_PPM
     {
-        if at_or_above_version(version, "24.02")? {
-            if let Some(upd) = &chan.updates {
-                if let Some(rem) = &upd.remote {
-                    in_base = rem.fee_base_msat.msat().to_string();
-                    in_ppm = rem.fee_proportional_millionths.to_string();
-                }
-            }
-        } else if let Some(scid) = chan.short_channel_id {
-            let mut rpc = ClnRpc::new(&rpc_path).await?;
-            let mut chan_gossip = rpc
-                .call_typed(&ListchannelsRequest {
-                    destination: None,
-                    short_channel_id: Some(scid),
-                    source: None,
-                })
-                .await?
-                .channels;
-            chan_gossip.retain(|x| x.source == chan.peer_id);
-            if let Some(their_goss) = chan_gossip.first() {
-                in_base = their_goss.base_fee_millisatoshi.to_string();
-                in_ppm = their_goss.fee_per_millionth.to_string();
+        if let Some(upd) = &chan.updates {
+            if let Some(rem) = &upd.remote {
+                in_base = rem.fee_base_msat.msat().to_string();
+                in_ppm = rem.fee_proportional_millionths.to_string();
             }
         }
     }
@@ -456,19 +502,17 @@ async fn chan_to_summary(
 
     Ok(Summary {
         graph_sats,
-        out_sats: ((to_us_msat as f64) / 1_000.0).round() as u64,
-        in_sats: (((total_msat - to_us_msat) as f64) / 1_000.0).round() as u64,
-        total_sats: ((total_msat as f64) / 1_000.0).round() as u64,
+        out_sats: rounded_div_u64(to_us_msat, 1_000),
+        in_sats: rounded_div_u64(total_msat - to_us_msat, 1_000),
+        total_sats: rounded_div_u64(total_msat, 1_000),
         scid_raw: scid,
         scid: if scidsortdummy == scid {
             "PENDING".to_owned()
         } else {
             scid.to_string()
         },
-        min_htlc: ((Amount::msat(&chan.minimum_htlc_out_msat.unwrap()) as f64) / 1_000.0).round()
-            as u64,
-        max_htlc: ((Amount::msat(&chan.maximum_htlc_out_msat.unwrap()) as f64) / 1_000.0).round()
-            as u64,
+        min_htlc: rounded_div_u64(chan.minimum_htlc_out_msat.unwrap().msat(), 1_000),
+        max_htlc: rounded_div_u64(chan.maximum_htlc_out_msat.unwrap().msat(), 1_000),
         flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected),
         private: chan.private.unwrap(),
         offline: !chan.peer_connected,
@@ -485,17 +529,19 @@ async fn chan_to_summary(
         uptime: avail * 100.0,
         htlcs: chan.htlcs.as_ref().map_or(0, Vec::len),
         state: statestr.to_string(),
-        perc_us: (to_us_msat as f64 / total_msat as f64) * 100.0,
+        perc_us: perc_trunc_u64(to_us_msat, total_msat),
         ping: 0,
     })
 }
 
 async fn get_pings(
-    rpc_path: PathBuf,
+    plugin: Plugin<PluginState>,
     config: &Config,
     version: &str,
     table: &mut HashMap<usize, Summary>,
 ) -> Result<(), Error> {
+    let rpc_path = make_rpc_path(&plugin);
+
     if !at_or_above_version(version, "25.09")? {
         log::info!("Not using ping on pre-v25.09 CLN");
         return Ok(());
@@ -539,7 +585,7 @@ async fn get_pings(
                 .await;
                 let elapsed = if let Ok(a_p) = ping {
                     if let Ok(_p) = a_p {
-                        let elap = now.elapsed().as_millis() as u64;
+                        let elap = u64::try_from(now.elapsed().as_millis()).unwrap();
                         log::trace!("Pinged {peer_id} in {elap}ms");
                         elap
                     } else {
@@ -566,190 +612,67 @@ async fn get_pings(
 }
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
+    macro_rules! sort_by_key {
+        ($key:expr) => {
+            if config.sort_reverse {
+                table.sort_by_key(|x| Reverse($key(x)));
+            } else {
+                table.sort_by_key($key);
+            }
+        };
+    }
+
     match config.sort_by {
-        SummaryColumns::OUT_SATS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.out_sats));
-            } else {
-                table.sort_by_key(|x| x.out_sats);
-            }
-        }
-        SummaryColumns::IN_SATS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.in_sats));
-            } else {
-                table.sort_by_key(|x| x.in_sats);
-            }
-        }
-        SummaryColumns::TOTAL_SATS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.total_sats));
-            } else {
-                table.sort_by_key(|x| x.total_sats);
-            }
-        }
-        SummaryColumns::MIN_HTLC => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.min_htlc));
-            } else {
-                table.sort_by_key(|x| x.min_htlc);
-            }
-        }
-        SummaryColumns::MAX_HTLC => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.max_htlc));
-            } else {
-                table.sort_by_key(|x| x.max_htlc);
-            }
-        }
-        SummaryColumns::FLAG => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.flag.clone()));
-            } else {
-                table.sort_by_key(|x| x.flag.clone());
-            }
-        }
-        SummaryColumns::BASE => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.base));
-            } else {
-                table.sort_by_key(|x| x.base);
-            }
-        }
+        SummaryColumns::OUT_SATS => sort_by_key!(|x: &Summary| x.out_sats),
+        SummaryColumns::IN_SATS => sort_by_key!(|x: &Summary| x.in_sats),
+        SummaryColumns::TOTAL_SATS => sort_by_key!(|x: &Summary| x.total_sats),
+        SummaryColumns::MIN_HTLC => sort_by_key!(|x: &Summary| x.min_htlc),
+        SummaryColumns::MAX_HTLC => sort_by_key!(|x: &Summary| x.max_htlc),
+        SummaryColumns::FLAG => sort_by_key!(|x: &Summary| x.flag.clone()),
+        SummaryColumns::BASE => sort_by_key!(|x: &Summary| x.base),
+        SummaryColumns::PPM => sort_by_key!(|x: &Summary| x.ppm),
+        SummaryColumns::PEER_ID => sort_by_key!(|x: &Summary| x.peer_id),
+        SummaryColumns::HTLCS => sort_by_key!(|x: &Summary| x.htlcs),
+        SummaryColumns::STATE => sort_by_key!(|x: &Summary| x.state.clone()),
+        SummaryColumns::PING => sort_by_key!(|x: &Summary| x.ping),
+        SummaryColumns::SCID | SummaryColumns::GRAPH_SATS => sort_by_key!(|x: &Summary| x.scid_raw),
         SummaryColumns::IN_BASE => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| {
-                    Reverse(if let Ok(v) = x.in_base.parse::<u64>() {
-                        v
-                    } else {
-                        u64::MAX
-                    })
-                });
-            } else {
-                table.sort_by_key(|x| {
-                    if let Ok(v) = x.in_base.parse::<u64>() {
-                        v
-                    } else {
-                        u64::MAX
-                    }
-                });
-            }
+            sort_by_key!(|x: &Summary| x.in_base.parse().unwrap_or(u64::MAX));
         }
-        SummaryColumns::PPM => {
+        SummaryColumns::IN_PPM => sort_by_key!(|x: &Summary| x.in_ppm.parse().unwrap_or(u64::MAX)),
+        SummaryColumns::ALIAS => sort_by_key!(|x: &Summary| {
+            x.alias
+                .chars()
+                .filter(|c| c.is_ascii() && !c.is_whitespace() && *c != '@')
+                .collect::<String>()
+                .to_ascii_lowercase()
+        }),
+        SummaryColumns::UPTIME => table.sort_by(|a, b| {
+            let ord = a
+                .uptime
+                .partial_cmp(&b.uptime)
+                .unwrap_or(std::cmp::Ordering::Equal);
             if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.ppm));
+                ord.reverse()
             } else {
-                table.sort_by_key(|x| x.ppm);
+                ord
             }
-        }
-        SummaryColumns::IN_PPM => {
+        }),
+        SummaryColumns::PERC_US => table.sort_by(|a, b| {
+            let ord = a
+                .perc_us
+                .partial_cmp(&b.perc_us)
+                .unwrap_or(std::cmp::Ordering::Equal);
             if config.sort_reverse {
-                table.sort_by_key(|x| {
-                    Reverse(if let Ok(v) = x.in_ppm.parse::<u64>() {
-                        v
-                    } else {
-                        u64::MAX
-                    })
-                });
+                ord.reverse()
             } else {
-                table.sort_by_key(|x| {
-                    if let Ok(v) = x.in_ppm.parse::<u64>() {
-                        v
-                    } else {
-                        u64::MAX
-                    }
-                });
+                ord
             }
-        }
-        SummaryColumns::ALIAS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| {
-                    Reverse(
-                        x.alias
-                            .chars()
-                            .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
-                            .collect::<String>()
-                            .to_ascii_lowercase(),
-                    )
-                });
-            } else {
-                table.sort_by_key(|x| {
-                    x.alias
-                        .chars()
-                        .filter(|c| c.is_ascii() && !c.is_whitespace() && c != &'@')
-                        .collect::<String>()
-                        .to_ascii_lowercase()
-                });
-            }
-        }
-        SummaryColumns::UPTIME => {
-            if config.sort_reverse {
-                table.sort_by(|x, y| {
-                    y.uptime
-                        .partial_cmp(&x.uptime)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-            } else {
-                table.sort_by(|x, y| {
-                    x.uptime
-                        .partial_cmp(&y.uptime)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-            }
-        }
-        SummaryColumns::PEER_ID => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.peer_id));
-            } else {
-                table.sort_by_key(|x| x.peer_id);
-            }
-        }
-        SummaryColumns::HTLCS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.htlcs));
-            } else {
-                table.sort_by_key(|x| x.htlcs);
-            }
-        }
-        SummaryColumns::STATE => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.state.clone()));
-            } else {
-                table.sort_by_key(|x| x.state.clone());
-            }
-        }
-        SummaryColumns::PERC_US => {
-            if config.sort_reverse {
-                table.sort_by(|x, y| {
-                    y.perc_us
-                        .partial_cmp(&x.perc_us)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-            } else {
-                table.sort_by(|x, y| {
-                    x.perc_us
-                        .partial_cmp(&y.perc_us)
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                });
-            }
-        }
-        SummaryColumns::PING => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.ping));
-            } else {
-                table.sort_by_key(|x| x.ping);
-            }
-        }
-        SummaryColumns::SCID | SummaryColumns::GRAPH_SATS => {
-            if config.sort_reverse {
-                table.sort_by_key(|x| Reverse(x.scid_raw));
-            } else {
-                table.sort_by_key(|x| x.scid_raw);
-            }
-        }
+        }),
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     config.style.apply(sumtable);
     for head in SummaryColumns::iter() {
@@ -804,25 +727,19 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
     if config.max_alias_length < 0 {
         sumtable.with(
             Modify::new(ByColumnName::new(SummaryColumns::ALIAS.to_string())).with(
-                Width::wrap(config.max_alias_length.unsigned_abs() as usize).keep_words(true),
+                Width::wrap(usize::try_from(config.max_alias_length.unsigned_abs())?)
+                    .keep_words(true),
             ),
         );
     } else {
         sumtable.with(
             Modify::new(ByColumnName::new(SummaryColumns::ALIAS.to_string()))
-                .with(Width::truncate(config.max_alias_length as usize).suffix("[..]")),
+                .with(Width::truncate(usize::try_from(config.max_alias_length)?).suffix("[..]")),
         );
     }
 
     sumtable.with(
         Modify::new(ByColumnName::new(SummaryColumns::FLAG.to_string())).with(Alignment::center()),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new(SummaryColumns::UPTIME.to_string())).with(Alignment::right()),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new(SummaryColumns::PERC_US.to_string()))
-            .with(Alignment::right()),
     );
     sumtable.with(
         Modify::new(ByColumnName::new(SummaryColumns::HTLCS.to_string())).with(Alignment::right()),
@@ -834,29 +751,25 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
         Modify::new(ByColumnName::new(SummaryColumns::PING.to_string())).with(Alignment::right()),
     );
 
-    sumtable.with(
-        Modify::new(ByColumnName::new(SummaryColumns::UPTIME.to_string()).not(Rows::first())).with(
-            Format::content(|s| {
-                let av = s.parse::<f64>().unwrap_or(-1.0);
-                if av < 0.0 {
-                    "N/A".to_owned()
-                } else {
-                    format!("{}%", av.round())
-                }
-            }),
-        ),
-    );
-    sumtable.with(
-        Modify::new(ByColumnName::new(SummaryColumns::PERC_US.to_string()).not(Rows::first()))
-            .with(Format::content(|s| {
-                let av = s.parse::<f64>().unwrap_or(-1.0);
-                if av < 0.0 {
-                    "N/A".to_owned()
-                } else {
-                    format!("{av:.1}%")
-                }
-            })),
-    );
+    for percent_col in [SummaryColumns::UPTIME, SummaryColumns::PERC_US] {
+        sumtable
+            .with(Modify::new(ByColumnName::new(percent_col.to_string())).with(Alignment::right()));
+        sumtable.with(
+            Modify::new(ByColumnName::new(percent_col.to_string()).not(Rows::first())).with(
+                Format::content(|s| {
+                    let av = s.parse::<f64>().unwrap_or(-1.0);
+                    if av < 0.0 {
+                        "N/A".to_owned()
+                    } else if percent_col == SummaryColumns::UPTIME {
+                        format!("{}%", av.round())
+                    } else {
+                        format!("{av:.1}%")
+                    }
+                }),
+            ),
+        );
+    }
+
     sumtable.with(
         Modify::new(ByColumnName::new(SummaryColumns::PING.to_string()).not(Rows::first())).with(
             Format::content(|s| {

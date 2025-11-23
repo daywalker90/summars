@@ -684,8 +684,8 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.rpc.connect(l2.info["id"], "localhost", l2.port)
     l2.rpc.connect(l3.info["id"], "localhost", l3.port)
     l1.rpc.connect(l3.info["id"], "localhost", l3.port)
-    l1.rpc.fundchannel(l2.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1)
-    l2.rpc.fundchannel(l3.info["id"], 1_000_000, push_msat=500_000_000, mindepth=1)
+    l1.rpc.fundchannel(l2.info["id"], 2_000_000, push_msat=1_000_000_000, mindepth=1)
+    l2.rpc.fundchannel(l3.info["id"], 2_000_000, push_msat=1_000_000_000, mindepth=1)
 
     bitcoind.generate_block(6)
     sync_blockheight(bitcoind, [l1, l2, l3])
@@ -808,6 +808,18 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result["totals"]["forwards_amount_in_msat"] == 362003
     assert result["totals"]["forwards_amount_out_msat"] == 359000
     assert result["totals"]["forwards_fees_msat"] == 3003
+
+    result = l2.rpc.call(
+        "summars",
+        {"summars-forwards": 1, "summars-pays": 1, "summars-invoices": 1},
+    )
+    assert "forwards" in result["result"]
+    assert "pays" in result["result"]
+    assert "invoices" in result["result"]
+    assert (
+        "Total forwards stats in the last 1h: 362 in_sats 359 out_sats 3 fee_sats"
+        in result["result"]
+    )
 
     result = l3.rpc.call(
         "summars",
