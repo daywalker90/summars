@@ -1,9 +1,13 @@
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{
+    collections::{BTreeMap, HashSet},
+    path::Path,
+    time::Duration,
+};
 
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{ListnodesRequest, ListpeerchannelsRequest, ListpeersRequest},
+    model::requests::{ListnodesRequest, ListpeerchannelsRequest},
     primitives::PublicKey,
     ClnRpc,
 };
@@ -19,7 +23,8 @@ use crate::{
     util::{is_active_state, make_rpc_path},
 };
 
-pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
+#[allow(clippy::cast_precision_loss)]
+pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
     let now = Instant::now();
     info!("Starting alias map refresh");
     plugin.state().alias_map.lock().clear();
@@ -27,16 +32,23 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
 
-    for peer in rpc
-        .call_typed(&ListpeersRequest {
+    let listpeerchans = rpc
+        .call_typed(&ListpeerchannelsRequest {
             id: None,
-            level: None,
+            short_channel_id: None,
         })
         .await?
-        .peers
-    {
+        .channels;
+
+    let peer_ids: HashSet<PublicKey> = listpeerchans.iter().map(|c| c.peer_id).collect();
+
+    let peer_count = peer_ids.len();
+
+    let mut miss_count: usize = 0;
+
+    for peer_id in peer_ids {
         let node_response = rpc
-            .call_typed(&ListnodesRequest { id: Some(peer.id) })
+            .call_typed(&ListnodesRequest { id: Some(peer_id) })
             .await?
             .nodes;
         let alias = if let Some(node) = node_response.first() {
@@ -45,24 +57,44 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<(), Error> {
                 None => NO_ALIAS_SET,
             }
         } else {
+            miss_count += 1;
             NODE_GOSSIP_MISS
         };
         plugin
             .state()
             .alias_map
             .lock()
-            .insert(peer.id, alias.to_owned());
+            .insert(peer_id, alias.to_owned());
     }
 
-    info!("Alias map refresh done in: {}ms", now.elapsed().as_millis());
-    Ok(())
+    let alias_refresh_freq = plugin.state().config.lock().refresh_alias;
+
+    let miss_perc = (miss_count as f64 / peer_count as f64) * 100.0;
+
+    let next_sleep = if miss_perc <= 5.0 {
+        alias_refresh_freq * 60 * 60
+    } else if miss_perc <= 10.0 {
+        60 * 60
+    } else if miss_perc <= 25.0 {
+        10 * 60
+    } else {
+        60
+    };
+
+    info!(
+        "Alias map refresh done in: {}ms. Next refresh in {}s",
+        now.elapsed().as_millis(),
+        next_sleep
+    );
+    Ok(next_sleep)
 }
+
 pub async fn summars_refreshalias(
     p: Plugin<PluginState>,
     _v: serde_json::Value,
 ) -> Result<serde_json::Value, Error> {
     match refresh_alias(p.clone()).await {
-        Ok(()) => Ok(json!({"result":"success"})),
+        Ok(_s) => Ok(json!({"result":"success"})),
         Err(e) => Err(anyhow!("Error in refresh_alias thread: {e}")),
     }
 }

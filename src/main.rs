@@ -255,24 +255,26 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     if let Ok(plugin) = confplugin.start(state).await {
         info!("starting uptime task");
-        let traceclone = plugin.clone();
+        let plugin_clone_avail = plugin.clone();
         tokio::spawn(async move {
-            match tasks::trace_availability(traceclone).await {
+            match tasks::trace_availability(plugin_clone_avail).await {
                 Ok(()) => (),
                 Err(e) => warn!("Error in trace_availability thread: {e}"),
             }
         });
 
         info!("starting refresh alias task");
-        let aliasclone = plugin.clone();
-        let alias_refresh_freq = plugin.state().config.lock().refresh_alias;
+        let plugin_clone_alias = plugin.clone();
         tokio::spawn(async move {
             loop {
-                match tasks::refresh_alias(aliasclone.clone()).await {
-                    Ok(()) => (),
-                    Err(e) => warn!("Error in refresh_alias thread: {e}"),
-                }
-                time::sleep(Duration::from_secs(alias_refresh_freq * 60 * 60)).await;
+                let sleep_time = match tasks::refresh_alias(plugin_clone_alias.clone()).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("Error in refresh_alias thread: {e}");
+                        60
+                    }
+                };
+                time::sleep(Duration::from_secs(sleep_time)).await;
             }
         });
         plugin.join().await

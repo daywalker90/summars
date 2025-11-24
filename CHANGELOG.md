@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- if node aliases are missing, `summars` will check the gossip faster and only when almost all aliases are found it will use `summars-refresh-alias` again
+
+### Removed
+- all code for CLN versions ``< v24.11``
+
 ## [5.2.0] - 2025-09-06
 
 ### Added
