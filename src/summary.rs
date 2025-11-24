@@ -286,16 +286,16 @@ fn node_data_to_output(
         let mut result = sumtable.to_string();
         if config.forwards > 0 {
             result += &("\n\n".to_owned() + &format_forwards(config, node_data)?);
+            log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         }
-        log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         if config.pays > 0 {
             result += &("\n\n".to_owned() + &format_pays(config, node_data)?);
+            log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         }
-        log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         if config.invoices > 0 {
             result += &("\n\n".to_owned() + &format_invoices(config, node_data)?);
+            log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
         }
-        log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
 
         Ok(json!({"format-hint":"simple","result":format!(
             "address={}
