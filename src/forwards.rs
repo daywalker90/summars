@@ -1,11 +1,18 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
-        requests::{ListforwardsIndex, ListforwardsRequest, ListforwardsStatus},
+        requests::{
+            ListforwardsIndex,
+            ListforwardsRequest,
+            ListforwardsStatus,
+            WaitIndexname,
+            WaitRequest,
+            WaitSubsystem,
+        },
         responses::{ListforwardsForwards, ListpeerchannelsChannels},
     },
     primitives::{Amount, PublicKey, ShortChannelId},
@@ -37,6 +44,7 @@ use crate::{
         PagingIndex,
         PluginState,
         TableColumn,
+        PAGE_SIZE,
     },
     util::{
         f64_to_u64_trunc,
@@ -48,6 +56,13 @@ use crate::{
         u64_to_sat_string,
     },
 };
+
+struct ForwardsAccumulator<'a> {
+    oldest_updated: &'a mut u64,
+    fw_index: &'a mut PagingIndex,
+    forwards_map: &'a mut BTreeMap<u64, Forwards>,
+    filtered_set: &'a mut HashSet<u64>,
+}
 
 pub async fn gather_forwards_data(
     rpc: &mut ClnRpc,
@@ -68,96 +83,165 @@ pub async fn gather_forwards_data(
     }
     let mut fw_index = plugin.state().fw_index.lock().clone();
     log::debug!(
-        "fw_index: start:{} timestamp:{}",
+        "fw_index: start:{} old_timestamp:{} new_timestamp:{}",
         fw_index.start,
-        fw_index.timestamp
+        fw_index.timestamp,
+        cutoff_timestamp
     );
-    let settled_forwards = rpc
-        .call_typed(&ListforwardsRequest {
-            status: Some(ListforwardsStatus::SETTLED),
-            in_channel: None,
-            out_channel: None,
-            index: Some(ListforwardsIndex::CREATED),
-            start: Some(fw_index.start),
-            limit: None,
-        })
-        .await?
-        .forwards;
-    let offered_forwards = rpc
-        .call_typed(&ListforwardsRequest {
-            status: Some(ListforwardsStatus::OFFERED),
-            in_channel: None,
-            out_channel: None,
-            index: Some(ListforwardsIndex::CREATED),
-            start: Some(fw_index.start),
-            limit: None,
-        })
-        .await?
-        .forwards;
-    log::debug!(
-        "List {} forwards. Total: {}ms",
-        settled_forwards.len(),
-        now.elapsed().as_millis()
-    );
-
     fw_index.timestamp = cutoff_timestamp;
-    if let Some(last_fw) = settled_forwards.last() {
-        fw_index.start = last_fw.created_index.unwrap_or(u64::MAX);
-    }
-
-    for forward in &offered_forwards {
-        if let Some(c_index) = forward.created_index {
-            if c_index < fw_index.start {
-                fw_index.start = c_index;
-            }
-        }
-    }
 
     let chanmap: BTreeMap<ShortChannelId, ListpeerchannelsChannels> = peer_channels
         .iter()
         .filter_map(|s| s.short_channel_id.map(|id| (id, s.clone())))
         .collect();
 
-    let alias_map = plugin.state().alias_map.lock();
+    let mut oldest_updated = now_utc;
 
-    build_forwards_table(
-        &mut fw_index,
+    let mut forwards_map: BTreeMap<u64, Forwards> = BTreeMap::new();
+
+    let mut filtered_set: HashSet<u64> = HashSet::new();
+
+    let mut forwards_acc = ForwardsAccumulator {
+        oldest_updated: &mut oldest_updated,
+        fw_index: &mut fw_index,
+        forwards_map: &mut forwards_map,
+        filtered_set: &mut filtered_set,
+    };
+
+    process_forward_batches(
+        plugin.clone(),
+        now,
+        &mut forwards_acc,
         config,
-        settled_forwards,
+        rpc,
         &chanmap,
-        &alias_map,
-        cutoff_timestamp,
         full_node_data,
-    )?;
+    )
+    .await?;
 
-    if fw_index.start < u64::MAX {
-        *plugin.state().fw_index.lock() = fw_index;
-    }
     log::debug!(
-        "Build forwards table. Total: {}ms",
-        now.elapsed().as_millis()
+        "fw_index: start:{} timestamp:{}",
+        fw_index.start,
+        fw_index.timestamp
     );
-    if config.forwards_limit > 0 && full_node_data.forwards.len() > config.forwards_limit {
-        full_node_data.forwards = full_node_data
-            .forwards
-            .split_off(full_node_data.forwards.len() - config.forwards_limit);
+    *plugin.state().fw_index.lock() = fw_index;
+
+    if config.forwards_limit > 0 && forwards_map.len() > config.forwards_limit {
+        full_node_data.forwards = forwards_map
+            .into_values()
+            .rev()
+            .take(config.forwards_limit)
+            .rev()
+            .collect();
+    } else {
+        full_node_data.forwards = forwards_map.into_values().collect();
     }
     full_node_data.forwards.sort_by_key(|x| x.resolved_time);
 
     Ok(())
 }
 
+async fn process_forward_batches(
+    plugin: Plugin<PluginState>,
+    now: Instant,
+    forwards_acc: &mut ForwardsAccumulator<'_>,
+    config: &Config,
+    rpc: &mut ClnRpc,
+    chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let current_index = rpc
+        .call_typed(&WaitRequest {
+            indexname: WaitIndexname::UPDATED,
+            subsystem: WaitSubsystem::FORWARDS,
+            nextvalue: 0,
+        })
+        .await?
+        .updated
+        .unwrap();
+    log::debug!("Current forward index: {current_index}");
+
+    let mut loop_count = 0;
+
+    let (mut start_index, limit) = if forwards_acc.fw_index.start < u64::MAX {
+        (forwards_acc.fw_index.start, None)
+    } else {
+        (
+            current_index.saturating_sub(PAGE_SIZE - 1),
+            Some(u32::try_from(PAGE_SIZE)?),
+        )
+    };
+
+    while *forwards_acc.oldest_updated > forwards_acc.fw_index.timestamp
+    // && (config.pays_limit == 0 || forwards_acc.forwards_map.len() < config.forwards_limit)
+    {
+        loop_count += 1;
+
+        let settled_forwards = rpc
+            .call_typed(&ListforwardsRequest {
+                status: Some(ListforwardsStatus::SETTLED),
+                in_channel: None,
+                out_channel: None,
+                index: Some(ListforwardsIndex::UPDATED),
+                start: Some(start_index),
+                limit,
+            })
+            .await?
+            .forwards;
+
+        let alias_map = plugin.state().alias_map.lock();
+
+        build_forwards_table(
+            forwards_acc,
+            config,
+            settled_forwards,
+            chanmap,
+            &alias_map,
+            full_node_data,
+        )?;
+
+        if start_index == 0 {
+            break;
+        }
+        start_index = start_index.saturating_sub(PAGE_SIZE);
+    }
+
+    log::debug!(
+        "Build forwards table in {loop_count} calls. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+
+    Ok(())
+}
+
 fn build_forwards_table(
-    fw_index: &mut PagingIndex,
+    forwards_acc: &mut ForwardsAccumulator<'_>,
     config: &Config,
     settled_forwards: Vec<ListforwardsForwards>,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
     alias_map: &BTreeMap<PublicKey, String>,
-    cutoff_timestamp: u64,
     full_node_data: &mut FullNodeData,
 ) -> Result<(), Error> {
-    for forward in settled_forwards {
-        if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > cutoff_timestamp {
+    for forward in settled_forwards.into_iter().rev() {
+        let Some(updated_index) = forward.updated_index else {
+            continue;
+        };
+
+        let received_time = f64_to_u64_trunc(forward.received_time);
+        if forwards_acc.forwards_map.contains_key(&updated_index) {
+            continue;
+        }
+        if forwards_acc.filtered_set.contains(&updated_index) {
+            continue;
+        }
+        if received_time <= *forwards_acc.oldest_updated {
+            *forwards_acc.oldest_updated = received_time;
+            if updated_index <= forwards_acc.fw_index.start {
+                forwards_acc.fw_index.start = updated_index;
+            }
+        }
+        if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > forwards_acc.fw_index.timestamp
+        {
             let inchan = get_alias_from_scid(forward.in_channel, chanmap, alias_map);
 
             let fw_outchan = forward.out_channel.unwrap();
@@ -197,47 +281,45 @@ fn build_forwards_table(
                 full_node_data.forwards_filter_stats.fee_sum_msat +=
                     forward.fee_msat.unwrap().msat();
                 full_node_data.forwards_filter_stats.count += 1;
+                forwards_acc.filtered_set.insert(updated_index);
             } else {
-                full_node_data.forwards.push(Forwards {
-                    received_time: f64_to_u64_trunc(forward.received_time) * 1_000,
-                    received_time_str: timestamp_to_localized_datetime_string(
-                        config,
-                        f64_to_u64_trunc(forward.received_time),
-                    )?,
-                    resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
-                    resolved_time_str: timestamp_to_localized_datetime_string(
-                        config,
-                        f64_to_u64_trunc(forward.resolved_time.unwrap()),
-                    )?,
-                    in_alias: if config.utf8 {
-                        inchan
-                    } else {
-                        inchan.replace(|c: char| !c.is_ascii(), "?")
+                forwards_acc.forwards_map.insert(
+                    updated_index,
+                    Forwards {
+                        received_time: received_time * 1_000,
+                        received_time_str: timestamp_to_localized_datetime_string(
+                            config,
+                            f64_to_u64_trunc(forward.received_time),
+                        )?,
+                        resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
+                        resolved_time_str: timestamp_to_localized_datetime_string(
+                            config,
+                            f64_to_u64_trunc(forward.resolved_time.unwrap()),
+                        )?,
+                        in_alias: if config.utf8 {
+                            inchan
+                        } else {
+                            inchan.replace(|c: char| !c.is_ascii(), "?")
+                        },
+                        in_channel: forward.in_channel,
+                        out_alias: if config.utf8 {
+                            outchan
+                        } else {
+                            outchan.replace(|c: char| !c.is_ascii(), "?")
+                        },
+                        out_channel: forward.out_channel.unwrap(),
+                        in_msats: Amount::msat(&forward.in_msat),
+                        out_msats: Amount::msat(&forward.out_msat.unwrap()),
+                        fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
+                        in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
+                        out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
+                        fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
+                        eff_fee_ppm: feeppm_effective_from_amts(
+                            forward.in_msat.msat(),
+                            forward.out_msat.unwrap().msat(),
+                        ),
                     },
-                    in_channel: forward.in_channel,
-                    out_alias: if config.utf8 {
-                        outchan
-                    } else {
-                        outchan.replace(|c: char| !c.is_ascii(), "?")
-                    },
-                    out_channel: forward.out_channel.unwrap(),
-                    in_msats: Amount::msat(&forward.in_msat),
-                    out_msats: Amount::msat(&forward.out_msat.unwrap()),
-                    fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
-                    in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
-                    out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
-                    fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
-                    eff_fee_ppm: feeppm_effective_from_amts(
-                        forward.in_msat.msat(),
-                        forward.out_msat.unwrap().msat(),
-                    ),
-                });
-            }
-
-            if let Some(c_index) = forward.created_index {
-                if c_index < fw_index.start {
-                    fw_index.start = c_index;
-                }
+                );
             }
         }
     }

@@ -1,9 +1,17 @@
+use std::collections::{BTreeMap, HashSet};
+
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
-        requests::{ListinvoicesIndex, ListinvoicesRequest},
+        requests::{
+            ListinvoicesIndex,
+            ListinvoicesRequest,
+            WaitIndexname,
+            WaitRequest,
+            WaitSubsystem,
+        },
         responses::{ListinvoicesInvoices, ListinvoicesInvoicesStatus},
     },
     primitives::Amount,
@@ -35,6 +43,7 @@ use crate::{
         PagingIndex,
         PluginState,
         TableColumn,
+        PAGE_SIZE,
     },
     util::{
         hex_encode,
@@ -45,6 +54,13 @@ use crate::{
         u64_to_sat_string,
     },
 };
+
+struct InvoicesAccumulator<'a> {
+    oldest_updated: &'a mut u64,
+    inv_index: &'a mut PagingIndex,
+    invoices_map: &'a mut BTreeMap<u64, Invoices>,
+    filtered_set: &'a mut HashSet<u64>,
+}
 
 pub async fn gather_invoices_data(
     plugin: Plugin<PluginState>,
@@ -64,64 +80,140 @@ pub async fn gather_invoices_data(
     }
     let mut inv_index = plugin.state().inv_index.lock().clone();
     log::debug!(
+        "inv_index: start:{} old_timestamp:{} new_timestamp:{}",
+        inv_index.start,
+        inv_index.timestamp,
+        cutoff_timestamp
+    );
+    inv_index.timestamp = cutoff_timestamp;
+
+    let mut oldest_updated = now_utc;
+
+    let mut invoices_map: BTreeMap<u64, Invoices> = BTreeMap::new();
+
+    let mut filtered_set: HashSet<u64> = HashSet::new();
+
+    let mut invoice_acc = InvoicesAccumulator {
+        oldest_updated: &mut oldest_updated,
+        inv_index: &mut inv_index,
+        invoices_map: &mut invoices_map,
+        filtered_set: &mut filtered_set,
+    };
+
+    process_invoice_batches(now, &mut invoice_acc, config, rpc, full_node_data).await?;
+
+    log::debug!(
         "inv_index: start:{} timestamp:{}",
         inv_index.start,
         inv_index.timestamp
     );
-    let invoices = rpc
-        .call_typed(&ListinvoicesRequest {
-            label: None,
-            invstring: None,
-            payment_hash: None,
-            offer_id: None,
-            index: Some(ListinvoicesIndex::CREATED),
-            start: Some(inv_index.start),
-            limit: None,
-        })
-        .await?
-        .invoices;
-    log::debug!(
-        "List {} invoices. Total: {}ms",
-        invoices.len(),
-        now.elapsed().as_millis()
-    );
+    *plugin.state().inv_index.lock() = inv_index;
 
-    inv_index.timestamp = cutoff_timestamp;
-    if let Some(last_inv) = invoices.last() {
-        inv_index.start = last_inv.created_index.unwrap_or(u64::MAX);
-    }
-
-    build_invoices_table(invoices, &mut inv_index, full_node_data, config)?;
-
-    if inv_index.start < u64::MAX {
-        *plugin.state().inv_index.lock() = inv_index;
-    }
-    log::debug!(
-        "Build invoices table. Total: {}ms",
-        now.elapsed().as_millis()
-    );
-    if config.invoices_limit > 0 && full_node_data.invoices.len() > config.invoices_limit {
-        full_node_data.invoices = full_node_data
-            .invoices
-            .split_off(full_node_data.invoices.len() - config.invoices_limit);
+    if config.invoices_limit > 0 && invoices_map.len() > config.invoices_limit {
+        full_node_data.invoices = invoices_map
+            .into_values()
+            .rev()
+            .take(config.invoices_limit)
+            .rev()
+            .collect();
+    } else {
+        full_node_data.invoices = invoices_map.into_values().collect();
     }
     full_node_data.invoices.sort_by_key(|x| x.paid_at);
 
     Ok(())
 }
 
+async fn process_invoice_batches(
+    now: Instant,
+    invoices_acc: &mut InvoicesAccumulator<'_>,
+    config: &Config,
+    rpc: &mut ClnRpc,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let current_index = rpc
+        .call_typed(&WaitRequest {
+            indexname: WaitIndexname::UPDATED,
+            subsystem: WaitSubsystem::INVOICES,
+            nextvalue: 0,
+        })
+        .await?
+        .updated
+        .unwrap();
+    log::debug!("Current invoices index: {current_index}");
+
+    let mut loop_count = 0;
+
+    let (mut start_index, limit) = if invoices_acc.inv_index.start < u64::MAX {
+        (invoices_acc.inv_index.start, None)
+    } else {
+        (
+            current_index.saturating_sub(PAGE_SIZE - 1),
+            Some(u32::try_from(PAGE_SIZE)?),
+        )
+    };
+
+    while *invoices_acc.oldest_updated > invoices_acc.inv_index.timestamp
+    // && (config.invoices_limit == 0 || invoices_acc.invoices_map.len() < config.invoices_limit)
+    {
+        loop_count += 1;
+
+        let invoices = rpc
+            .call_typed(&ListinvoicesRequest {
+                label: None,
+                invstring: None,
+                payment_hash: None,
+                offer_id: None,
+                index: Some(ListinvoicesIndex::UPDATED),
+                start: Some(start_index),
+                limit,
+            })
+            .await?
+            .invoices;
+
+        build_invoices_table(invoices_acc, invoices, full_node_data, config)?;
+
+        if start_index == 0 {
+            break;
+        }
+        start_index = start_index.saturating_sub(PAGE_SIZE);
+    }
+
+    log::debug!(
+        "Build invoices table in {loop_count} calls. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+
+    Ok(())
+}
+
 fn build_invoices_table(
+    invoices_acc: &mut InvoicesAccumulator<'_>,
     invoices: Vec<ListinvoicesInvoices>,
-    inv_index: &mut PagingIndex,
     full_node_data: &mut FullNodeData,
     config: &Config,
 ) -> Result<(), Error> {
-    for invoice in invoices {
+    for invoice in invoices.into_iter().rev() {
         if ListinvoicesInvoicesStatus::PAID == invoice.status {
+            let Some(updated_index) = invoice.updated_index else {
+                continue;
+            };
             let Some(inv_paid_at) = invoice.paid_at else {
                 continue;
             };
-            if inv_paid_at > inv_index.timestamp {
+            if invoices_acc.invoices_map.contains_key(&updated_index) {
+                continue;
+            }
+            if invoices_acc.filtered_set.contains(&updated_index) {
+                continue;
+            }
+            if inv_paid_at <= *invoices_acc.oldest_updated {
+                *invoices_acc.oldest_updated = inv_paid_at;
+                if updated_index <= invoices_acc.inv_index.start {
+                    invoices_acc.inv_index.start = updated_index;
+                }
+            }
+            if inv_paid_at > invoices_acc.inv_index.timestamp {
                 if let Some(inv_amt) = &mut full_node_data.totals.invoices_amount_received_msat {
                     *inv_amt += invoice.amount_received_msat.unwrap().msat();
                 } else {
@@ -131,6 +223,7 @@ fn build_invoices_table(
 
                 if let Some(if_amt) = config.invoices_filter_amt_msat {
                     if invoice.amount_received_msat.unwrap().msat() <= if_amt {
+                        invoices_acc.filtered_set.insert(updated_index);
                         full_node_data.invoices_filter_stats.filter_count += 1;
                         full_node_data.invoices_filter_stats.filter_amt_sum_msat +=
                             invoice.amount_received_msat.unwrap().msat();
@@ -138,34 +231,25 @@ fn build_invoices_table(
                     }
                 }
 
-                full_node_data.invoices.push(Invoices {
-                    paid_at: invoice.paid_at.unwrap(),
-                    paid_at_str: timestamp_to_localized_datetime_string(
-                        config,
-                        invoice.paid_at.unwrap(),
-                    )?,
-                    label: invoice.label,
-                    msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
-                    sats_received: rounded_div_u64(
-                        invoice.amount_received_msat.unwrap().msat(),
-                        1_000,
-                    ),
-                    description: invoice.description.unwrap_or_default(),
-                    payment_hash: invoice.payment_hash.to_string(),
-                    preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
-                });
-
-                if let Some(c_index) = invoice.created_index {
-                    if c_index < inv_index.start {
-                        inv_index.start = c_index;
-                    }
-                }
-            }
-        } else if ListinvoicesInvoicesStatus::UNPAID == invoice.status {
-            if let Some(c_index) = invoice.created_index {
-                if c_index < inv_index.start {
-                    inv_index.start = c_index;
-                }
+                invoices_acc.invoices_map.insert(
+                    updated_index,
+                    Invoices {
+                        paid_at: invoice.paid_at.unwrap(),
+                        paid_at_str: timestamp_to_localized_datetime_string(
+                            config,
+                            invoice.paid_at.unwrap(),
+                        )?,
+                        label: invoice.label,
+                        msats_received: Amount::msat(&invoice.amount_received_msat.unwrap()),
+                        sats_received: rounded_div_u64(
+                            invoice.amount_received_msat.unwrap().msat(),
+                            1_000,
+                        ),
+                        description: invoice.description.unwrap_or_default(),
+                        payment_hash: invoice.payment_hash.to_string(),
+                        preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
+                    },
+                );
             }
         }
     }

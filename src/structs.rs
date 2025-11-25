@@ -25,6 +25,7 @@ use crate::{
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 pub const MISSING_VALUE: &str = "N/A";
+pub const PAGE_SIZE: u64 = 1000;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -371,7 +372,7 @@ impl PagingIndex {
     pub fn new() -> PagingIndex {
         PagingIndex {
             timestamp: 0,
-            start: 0,
+            start: u64::MAX,
         }
     }
 }

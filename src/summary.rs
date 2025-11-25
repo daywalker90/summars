@@ -194,15 +194,7 @@ async fn build_node_data(
     }
 
     if config.pays > 0 {
-        gather_pays_data(
-            rpc,
-            plugin.clone(),
-            config,
-            peer_channels,
-            now,
-            full_node_data,
-        )
-        .await?;
+        gather_pays_data(rpc, plugin.clone(), config, now, full_node_data).await?;
         log::debug!("End of pays table. Total: {}ms", now.elapsed().as_millis());
     }
 
