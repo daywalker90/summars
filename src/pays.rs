@@ -1,14 +1,22 @@
-use std::collections::HashSet;
+use std::collections::BTreeMap;
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
-        requests::{DecodeRequest, ListpaysIndex, ListpaysRequest, ListpaysStatus},
-        responses::{ListpaysPays, ListpeerchannelsChannels},
+        requests::{
+            DecodeRequest,
+            ListpaysIndex,
+            ListpaysRequest,
+            ListpaysStatus,
+            WaitIndexname,
+            WaitRequest,
+            WaitSubsystem,
+        },
+        responses::ListpaysPays,
     },
-    primitives::Amount,
+    primitives::{Amount, PublicKey},
     ClnRpc,
 };
 use strum::IntoEnumIterator;
@@ -39,6 +47,7 @@ use crate::{
         TableColumn,
         MISSING_VALUE,
         NODE_GOSSIP_MISS,
+        PAGE_SIZE,
     },
     util::{
         hex_encode,
@@ -50,11 +59,16 @@ use crate::{
     },
 };
 
+struct PaysAccumulator<'a> {
+    oldest_updated: &'a mut u64,
+    pay_index: &'a mut PagingIndex,
+    pays_map: &'a mut BTreeMap<u64, Pays>,
+}
+
 pub async fn gather_pays_data(
     rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
     config: &Config,
-    peer_channels: &[ListpeerchannelsChannels],
     now: Instant,
     full_node_data: &mut FullNodeData,
 ) -> Result<(), Error> {
@@ -68,100 +82,122 @@ pub async fn gather_pays_data(
         }
     }
     let mut pay_index = plugin.state().pay_index.lock().clone();
+    log::debug!(
+        "pay_index: start:{} old_timestamp:{} new_timestamp:{}",
+        pay_index.start,
+        pay_index.timestamp,
+        cutoff_timestamp
+    );
+    pay_index.timestamp = cutoff_timestamp;
+
+    let mut oldest_updated = now_utc;
+
+    let mut pays_map: BTreeMap<u64, Pays> = BTreeMap::new();
+
+    let mut pays_acc = PaysAccumulator {
+        oldest_updated: &mut oldest_updated,
+        pay_index: &mut pay_index,
+        pays_map: &mut pays_map,
+    };
+
+    process_pay_batches(
+        plugin.clone(),
+        now,
+        &mut pays_acc,
+        config,
+        rpc,
+        full_node_data,
+    )
+    .await?;
 
     log::debug!(
         "pay_index: start:{} timestamp:{}",
         pay_index.start,
         pay_index.timestamp
     );
-    let pays = rpc
-        .call_typed(&ListpaysRequest {
-            bolt11: None,
-            payment_hash: None,
-            status: Some(ListpaysStatus::COMPLETE),
-            index: Some(ListpaysIndex::CREATED),
-            start: Some(pay_index.start),
-            limit: None,
-        })
-        .await?
-        .pays;
+    *plugin.state().pay_index.lock() = pay_index;
 
-    let pending_pays = rpc
-        .call_typed(&ListpaysRequest {
-            bolt11: None,
-            payment_hash: None,
-            status: Some(ListpaysStatus::PENDING),
-            index: Some(ListpaysIndex::CREATED),
-            start: Some(pay_index.start),
-            limit: None,
-        })
-        .await?
-        .pays;
-
-    let mut pending_hashes = HashSet::new();
-    for chan in peer_channels {
-        if let Some(htlcs) = &chan.htlcs {
-            for htlc in htlcs {
-                pending_hashes.insert(htlc.payment_hash);
-            }
-        }
-    }
-
-    log::debug!(
-        "List {} pays. Total: {}ms",
-        pays.len(),
-        now.elapsed().as_millis()
-    );
-
-    pay_index.timestamp = cutoff_timestamp;
-    if let Some(last_pay) = pays.last() {
-        pay_index.start = last_pay.created_index.unwrap_or(u64::MAX);
-    }
-
-    for pay in &pending_pays {
-        if let Some(dest) = pay.destination {
-            if dest == full_node_data.my_pubkey {
-                continue;
-            }
-        }
-        if !pending_hashes.contains(&pay.payment_hash) {
-            continue;
-        }
-        if let Some(c_index) = pay.created_index {
-            if c_index < pay_index.start {
-                pay_index.start = c_index;
-            }
-        }
-    }
-
-    build_pays_table(
-        config,
-        pays,
-        &mut pay_index,
-        full_node_data,
-        rpc,
-        plugin.clone(),
-    )
-    .await?;
-
-    if pay_index.start < u64::MAX {
-        *plugin.state().pay_index.lock() = pay_index;
-    }
-    log::debug!("Build pays table. Total: {}ms", now.elapsed().as_millis());
-    if config.pays_limit > 0 && full_node_data.pays.len() > config.pays_limit {
-        full_node_data.pays = full_node_data
-            .pays
-            .split_off(full_node_data.pays.len() - config.pays_limit);
+    if config.pays_limit > 0 && pays_map.len() > config.pays_limit {
+        full_node_data.pays = pays_map
+            .into_values()
+            .rev()
+            .take(config.pays_limit)
+            .rev()
+            .collect();
+    } else {
+        full_node_data.pays = pays_map.into_values().collect();
     }
     full_node_data.pays.sort_by_key(|x| x.completed_at);
 
     Ok(())
 }
 
+async fn process_pay_batches(
+    plugin: Plugin<PluginState>,
+    now: Instant,
+    pays_acc: &mut PaysAccumulator<'_>,
+    config: &Config,
+    rpc: &mut ClnRpc,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let current_index = rpc
+        .call_typed(&WaitRequest {
+            indexname: WaitIndexname::UPDATED,
+            subsystem: WaitSubsystem::SENDPAYS,
+            nextvalue: 0,
+        })
+        .await?
+        .updated
+        .unwrap();
+    log::debug!("Current pays index: {current_index}");
+
+    let mut loop_count = 0;
+
+    let (mut start_index, limit) = if pays_acc.pay_index.start < u64::MAX {
+        (pays_acc.pay_index.start, None)
+    } else {
+        (
+            current_index.saturating_sub(PAGE_SIZE - 1),
+            Some(u32::try_from(PAGE_SIZE)?),
+        )
+    };
+
+    while *pays_acc.oldest_updated > pays_acc.pay_index.timestamp
+    // && (config.pays_limit == 0 || pays_acc.pays_map.len() < config.pays_limit)
+    {
+        loop_count += 1;
+        let pays = rpc
+            .call_typed(&ListpaysRequest {
+                bolt11: None,
+                payment_hash: None,
+                status: Some(ListpaysStatus::COMPLETE),
+                index: Some(ListpaysIndex::UPDATED),
+                start: Some(start_index),
+                limit,
+            })
+            .await?
+            .pays;
+
+        build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin.clone()).await?;
+
+        if start_index == 0 {
+            break;
+        }
+        start_index = start_index.saturating_sub(PAGE_SIZE);
+    }
+
+    log::debug!(
+        "Build pays table in {loop_count} calls. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+
+    Ok(())
+}
+
 async fn build_pays_table(
+    pays_acc: &mut PaysAccumulator<'_>,
     config: &Config,
     pays: Vec<ListpaysPays>,
-    pay_index: &mut PagingIndex,
     full_node_data: &mut FullNodeData,
     rpc: &mut ClnRpc,
     plugin: Plugin<PluginState>,
@@ -169,42 +205,43 @@ async fn build_pays_table(
     let description_wanted = config.pays_columns.contains(&PaysColumns::description) || config.json;
     let destination_wanted = config.pays_columns.contains(&PaysColumns::destination) || config.json;
 
-    for pay in pays {
-        if pay.completed_at.unwrap() <= pay_index.timestamp {
+    for pay in pays.into_iter().rev() {
+        let Some(updated_index) = pay.updated_index else {
             continue;
-        }
+        };
+
+        let Some(completed_at) = pay.completed_at else {
+            continue;
+        };
+
         if let Some(dest) = pay.destination {
             if dest == full_node_data.my_pubkey {
                 continue;
             }
         }
 
-        let mut fee_msat = None;
-        let mut fee_sats = None;
-        let mut msats_requested = pay.amount_msat.map(|a| a.msat());
-        let mut sats_requested = None;
-        let mut description = pay.description;
-        let mut destination = pay.destination;
-        let mut destination_alias = None;
+        if pays_acc.pays_map.contains_key(&updated_index) {
+            continue;
+        }
 
-        if msats_requested.is_none()
-            || (description.is_none() && description_wanted)
-            || (destination.is_none() && destination_wanted)
-        {
-            if let Some(b11) = pay.bolt11 {
-                if let Ok(invoice) = rpc.call_typed(&DecodeRequest { string: b11 }).await {
-                    description = invoice.description;
-                    msats_requested = invoice.amount_msat.map(|a| a.msat());
-                    destination = invoice.payee;
-                }
-            } else if let Some(b12) = pay.bolt12 {
-                if let Ok(invoice) = rpc.call_typed(&DecodeRequest { string: b12 }).await {
-                    description = invoice.offer_description;
-                    msats_requested = invoice.invoice_amount_msat.map(|a| a.msat());
-                    destination = invoice.invoice_node_id;
-                }
+        if completed_at <= *pays_acc.oldest_updated {
+            *pays_acc.oldest_updated = completed_at;
+            if updated_index <= pays_acc.pay_index.start {
+                pays_acc.pay_index.start = updated_index;
             }
         }
+
+        if completed_at <= pays_acc.pay_index.timestamp {
+            continue;
+        }
+
+        let mut fee_msat = None;
+        let mut fee_sats = None;
+        let mut sats_requested = None;
+        let mut destination_alias = None;
+
+        let (description, msats_requested, destination) =
+            extract_pay_metadata(rpc, &pay, description_wanted, destination_wanted).await;
 
         if let Some(dest) = destination {
             if dest == full_node_data.my_pubkey {
@@ -238,41 +275,78 @@ async fn build_pays_table(
                 Some(pay.amount_sent_msat.unwrap().msat());
         }
 
-        full_node_data.pays.push(Pays {
-            completed_at: pay.completed_at.unwrap(),
-            completed_at_str: timestamp_to_localized_datetime_string(
-                config,
-                pay.completed_at.unwrap(),
-            )?,
-            payment_hash: pay.payment_hash.to_string(),
-            msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-            sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
-            destination: if let Some(dest) = destination_alias {
-                if dest == NODE_GOSSIP_MISS {
-                    Some(destination.unwrap().to_string())
-                } else if config.utf8 {
-                    Some(dest)
+        pays_acc.pays_map.insert(
+            updated_index,
+            Pays {
+                completed_at,
+                completed_at_str: timestamp_to_localized_datetime_string(config, completed_at)?,
+                payment_hash: pay.payment_hash.to_string(),
+                msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
+                sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
+                destination: if let Some(dest) = destination_alias {
+                    if dest == NODE_GOSSIP_MISS {
+                        Some(destination.unwrap().to_string())
+                    } else if config.utf8 {
+                        Some(dest)
+                    } else {
+                        Some(dest.replace(|c: char| !c.is_ascii(), "?"))
+                    }
                 } else {
-                    Some(dest.replace(|c: char| !c.is_ascii(), "?"))
-                }
-            } else {
-                None
+                    None
+                },
+                description,
+                preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
+                msats_requested,
+                sats_requested,
+                fee_msats: fee_msat,
+                fee_sats,
             },
-            description,
-            preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
-            msats_requested,
-            sats_requested,
-            fee_msats: fee_msat,
-            fee_sats,
-        });
+        );
+    }
+    Ok(())
+}
 
-        if let Some(c_index) = pay.created_index {
-            if c_index < pay_index.start {
-                pay_index.start = c_index;
+async fn extract_pay_metadata(
+    rpc: &mut ClnRpc,
+    pay: &ListpaysPays,
+    description_wanted: bool,
+    destination_wanted: bool,
+) -> (Option<String>, Option<u64>, Option<PublicKey>) {
+    let mut description = pay.description.clone();
+    let mut msats_requested = pay.amount_msat.map(|a| a.msat());
+    let mut destination = pay.destination;
+
+    let needs_invoice_decode = msats_requested.is_none()
+        || (description.is_none() && description_wanted)
+        || (destination.is_none() && destination_wanted);
+
+    if needs_invoice_decode {
+        if let Some(b11) = &pay.bolt11 {
+            if let Ok(invoice) = rpc
+                .call_typed(&DecodeRequest {
+                    string: b11.to_owned(),
+                })
+                .await
+            {
+                description = invoice.description;
+                msats_requested = invoice.amount_msat.map(|a| a.msat());
+                destination = invoice.payee;
+            }
+        } else if let Some(b12) = &pay.bolt12 {
+            if let Ok(invoice) = rpc
+                .call_typed(&DecodeRequest {
+                    string: b12.to_owned(),
+                })
+                .await
+            {
+                description = invoice.offer_description;
+                msats_requested = invoice.invoice_amount_msat.map(|a| a.msat());
+                destination = invoice.invoice_node_id;
             }
         }
     }
-    Ok(())
+
+    (description, msats_requested, destination)
 }
 
 #[allow(clippy::too_many_lines)]
