@@ -7,7 +7,16 @@ use std::{
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
 use cln_rpc::{
-    model::requests::{ListnodesRequest, ListpeerchannelsRequest},
+    model::requests::{
+        ListnodesRequest,
+        ListpaysIndex,
+        ListpaysRequest,
+        ListpaysStatus,
+        ListpeerchannelsRequest,
+        WaitIndexname,
+        WaitRequest,
+        WaitSubsystem,
+    },
     primitives::PublicKey,
     ClnRpc,
 };
@@ -18,7 +27,7 @@ use tokio::{
 };
 
 use crate::{
-    structs::{PeerAvailability, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET},
+    structs::{PeerAvailability, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET, PAGE_SIZE},
     util::{is_active_state, make_rpc_path},
 };
 
@@ -38,8 +47,32 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
         })
         .await?
         .channels;
+    let current_index = rpc
+        .call_typed(&WaitRequest {
+            indexname: WaitIndexname::UPDATED,
+            subsystem: WaitSubsystem::SENDPAYS,
+            nextvalue: 0,
+        })
+        .await?
+        .updated
+        .unwrap();
+    let listpays = rpc
+        .call_typed(&ListpaysRequest {
+            bolt11: None,
+            index: Some(ListpaysIndex::UPDATED),
+            limit: Some(u32::try_from(PAGE_SIZE)?),
+            payment_hash: None,
+            start: Some(current_index.saturating_sub(PAGE_SIZE + 1)),
+            status: Some(ListpaysStatus::COMPLETE),
+        })
+        .await?
+        .pays;
 
-    let peer_ids: HashSet<PublicKey> = listpeerchans.iter().map(|c| c.peer_id).collect();
+    let peer_ids: HashSet<PublicKey> = listpeerchans
+        .iter()
+        .map(|c| c.peer_id)
+        .chain(listpays.iter().filter_map(|p| p.destination))
+        .collect();
 
     let peer_count = peer_ids.len();
 
@@ -81,8 +114,11 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
     };
 
     log::info!(
-        "Alias map refresh done in: {}ms. Next refresh in {}s",
+        "Alias map refresh done in: {}ms. {} node aliases cached. {} nodes missing from gossip. \
+        Next refresh in {}s",
         now.elapsed().as_millis(),
+        peer_count - miss_count,
+        miss_count,
         next_sleep
     );
     Ok(next_sleep)

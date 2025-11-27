@@ -15,7 +15,7 @@ use cln_rpc::{
         },
         responses::{ListforwardsForwards, ListpeerchannelsChannels},
     },
-    primitives::{Amount, PublicKey, ShortChannelId},
+    primitives::{Amount, ShortChannelId},
     ClnRpc,
 };
 use strum::IntoEnumIterator;
@@ -147,7 +147,7 @@ async fn process_forward_batches(
         (forwards_acc.fw_index.start, None)
     } else {
         (
-            current_index.saturating_sub(PAGE_SIZE - 1),
+            current_index.saturating_sub(PAGE_SIZE + 1),
             Some(u32::try_from(PAGE_SIZE)?),
         )
     };
@@ -167,16 +167,16 @@ async fn process_forward_batches(
             .await?
             .forwards;
 
-        let alias_map = plugin.state().alias_map.lock();
-
         build_forwards_table(
+            rpc,
+            plugin.clone(),
             forwards_acc,
             config,
             settled_forwards,
             chanmap,
-            &alias_map,
             full_node_data,
-        )?;
+        )
+        .await?;
 
         if start_index == 0 {
             break;
@@ -231,12 +231,13 @@ fn post_process_forwards_data(
     full_node_data.forwards.sort_by_key(|x| x.resolved_time);
 }
 
-fn build_forwards_table(
+async fn build_forwards_table(
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
     forwards_acc: &mut ForwardsAccumulator,
     config: &Config,
     settled_forwards: Vec<ListforwardsForwards>,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
-    alias_map: &BTreeMap<PublicKey, String>,
     full_node_data: &mut FullNodeData,
 ) -> Result<(), Error> {
     for forward in settled_forwards.into_iter().rev() {
@@ -259,10 +260,11 @@ fn build_forwards_table(
         }
         if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > forwards_acc.fw_index.timestamp
         {
-            let inchan = get_alias_from_scid(forward.in_channel, chanmap, alias_map);
+            let inchan =
+                get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin.clone()).await;
 
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = get_alias_from_scid(fw_outchan, chanmap, alias_map);
+            let outchan = get_alias_from_scid(fw_outchan, chanmap, rpc, plugin.clone()).await;
 
             let mut should_filter = false;
             if let Some(ff_msat) = config.forwards_filter_amt_msat {

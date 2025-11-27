@@ -9,8 +9,9 @@ use anyhow::anyhow;
 use chrono::{Datelike, Local, Timelike};
 use cln_plugin::{Error, Plugin};
 use cln_rpc::{
-    model::responses::ListpeerchannelsChannels,
+    model::{requests::ListnodesRequest, responses::ListpeerchannelsChannels},
     primitives::{ChannelState, PublicKey, ShortChannelId},
+    ClnRpc,
 };
 use fixed_decimal::{FixedInteger, Sign, UnsignedDecimal};
 use icu_datetime::{fieldsets, DateTimeFormatter};
@@ -20,7 +21,14 @@ use tabled::grid::records::{
     Resizable,
 };
 
-use crate::structs::{Config, GraphCharset, PluginState, TableColumn, NO_ALIAS_SET};
+use crate::structs::{
+    Config,
+    GraphCharset,
+    PluginState,
+    TableColumn,
+    NODE_GOSSIP_MISS,
+    NO_ALIAS_SET,
+};
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     #[allow(clippy::match_like_matches_macro)]
@@ -228,20 +236,66 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
     Ok(my_version_parts.len() >= min_version_parts.len())
 }
 
-pub fn get_alias_from_scid(
+pub async fn get_alias(
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
+    peer_id: PublicKey,
+) -> Result<String, Error> {
+    let alias = plugin
+        .state()
+        .alias_map
+        .lock()
+        .get::<PublicKey>(&peer_id)
+        .cloned();
+    match alias {
+        Some(a) => Ok(a),
+        None => {
+            if let Some(node) = rpc
+                .call_typed(&ListnodesRequest { id: Some(peer_id) })
+                .await?
+                .nodes
+                .first()
+            {
+                let new_alias = match &node.alias {
+                    Some(newalias) => newalias,
+                    None => NO_ALIAS_SET,
+                };
+                plugin
+                    .state()
+                    .alias_map
+                    .lock()
+                    .insert(peer_id, new_alias.to_owned());
+                Ok(new_alias.to_owned())
+            } else {
+                let new_alias = NODE_GOSSIP_MISS;
+                plugin
+                    .state()
+                    .alias_map
+                    .lock()
+                    .insert(peer_id, new_alias.to_owned());
+                Ok(new_alias.to_owned())
+            }
+        }
+    }
+}
+
+pub async fn get_alias_from_scid(
     scid: ShortChannelId,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
-    alias_map: &BTreeMap<PublicKey, String>,
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
 ) -> String {
-    chanmap
-        .get(&scid)
-        .and_then(|chan| {
-            alias_map
-                .get::<PublicKey>(&chan.peer_id)
-                .filter(|alias| alias.as_str() != (NO_ALIAS_SET))
-                .cloned()
-        })
-        .unwrap_or_else(|| scid.to_string())
+    let Some(listpeerchannel) = chanmap.get(&scid) else {
+        return scid.to_string();
+    };
+    let Ok(alias) = get_alias(rpc, plugin, listpeerchannel.peer_id).await else {
+        return scid.to_string();
+    };
+    if alias == NO_ALIAS_SET || alias == NODE_GOSSIP_MISS {
+        scid.to_string()
+    } else {
+        alias
+    }
 }
 
 #[allow(clippy::cast_precision_loss)]
