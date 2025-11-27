@@ -59,10 +59,10 @@ use crate::{
     },
 };
 
-struct PaysAccumulator<'a> {
-    oldest_updated: &'a mut u64,
-    pay_index: &'a mut PagingIndex,
-    pays_map: &'a mut BTreeMap<u64, Pays>,
+struct PaysAccumulator {
+    oldest_updated: u64,
+    pay_index: PagingIndex,
+    pays_map: BTreeMap<u64, Pays>,
 }
 
 pub async fn gather_pays_data(
@@ -75,29 +75,26 @@ pub async fn gather_pays_data(
     let now_utc = Utc::now().timestamp().unsigned_abs();
     let config_pays_sec = config.pays * 60 * 60;
     let cutoff_timestamp = now_utc - config_pays_sec;
-    {
-        if plugin.state().pay_index.lock().timestamp > cutoff_timestamp {
-            *plugin.state().pay_index.lock() = PagingIndex::new();
-            log::debug!("pay_index: pays-age increased, resetting index");
-        }
-    }
-    let mut pay_index = plugin.state().pay_index.lock().clone();
+
+    pay_index_reset_if_needed(&plugin, config);
+
+    let mut pay_index = *plugin.state().pay_index.lock();
     log::debug!(
-        "pay_index: start:{} old_timestamp:{} new_timestamp:{}",
+        "1 pay_index: start:{} old_timestamp:{} new_timestamp:{}",
         pay_index.start,
         pay_index.timestamp,
         cutoff_timestamp
     );
     pay_index.timestamp = cutoff_timestamp;
 
-    let mut oldest_updated = now_utc;
+    let oldest_updated = now_utc;
 
-    let mut pays_map: BTreeMap<u64, Pays> = BTreeMap::new();
+    let pays_map: BTreeMap<u64, Pays> = BTreeMap::new();
 
     let mut pays_acc = PaysAccumulator {
-        oldest_updated: &mut oldest_updated,
-        pay_index: &mut pay_index,
-        pays_map: &mut pays_map,
+        oldest_updated,
+        pay_index,
+        pays_map,
     };
 
     process_pay_batches(
@@ -110,24 +107,7 @@ pub async fn gather_pays_data(
     )
     .await?;
 
-    log::debug!(
-        "pay_index: start:{} timestamp:{}",
-        pay_index.start,
-        pay_index.timestamp
-    );
-    *plugin.state().pay_index.lock() = pay_index;
-
-    if config.pays_limit > 0 && pays_map.len() > config.pays_limit {
-        full_node_data.pays = pays_map
-            .into_values()
-            .rev()
-            .take(config.pays_limit)
-            .rev()
-            .collect();
-    } else {
-        full_node_data.pays = pays_map.into_values().collect();
-    }
-    full_node_data.pays.sort_by_key(|x| x.completed_at);
+    post_process_pays_data(&plugin, pays_acc, config, full_node_data);
 
     Ok(())
 }
@@ -135,7 +115,7 @@ pub async fn gather_pays_data(
 async fn process_pay_batches(
     plugin: Plugin<PluginState>,
     now: Instant,
-    pays_acc: &mut PaysAccumulator<'_>,
+    pays_acc: &mut PaysAccumulator,
     config: &Config,
     rpc: &mut ClnRpc,
     full_node_data: &mut FullNodeData,
@@ -153,7 +133,7 @@ async fn process_pay_batches(
 
     let mut loop_count = 0;
 
-    let (mut start_index, limit) = if pays_acc.pay_index.start < u64::MAX {
+    let (mut start_index, mut limit) = if pays_acc.pay_index.start < u64::MAX {
         (pays_acc.pay_index.start, None)
     } else {
         (
@@ -162,10 +142,9 @@ async fn process_pay_batches(
         )
     };
 
-    while *pays_acc.oldest_updated > pays_acc.pay_index.timestamp
-    // && (config.pays_limit == 0 || pays_acc.pays_map.len() < config.pays_limit)
-    {
+    while pays_acc.oldest_updated >= pays_acc.pay_index.timestamp {
         loop_count += 1;
+        // let now = Instant::now();
         let pays = rpc
             .call_typed(&ListpaysRequest {
                 bolt11: None,
@@ -177,12 +156,30 @@ async fn process_pay_batches(
             })
             .await?
             .pays;
+        // log::debug!("Listpays {} in {}ms", pays.len(), now.elapsed().as_millis());
 
+        // let now = Instant::now();
         build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin.clone()).await?;
+        // log::debug!(
+        //     "Build pays table {} in {}ms",
+        //     pays_acc.pays_map.len(),
+        //     now.elapsed().as_millis()
+        // );
+
+        // log::debug!(
+        //     "oldest_updated: {} start_index: {} map_len:{}",
+        //     pays_acc.oldest_updated,
+        //     start_index,
+        //     pays_acc.pays_map.len()
+        // );
 
         if start_index == 0 {
             break;
         }
+        limit = Some(u32::min(
+            u32::try_from(PAGE_SIZE)?,
+            u32::try_from(start_index)?,
+        ));
         start_index = start_index.saturating_sub(PAGE_SIZE);
     }
 
@@ -194,8 +191,43 @@ async fn process_pay_batches(
     Ok(())
 }
 
+fn post_process_pays_data(
+    plugin: &Plugin<PluginState>,
+    mut pays_acc: PaysAccumulator,
+    config: &Config,
+    full_node_data: &mut FullNodeData,
+) {
+    log::debug!(
+        "2 pay_index: start:{} timestamp:{}",
+        pays_acc.pay_index.start,
+        pays_acc.pay_index.timestamp
+    );
+    pays_acc.pay_index.age = config.pays;
+
+    if config.pays_limit > 0 && pays_acc.pays_map.len() > config.pays_limit {
+        full_node_data.pays = pays_acc
+            .pays_map
+            .into_values()
+            .rev()
+            .take(config.pays_limit)
+            .rev()
+            .collect();
+    } else {
+        full_node_data.pays = pays_acc.pays_map.into_values().collect();
+    }
+
+    log::debug!(
+        "3 pay_index: start:{} timestamp:{}",
+        pays_acc.pay_index.start,
+        pays_acc.pay_index.timestamp
+    );
+    *plugin.state().pay_index.lock() = pays_acc.pay_index;
+
+    full_node_data.pays.sort_by_key(|x| x.completed_at);
+}
+
 async fn build_pays_table(
-    pays_acc: &mut PaysAccumulator<'_>,
+    pays_acc: &mut PaysAccumulator,
     config: &Config,
     pays: Vec<ListpaysPays>,
     full_node_data: &mut FullNodeData,
@@ -214,20 +246,20 @@ async fn build_pays_table(
             continue;
         };
 
-        if let Some(dest) = pay.destination {
-            if dest == full_node_data.my_pubkey {
-                continue;
-            }
-        }
-
         if pays_acc.pays_map.contains_key(&updated_index) {
             continue;
         }
 
-        if completed_at <= *pays_acc.oldest_updated {
-            *pays_acc.oldest_updated = completed_at;
+        if completed_at <= pays_acc.oldest_updated {
+            pays_acc.oldest_updated = completed_at;
             if updated_index <= pays_acc.pay_index.start {
                 pays_acc.pay_index.start = updated_index;
+            }
+        }
+
+        if let Some(dest) = pay.destination {
+            if dest == full_node_data.my_pubkey {
+                continue;
             }
         }
 
@@ -347,6 +379,15 @@ async fn extract_pay_metadata(
     }
 
     (description, msats_requested, destination)
+}
+
+fn pay_index_reset_if_needed(plugin: &Plugin<PluginState>, config: &Config) {
+    let mut pay_index = plugin.state().pay_index.lock();
+
+    if pay_index.age != config.pays {
+        *pay_index = PagingIndex::new();
+        log::debug!("pay_index: pays window changed, resetting index");
+    }
 }
 
 #[allow(clippy::too_many_lines)]

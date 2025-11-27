@@ -57,11 +57,11 @@ use crate::{
     },
 };
 
-struct ForwardsAccumulator<'a> {
-    oldest_updated: &'a mut u64,
-    fw_index: &'a mut PagingIndex,
-    forwards_map: &'a mut BTreeMap<u64, Forwards>,
-    filtered_set: &'a mut HashSet<u64>,
+struct ForwardsAccumulator {
+    oldest_updated: u64,
+    fw_index: PagingIndex,
+    forwards_map: BTreeMap<u64, Forwards>,
+    filtered_set: HashSet<u64>,
 }
 
 pub async fn gather_forwards_data(
@@ -75,15 +75,12 @@ pub async fn gather_forwards_data(
     let now_utc = Utc::now().timestamp().unsigned_abs();
     let config_forwards_sec = config.forwards * 60 * 60;
     let cutoff_timestamp = now_utc - config_forwards_sec;
-    {
-        if plugin.state().fw_index.lock().timestamp > cutoff_timestamp {
-            *plugin.state().fw_index.lock() = PagingIndex::new();
-            log::debug!("fw_index: forwards-age increased, resetting index");
-        }
-    }
-    let mut fw_index = plugin.state().fw_index.lock().clone();
+
+    fw_index_reset_if_needed(&plugin, config);
+
+    let mut fw_index = *plugin.state().fw_index.lock();
     log::debug!(
-        "fw_index: start:{} old_timestamp:{} new_timestamp:{}",
+        "1 fw_index: start:{} old_timestamp:{} new_timestamp:{}",
         fw_index.start,
         fw_index.timestamp,
         cutoff_timestamp
@@ -95,17 +92,17 @@ pub async fn gather_forwards_data(
         .filter_map(|s| s.short_channel_id.map(|id| (id, s.clone())))
         .collect();
 
-    let mut oldest_updated = now_utc;
+    let oldest_updated = now_utc;
 
-    let mut forwards_map: BTreeMap<u64, Forwards> = BTreeMap::new();
+    let forwards_map: BTreeMap<u64, Forwards> = BTreeMap::new();
 
-    let mut filtered_set: HashSet<u64> = HashSet::new();
+    let filtered_set: HashSet<u64> = HashSet::new();
 
     let mut forwards_acc = ForwardsAccumulator {
-        oldest_updated: &mut oldest_updated,
-        fw_index: &mut fw_index,
-        forwards_map: &mut forwards_map,
-        filtered_set: &mut filtered_set,
+        oldest_updated,
+        fw_index,
+        forwards_map,
+        filtered_set,
     };
 
     process_forward_batches(
@@ -119,24 +116,7 @@ pub async fn gather_forwards_data(
     )
     .await?;
 
-    log::debug!(
-        "fw_index: start:{} timestamp:{}",
-        fw_index.start,
-        fw_index.timestamp
-    );
-    *plugin.state().fw_index.lock() = fw_index;
-
-    if config.forwards_limit > 0 && forwards_map.len() > config.forwards_limit {
-        full_node_data.forwards = forwards_map
-            .into_values()
-            .rev()
-            .take(config.forwards_limit)
-            .rev()
-            .collect();
-    } else {
-        full_node_data.forwards = forwards_map.into_values().collect();
-    }
-    full_node_data.forwards.sort_by_key(|x| x.resolved_time);
+    post_process_forwards_data(&plugin, forwards_acc, config, full_node_data);
 
     Ok(())
 }
@@ -144,7 +124,7 @@ pub async fn gather_forwards_data(
 async fn process_forward_batches(
     plugin: Plugin<PluginState>,
     now: Instant,
-    forwards_acc: &mut ForwardsAccumulator<'_>,
+    forwards_acc: &mut ForwardsAccumulator,
     config: &Config,
     rpc: &mut ClnRpc,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
@@ -163,7 +143,7 @@ async fn process_forward_batches(
 
     let mut loop_count = 0;
 
-    let (mut start_index, limit) = if forwards_acc.fw_index.start < u64::MAX {
+    let (mut start_index, mut limit) = if forwards_acc.fw_index.start < u64::MAX {
         (forwards_acc.fw_index.start, None)
     } else {
         (
@@ -172,9 +152,7 @@ async fn process_forward_batches(
         )
     };
 
-    while *forwards_acc.oldest_updated > forwards_acc.fw_index.timestamp
-    // && (config.pays_limit == 0 || forwards_acc.forwards_map.len() < config.forwards_limit)
-    {
+    while forwards_acc.oldest_updated >= forwards_acc.fw_index.timestamp {
         loop_count += 1;
 
         let settled_forwards = rpc
@@ -203,6 +181,10 @@ async fn process_forward_batches(
         if start_index == 0 {
             break;
         }
+        limit = Some(u32::min(
+            u32::try_from(PAGE_SIZE)?,
+            u32::try_from(start_index)?,
+        ));
         start_index = start_index.saturating_sub(PAGE_SIZE);
     }
 
@@ -214,8 +196,43 @@ async fn process_forward_batches(
     Ok(())
 }
 
+fn post_process_forwards_data(
+    plugin: &Plugin<PluginState>,
+    mut forwards_acc: ForwardsAccumulator,
+    config: &Config,
+    full_node_data: &mut FullNodeData,
+) {
+    log::debug!(
+        "2 fw_index: start:{} timestamp:{}",
+        forwards_acc.fw_index.start,
+        forwards_acc.fw_index.timestamp
+    );
+    forwards_acc.fw_index.age = config.forwards;
+
+    if config.forwards_limit > 0 && forwards_acc.forwards_map.len() > config.forwards_limit {
+        full_node_data.forwards = forwards_acc
+            .forwards_map
+            .into_values()
+            .rev()
+            .take(config.forwards_limit)
+            .rev()
+            .collect();
+    } else {
+        full_node_data.forwards = forwards_acc.forwards_map.into_values().collect();
+    }
+
+    log::debug!(
+        "3 fw_index: start:{} timestamp:{}",
+        forwards_acc.fw_index.start,
+        forwards_acc.fw_index.timestamp
+    );
+    *plugin.state().fw_index.lock() = forwards_acc.fw_index;
+
+    full_node_data.forwards.sort_by_key(|x| x.resolved_time);
+}
+
 fn build_forwards_table(
-    forwards_acc: &mut ForwardsAccumulator<'_>,
+    forwards_acc: &mut ForwardsAccumulator,
     config: &Config,
     settled_forwards: Vec<ListforwardsForwards>,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
@@ -234,8 +251,8 @@ fn build_forwards_table(
         if forwards_acc.filtered_set.contains(&updated_index) {
             continue;
         }
-        if received_time <= *forwards_acc.oldest_updated {
-            *forwards_acc.oldest_updated = received_time;
+        if received_time <= forwards_acc.oldest_updated {
+            forwards_acc.oldest_updated = received_time;
             if updated_index <= forwards_acc.fw_index.start {
                 forwards_acc.fw_index.start = updated_index;
             }
@@ -276,54 +293,61 @@ fn build_forwards_table(
                 full_node_data.totals.forwards_fees_msat = Some(forward.fee_msat.unwrap().msat());
             }
 
+            let result = Forwards {
+                received_time: received_time * 1_000,
+                received_time_str: timestamp_to_localized_datetime_string(
+                    config,
+                    f64_to_u64_trunc(forward.received_time),
+                )?,
+                resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
+                resolved_time_str: timestamp_to_localized_datetime_string(
+                    config,
+                    f64_to_u64_trunc(forward.resolved_time.unwrap()),
+                )?,
+                in_alias: if config.utf8 {
+                    inchan
+                } else {
+                    inchan.replace(|c: char| !c.is_ascii(), "?")
+                },
+                in_channel: forward.in_channel,
+                out_alias: if config.utf8 {
+                    outchan
+                } else {
+                    outchan.replace(|c: char| !c.is_ascii(), "?")
+                },
+                out_channel: forward.out_channel.unwrap(),
+                in_msats: Amount::msat(&forward.in_msat),
+                out_msats: Amount::msat(&forward.out_msat.unwrap()),
+                fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
+                in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
+                out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
+                fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
+                eff_fee_ppm: feeppm_effective_from_amts(
+                    forward.in_msat.msat(),
+                    forward.out_msat.unwrap().msat(),
+                ),
+            };
+
             if should_filter {
-                full_node_data.forwards_filter_stats.amt_sum_msat += forward.in_msat.msat();
-                full_node_data.forwards_filter_stats.fee_sum_msat +=
-                    forward.fee_msat.unwrap().msat();
+                full_node_data.forwards_filter_stats.amt_sum_msat += result.in_msats;
+                full_node_data.forwards_filter_stats.fee_sum_msat += result.fee_msats;
                 full_node_data.forwards_filter_stats.count += 1;
                 forwards_acc.filtered_set.insert(updated_index);
             } else {
-                forwards_acc.forwards_map.insert(
-                    updated_index,
-                    Forwards {
-                        received_time: received_time * 1_000,
-                        received_time_str: timestamp_to_localized_datetime_string(
-                            config,
-                            f64_to_u64_trunc(forward.received_time),
-                        )?,
-                        resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
-                        resolved_time_str: timestamp_to_localized_datetime_string(
-                            config,
-                            f64_to_u64_trunc(forward.resolved_time.unwrap()),
-                        )?,
-                        in_alias: if config.utf8 {
-                            inchan
-                        } else {
-                            inchan.replace(|c: char| !c.is_ascii(), "?")
-                        },
-                        in_channel: forward.in_channel,
-                        out_alias: if config.utf8 {
-                            outchan
-                        } else {
-                            outchan.replace(|c: char| !c.is_ascii(), "?")
-                        },
-                        out_channel: forward.out_channel.unwrap(),
-                        in_msats: Amount::msat(&forward.in_msat),
-                        out_msats: Amount::msat(&forward.out_msat.unwrap()),
-                        fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
-                        in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
-                        out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
-                        fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
-                        eff_fee_ppm: feeppm_effective_from_amts(
-                            forward.in_msat.msat(),
-                            forward.out_msat.unwrap().msat(),
-                        ),
-                    },
-                );
+                forwards_acc.forwards_map.insert(updated_index, result);
             }
         }
     }
     Ok(())
+}
+
+fn fw_index_reset_if_needed(plugin: &Plugin<PluginState>, config: &Config) {
+    let mut fw_index = plugin.state().fw_index.lock();
+
+    if fw_index.age != config.forwards {
+        *fw_index = PagingIndex::new();
+        log::debug!("fw_index: forwards window changed, resetting index");
+    }
 }
 
 #[allow(clippy::too_many_lines)]
