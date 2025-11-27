@@ -128,7 +128,7 @@ async fn process_invoice_batches(
         (invoices_acc.inv_index.start, None)
     } else {
         (
-            current_index.saturating_sub(PAGE_SIZE - 1),
+            current_index.saturating_sub(PAGE_SIZE + 1),
             Some(u32::try_from(PAGE_SIZE)?),
         )
     };

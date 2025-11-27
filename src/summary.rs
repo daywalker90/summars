@@ -61,11 +61,11 @@ use crate::{
         Summary,
         SummaryColumns,
         TableColumn,
-        NODE_GOSSIP_MISS,
     },
     util::{
         at_or_above_version,
         draw_chans_graph,
+        get_alias,
         is_active_state,
         make_channel_flags,
         make_rpc_path,
@@ -170,6 +170,7 @@ async fn build_node_data(
         config,
         plugin.clone(),
         full_node_data,
+        rpc,
     )
     .await?;
     log::debug!(
@@ -322,6 +323,7 @@ async fn process_channels_data(
     config: &Config,
     plugin: Plugin<PluginState>,
     full_node_data: &mut FullNodeData,
+    rpc: &mut ClnRpc,
 ) -> Result<(), Error> {
     full_node_data.node_summary = NodeSummary {
         num_gossipers: peers
@@ -333,17 +335,12 @@ async fn process_channels_data(
 
     let mut channel_map = HashMap::with_capacity(peer_channels.len());
     {
-        let alias_map = plugin.state().alias_map.lock();
-
         for (id, chan) in peer_channels.iter().enumerate() {
             if is_chan_filtered(config, chan) {
                 full_node_data.node_summary.filter_count += 1;
                 continue;
             }
-            let alias = alias_map
-                .get(&chan.peer_id)
-                .cloned()
-                .unwrap_or(NODE_GOSSIP_MISS.to_owned());
+            let alias = get_alias(rpc, plugin.clone(), chan.peer_id).await?;
 
             let to_us_msat = Amount::msat(
                 &chan

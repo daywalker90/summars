@@ -47,9 +47,11 @@ use crate::{
         TableColumn,
         MISSING_VALUE,
         NODE_GOSSIP_MISS,
+        NO_ALIAS_SET,
         PAGE_SIZE,
     },
     util::{
+        get_alias,
         hex_encode,
         replace_escaping_chars,
         rounded_div_u64,
@@ -137,7 +139,7 @@ async fn process_pay_batches(
         (pays_acc.pay_index.start, None)
     } else {
         (
-            current_index.saturating_sub(PAGE_SIZE - 1),
+            current_index.saturating_sub(PAGE_SIZE + 1),
             Some(u32::try_from(PAGE_SIZE)?),
         )
     };
@@ -279,7 +281,7 @@ async fn build_pays_table(
             if dest == full_node_data.my_pubkey {
                 continue;
             }
-            destination_alias = plugin.state().alias_map.lock().get(&dest).cloned();
+            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?);
         }
 
         if let Some(amount_msat) = msats_requested {
@@ -316,7 +318,7 @@ async fn build_pays_table(
                 msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
                 sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
                 destination: if let Some(dest) = destination_alias {
-                    if dest == NODE_GOSSIP_MISS {
+                    if dest == NODE_GOSSIP_MISS || dest == NO_ALIAS_SET {
                         Some(destination.unwrap().to_string())
                     } else if config.utf8 {
                         Some(dest)
