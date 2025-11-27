@@ -4,17 +4,25 @@ use std::time::Duration;
 
 use anyhow::anyhow;
 use cln_plugin::{
-    options::{BooleanConfigOption, ConfigOption, IntegerConfigOption, StringConfigOption},
+    options::{
+        ConfigOption,
+        DefaultBooleanConfigOption,
+        DefaultIntegerConfigOption,
+        DefaultStringConfigOption,
+        StringConfigOption,
+    },
     Builder,
 };
 use config::setconfig_callback;
-use log::{info, warn};
 use structs::PluginState;
 use summary::summary;
 use tasks::summars_refreshalias;
 use tokio::{self, time};
 
-use crate::config::get_startup_options;
+use crate::{
+    config::get_startup_options,
+    structs::{ForwardsColumns, InvoicesColumns, PaysColumns, SummaryColumns, TableColumn},
+};
 mod config;
 mod forwards;
 mod invoices;
@@ -52,26 +60,35 @@ const OPT_FLOW_STYLE: &str = "summars-flow-style";
 const OPT_JSON: &str = "summars-json";
 
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::cast_possible_wrap)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,trace");
+    log_panics::init();
     let state = PluginState::new();
+    let default_config = state.config.lock().clone();
     let confplugin;
-    let opt_columns: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_columns = SummaryColumns::to_list_string(&default_config.columns);
+    let opt_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_COLUMNS,
+        &default_columns,
         "Enabled columns in the channel table. Available columns are: \
         `GRAPH_SATS,PERC_US,OUT_SATS,IN_SATS,TOTAL_SATS,SCID,MIN_HTLC,MAX_HTLC,FLAG,BASE,IN_BASE,\
-        PPM,IN_PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE` Default is `OUT_SATS,IN_SATS,SCID,MAX_HTLC,\
-        FLAG,BASE,PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
+        PPM,IN_PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
     )
     .dynamic();
-    let opt_sort_by: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_sort_col = default_config.sort_by.to_string();
+    let opt_sort_by: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_SORT_BY,
+        &default_sort_col,
         "Sort by column name. Available values are: \
         `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,\
-        UPTIME,HTLCS,STATE` Default is `SCID`",
+        UPTIME,HTLCS,STATE`",
     )
     .dynamic();
+
     let opt_exclude_channel_states: StringConfigOption = ConfigOption::new_str_no_default(
         OPT_EXCLUDE_CHANNEL_STATES,
         "Exclude channels with given state from the summary table. Comma-separated string with \
@@ -80,126 +97,184 @@ async fn main() -> Result<(), anyhow::Error> {
         AWAIT_SPLICE` or `PUBLIC,PRIVATE` or `ONLINE,OFFLINE`",
     )
     .dynamic();
-    let opt_forwards: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_forwards: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_FORWARDS,
-        "Show last x hours of forwards. Default is `0`",
+        default_config.forwards as i64,
+        "Show last x hours of forwards.",
     )
     .dynamic();
-    let opt_forwards_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_forwards_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_FORWARDS_LIMIT,
-        "Limit forwards table to the last x entries. Default is `0` (off)",
+        default_config.forwards_limit as i64,
+        "Limit forwards table to the last x entries.",
     )
     .dynamic();
-    let opt_forwards_columns: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_forwards_columns =
+        ForwardsColumns::to_list_string(&default_config.forwards_columns);
+    let opt_forwards_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_FORWARDS_COLUMNS,
+        &default_forwards_columns,
         "Enabled columns in the forwards table. Available columns are: \
         `received_time, resolved_time, in_channel, out_channel, in_alias, out_alias, \
-        in_sats, in_msats, out_sats, out_msats, fee_sats, fee_msats, eff_fee_ppm` \
-        Default is `resolved_time, in_alias, out_alias, in_sats, out_sats, fee_msats`",
+        in_sats, in_msats, out_sats, out_msats, fee_sats, fee_msats, eff_fee_ppm`",
     )
     .dynamic();
-    let opt_forwards_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_forwards_filter_amt: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_FORWARDS_FILTER_AMT,
-        "Filter forwards smaller than or equal to x msats. Default is `-1`",
+        default_config
+            .forwards_filter_amt_msat
+            .map_or(-1, |v| v as i64),
+        "Filter forwards smaller than or equal to x msats.",
     )
     .dynamic();
-    let opt_forwards_filter_fee: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_forwards_filter_fee: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_FORWARDS_FILTER_FEE,
-        "Filter forwards with less than or equal to x msats in fees. Default is `-1`",
+        default_config
+            .forwards_filter_fee_msat
+            .map_or(-1, |v| v as i64),
+        "Filter forwards with less than or equal to x msats in fees.",
     )
     .dynamic();
-    let opt_pays: IntegerConfigOption =
-        ConfigOption::new_i64_no_default(OPT_PAYS, "Show last x hours of pays. Default is `0`")
-            .dynamic();
-    let opt_pays_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_pays: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
+        OPT_PAYS,
+        default_config.pays as i64,
+        "Show last x hours of pays.",
+    )
+    .dynamic();
+
+    let opt_pays_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_PAYS_LIMIT,
-        "Limit pays table to the last x entries. Default is `0` (off)",
+        default_config.pays_limit as i64,
+        "Limit pays table to the last x entries.",
     )
     .dynamic();
-    let opt_pays_columns: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_pays_columns = PaysColumns::to_list_string(&default_config.pays_columns);
+    let opt_pays_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_PAYS_COLUMNS,
+        &default_pays_columns,
         "Enabled columns in the pays table. Available columns are: \
         `completed_at, payment_hash, sats_requested, msats_requested, sats_sent, msats_sent, \
-        fee_sats, fee_msats, destination, description, preimage` \
-        Default is `completed_at, payment_hash, sats_sent, fee_sats, destination`",
+        fee_sats, fee_msats, destination, description, preimage`",
     )
     .dynamic();
-    let opt_max_desc_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_max_desc_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_MAX_DESC_LENGTH,
-        "Max string length of an invoice description. Default is `30`",
+        default_config.max_desc_length,
+        "Max string length of an invoice description.",
     )
     .dynamic();
-    let opt_invoices: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_invoices: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_INVOICES,
-        "Show last x hours of invoices. Default is `0`",
+        default_config.invoices as i64,
+        "Show last x hours of invoices.",
     )
     .dynamic();
-    let opt_invoices_limit: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_invoices_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_INVOICES_LIMIT,
-        "Limit invoices table to the last x entries. Default is `0` (off)",
+        default_config.invoices_limit as i64,
+        "Limit invoices table to the last x entries.",
     )
     .dynamic();
-    let opt_invoices_columns: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_invoices_columns =
+        InvoicesColumns::to_list_string(&default_config.invoices_columns);
+    let opt_invoices_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_INVOICES_COLUMNS,
+        &default_invoices_columns,
         "Enabled columns in the invoices table. Available columns are: \
-        `paid_at, label, description, sats_received, msats_received, payment_hash, preimage` \
-        Default is `paid_at, label, sats_received, payment_hash`",
+        `paid_at, label, description, sats_received, msats_received, payment_hash, preimage`",
     )
     .dynamic();
-    let opt_max_label_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_max_label_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_MAX_LABEL_LENGTH,
-        "Max string length of an invoice label. Default is `30`",
+        default_config.max_label_length,
+        "Max string length of an invoice label.",
     )
     .dynamic();
-    let opt_invoices_filter_amt: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_invoices_filter_amt: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_INVOICES_FILTER_AMT,
-        "Filter invoices smaller than or equal to x msats. Default is `-1`",
+        default_config
+            .invoices_filter_amt_msat
+            .map_or(-1, |v| v as i64),
+        "Filter invoices smaller than or equal to x msats.",
     )
     .dynamic();
-    let opt_locale: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_locale = default_config.locale.to_string();
+    let opt_locale: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_LOCALE,
-        "Set locale used for thousand delimiter etc.. Default is the system's \
-        locale and as fallback `en-US` if none is found.",
+        &default_locale,
+        "Set locale used for thousand delimiter, time etc.",
     )
     .dynamic();
-    let opt_refresh_alias: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_refresh_alias: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_REFRESH_ALIAS,
-        "Set frequency of alias cache refresh in hours. Default is `24`",
+        default_config.refresh_alias as i64,
+        "Set frequency of alias cache refresh in hours.",
     )
     .dynamic();
-    let opt_max_alias_length: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_max_alias_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_MAX_ALIAS_LENGTH,
-        "Max string length of alias. Default is `20`",
+        default_config.max_alias_length,
+        "Max string length of alias.",
     )
     .dynamic();
-    let opt_availability_interval: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_availability_interval: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_AVAILABILITY_INTERVAL,
-        "How often in seconds the availability should be calculated. Default is `300`",
+        default_config.availability_interval as i64,
+        "How often in seconds the availability should be calculated.",
     )
     .dynamic();
-    let opt_availability_window: IntegerConfigOption = ConfigOption::new_i64_no_default(
+
+    let opt_availability_window: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
         OPT_AVAILABILITY_WINDOW,
-        "How many hours the availability should be averaged over. Default is `72`",
+        default_config.availability_window as i64,
+        "How many hours the availability should be averaged over.",
     )
     .dynamic();
-    let opt_utf8: BooleanConfigOption = ConfigOption::new_bool_no_default(
+
+    let opt_utf8: DefaultBooleanConfigOption = ConfigOption::new_bool_with_default(
         OPT_UTF8,
-        "Switch on/off special characters in node alias. Default is `true`",
+        default_config.utf8,
+        "Switch on/off special characters in node alias.",
     )
     .dynamic();
-    let opt_style: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_style = default_config.style.to_string();
+    let opt_style: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_STYLE,
-        "Set style for the summary table. Default is `psql`",
+        &default_style,
+        "Set style for the summary table.",
     )
     .dynamic();
-    let opt_flow_style: StringConfigOption = ConfigOption::new_str_no_default(
+
+    let default_flow_style = default_config.flow_style.to_string();
+    let opt_flow_style: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         OPT_FLOW_STYLE,
-        "Set style for the flow tables (forwards, pays, invoices). Default is `blank`",
+        &default_flow_style,
+        "Set style for the flow tables (forwards, pays, invoices).",
     )
     .dynamic();
-    let opt_json: BooleanConfigOption =
-        ConfigOption::new_bool_no_default(OPT_JSON, "Set output to json. Default is `false`")
+
+    let opt_json: DefaultBooleanConfigOption =
+        ConfigOption::new_bool_with_default(OPT_JSON, default_config.json, "Set output to json.")
             .dynamic();
+
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(opt_columns)
         .option(opt_sort_by)
@@ -247,30 +322,30 @@ async fn main() -> Result<(), anyhow::Error> {
                 Ok(()) => &(),
                 Err(e) => return plugin.disable(format!("{e}").as_str()).await,
             };
-            info!("read startup options done");
+            log::info!("read startup options done");
 
             confplugin = plugin;
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
     }
     if let Ok(plugin) = confplugin.start(state).await {
-        info!("starting uptime task");
+        log::info!("starting uptime task");
         let plugin_clone_avail = plugin.clone();
         tokio::spawn(async move {
             match tasks::trace_availability(plugin_clone_avail).await {
                 Ok(()) => (),
-                Err(e) => warn!("Error in trace_availability thread: {e}"),
+                Err(e) => log::warn!("Error in trace_availability thread: {e}"),
             }
         });
 
-        info!("starting refresh alias task");
+        log::info!("starting refresh alias task");
         let plugin_clone_alias = plugin.clone();
         tokio::spawn(async move {
             loop {
                 let sleep_time = match tasks::refresh_alias(plugin_clone_alias.clone()).await {
                     Ok(s) => s,
                     Err(e) => {
-                        warn!("Error in refresh_alias thread: {e}");
+                        log::warn!("Error in refresh_alias thread: {e}");
                         60
                     }
                 };

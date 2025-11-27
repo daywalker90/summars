@@ -11,7 +11,6 @@ use cln_rpc::{
     primitives::PublicKey,
     ClnRpc,
 };
-use log::{info, warn};
 use serde_json::json;
 use tokio::{
     fs::{self, File},
@@ -26,7 +25,7 @@ use crate::{
 #[allow(clippy::cast_precision_loss)]
 pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
     let now = Instant::now();
-    info!("Starting alias map refresh");
+    log::info!("Starting alias map refresh");
     plugin.state().alias_map.lock().clear();
 
     let rpc_path = make_rpc_path(&plugin);
@@ -81,7 +80,7 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
         60
     };
 
-    info!(
+    log::info!(
         "Alias map refresh done in: {}ms. Next refresh in {}s",
         now.elapsed().as_millis(),
         next_sleep
@@ -114,10 +113,15 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
     match availdbfilecontent {
         Ok(file) => persistpeers = serde_json::from_str(&file).unwrap_or(BTreeMap::new()),
         Err(e) => {
-            warn!("Could not open {}: {}. Maybe this is the first time using summars? Creating new file.", availdbfile.to_str().unwrap(),e);
+            log::warn!(
+                "Could not open {}: {}. Maybe this is the first time using summars? \
+            Creating new file.",
+                availdbfile.to_str().unwrap(),
+                e
+            );
             match fs::create_dir(summarsdir.clone()).await {
                 Ok(()) => (),
-                Err(e) => warn!("Warning: Could not create summars folder:{e}"),
+                Err(e) => log::warn!("Warning: Could not create summars folder:{e}"),
             }
             File::create(availdbfile.clone()).await?;
             persistpeers = BTreeMap::new();
@@ -193,7 +197,6 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
             }
             *plugin.state().avail.lock() = persistpeers.clone();
             fs::write(availdbfile.clone(), serde_json::to_string(&persistpeers)?).await?;
-            // debug!("{:?}", persistpeers);
         }
     }
 }

@@ -363,16 +363,18 @@ pub struct ForwardsFilterStats {
     pub count: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct PagingIndex {
     pub timestamp: u64,
     pub start: u64,
+    pub age: u64,
 }
 impl PagingIndex {
     pub fn new() -> PagingIndex {
         PagingIndex {
             timestamp: 0,
             start: u64::MAX,
+            age: 0,
         }
     }
 }
@@ -564,6 +566,24 @@ impl FromStr for Styles {
             "blank" => Ok(Styles::Blank),
             "empty" => Ok(Styles::Empty),
             _ => Err(anyhow!("could not parse Style from {s}")),
+        }
+    }
+}
+impl Display for Styles {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            Styles::Ascii => write!(f, "ascii"),
+            Styles::Modern => write!(f, "modern"),
+            Styles::Sharp => write!(f, "sharp"),
+            Styles::Rounded => write!(f, "rounded"),
+            Styles::Extended => write!(f, "extended"),
+            Styles::Psql => write!(f, "psql"),
+            Styles::Markdown => write!(f, "markdown"),
+            Styles::ReStructuredText => write!(f, "re_structured_text"),
+            Styles::Dots => write!(f, "dots"),
+            Styles::AsciiRounded => write!(f, "ascii_rounded"),
+            Styles::Blank => write!(f, "blank"),
+            Styles::Empty => write!(f, "empty"),
         }
     }
 }
