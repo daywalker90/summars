@@ -1,12 +1,19 @@
 # Changelog
 
-## [Unreleased]
+## [6.0.0] - 2025-11-28
+
+### Added
+- When using ``summars-pays`` it will now include a totals line for self-payments aka rebalances if there were any in that time window.
 
 ### Changed
-- if node aliases are missing, `summars` will check the gossip faster and only when almost all aliases are found it will use `summars-refresh-alias` again
+- Improved response time when ``summars-forwards``, ``summars-pays`` or ``summars-invoices`` is enabled and your node has alot of data in each
+- Worse response time if you have alot of self-payments before the first real payment in your time window (but you get a totals line for self-payments in return!)
+- If node aliases are missing, `summars` will check the gossip store more frequently than `summars-refresh-alias` and only when almost all aliases are found it will use `summars-refresh-alias` again
+- Built the alias cache a bit more thoroughly
+- Options that have defaults will now show up in CLN's ``listconfigs``
 
 ### Removed
-- all code for CLN versions ``< v24.11``
+- All code to support CLN versions ``< v24.11``
 
 ## [5.2.0] - 2025-09-06
 
