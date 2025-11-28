@@ -200,7 +200,7 @@ async fn build_node_data(
     }
 
     if config.invoices > 0 {
-        gather_invoices_data(plugin.clone(), rpc, config, now, full_node_data).await?;
+        gather_invoices_data(rpc, config, now, full_node_data).await?;
         log::debug!(
             "End of invoices table. Total: {}ms",
             now.elapsed().as_millis()

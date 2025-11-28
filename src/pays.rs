@@ -1,4 +1,7 @@
-use std::collections::BTreeMap;
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Write as _,
+};
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
@@ -40,7 +43,6 @@ use crate::{
     structs::{
         Config,
         FullNodeData,
-        PagingIndex,
         Pays,
         PaysColumns,
         PluginState,
@@ -51,6 +53,7 @@ use crate::{
         PAGE_SIZE,
     },
     util::{
+        accumulate_msat,
         get_alias,
         hex_encode,
         replace_escaping_chars,
@@ -63,8 +66,9 @@ use crate::{
 
 struct PaysAccumulator {
     oldest_updated: u64,
-    pay_index: PagingIndex,
+    cutoff_timestamp: u64,
     pays_map: BTreeMap<u64, Pays>,
+    filtered_set: HashSet<u64>,
 }
 
 pub async fn gather_pays_data(
@@ -78,25 +82,17 @@ pub async fn gather_pays_data(
     let config_pays_sec = config.pays * 60 * 60;
     let cutoff_timestamp = now_utc - config_pays_sec;
 
-    pay_index_reset_if_needed(&plugin, config);
-
-    let mut pay_index = *plugin.state().pay_index.lock();
-    log::debug!(
-        "1 pay_index: start:{} old_timestamp:{} new_timestamp:{}",
-        pay_index.start,
-        pay_index.timestamp,
-        cutoff_timestamp
-    );
-    pay_index.timestamp = cutoff_timestamp;
-
     let oldest_updated = now_utc;
 
     let pays_map: BTreeMap<u64, Pays> = BTreeMap::new();
 
+    let filtered_set: HashSet<u64> = HashSet::new();
+
     let mut pays_acc = PaysAccumulator {
         oldest_updated,
-        pay_index,
+        cutoff_timestamp,
         pays_map,
+        filtered_set,
     };
 
     process_pay_batches(
@@ -109,7 +105,7 @@ pub async fn gather_pays_data(
     )
     .await?;
 
-    post_process_pays_data(&plugin, pays_acc, config, full_node_data);
+    limit_and_sort_pays_data(pays_acc, config, full_node_data);
 
     Ok(())
 }
@@ -122,7 +118,7 @@ async fn process_pay_batches(
     rpc: &mut ClnRpc,
     full_node_data: &mut FullNodeData,
 ) -> Result<(), Error> {
-    let current_index = rpc
+    let mut current_index = rpc
         .call_typed(&WaitRequest {
             indexname: WaitIndexname::UPDATED,
             subsystem: WaitSubsystem::SENDPAYS,
@@ -135,54 +131,31 @@ async fn process_pay_batches(
 
     let mut loop_count = 0;
 
-    let (mut start_index, mut limit) = if pays_acc.pay_index.start < u64::MAX {
-        (pays_acc.pay_index.start, None)
-    } else {
-        (
-            current_index.saturating_sub(PAGE_SIZE + 1),
-            Some(u32::try_from(PAGE_SIZE)?),
-        )
-    };
+    current_index = current_index.saturating_sub(PAGE_SIZE - 1);
+    let mut limit = u32::try_from(PAGE_SIZE)?;
 
-    while pays_acc.oldest_updated >= pays_acc.pay_index.timestamp {
+    while pays_acc.oldest_updated >= pays_acc.cutoff_timestamp {
         loop_count += 1;
-        // let now = Instant::now();
+
         let pays = rpc
             .call_typed(&ListpaysRequest {
                 bolt11: None,
                 payment_hash: None,
                 status: Some(ListpaysStatus::COMPLETE),
                 index: Some(ListpaysIndex::UPDATED),
-                start: Some(start_index),
-                limit,
+                start: Some(current_index),
+                limit: Some(limit),
             })
             .await?
             .pays;
-        // log::debug!("Listpays {} in {}ms", pays.len(), now.elapsed().as_millis());
 
-        // let now = Instant::now();
         build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin.clone()).await?;
-        // log::debug!(
-        //     "Build pays table {} in {}ms",
-        //     pays_acc.pays_map.len(),
-        //     now.elapsed().as_millis()
-        // );
 
-        // log::debug!(
-        //     "oldest_updated: {} start_index: {} map_len:{}",
-        //     pays_acc.oldest_updated,
-        //     start_index,
-        //     pays_acc.pays_map.len()
-        // );
-
-        if start_index == 0 {
+        if current_index <= 1 {
             break;
         }
-        limit = Some(u32::min(
-            u32::try_from(PAGE_SIZE)?,
-            u32::try_from(start_index)?,
-        ));
-        start_index = start_index.saturating_sub(PAGE_SIZE);
+        limit = u32::min(u32::try_from(PAGE_SIZE)?, u32::try_from(current_index)?);
+        current_index = current_index.saturating_sub(PAGE_SIZE);
     }
 
     log::debug!(
@@ -193,19 +166,11 @@ async fn process_pay_batches(
     Ok(())
 }
 
-fn post_process_pays_data(
-    plugin: &Plugin<PluginState>,
-    mut pays_acc: PaysAccumulator,
+fn limit_and_sort_pays_data(
+    pays_acc: PaysAccumulator,
     config: &Config,
     full_node_data: &mut FullNodeData,
 ) {
-    log::debug!(
-        "2 pay_index: start:{} timestamp:{}",
-        pays_acc.pay_index.start,
-        pays_acc.pay_index.timestamp
-    );
-    pays_acc.pay_index.age = config.pays;
-
     if config.pays_limit > 0 && pays_acc.pays_map.len() > config.pays_limit {
         full_node_data.pays = pays_acc
             .pays_map
@@ -217,13 +182,6 @@ fn post_process_pays_data(
     } else {
         full_node_data.pays = pays_acc.pays_map.into_values().collect();
     }
-
-    log::debug!(
-        "3 pay_index: start:{} timestamp:{}",
-        pays_acc.pay_index.start,
-        pays_acc.pay_index.timestamp
-    );
-    *plugin.state().pay_index.lock() = pays_acc.pay_index;
 
     full_node_data.pays.sort_by_key(|x| x.completed_at);
 }
@@ -252,20 +210,15 @@ async fn build_pays_table(
             continue;
         }
 
+        if pays_acc.filtered_set.contains(&updated_index) {
+            continue;
+        }
+
         if completed_at <= pays_acc.oldest_updated {
             pays_acc.oldest_updated = completed_at;
-            if updated_index <= pays_acc.pay_index.start {
-                pays_acc.pay_index.start = updated_index;
-            }
         }
 
-        if let Some(dest) = pay.destination {
-            if dest == full_node_data.my_pubkey {
-                continue;
-            }
-        }
-
-        if completed_at <= pays_acc.pay_index.timestamp {
+        if completed_at <= pays_acc.cutoff_timestamp {
             continue;
         }
 
@@ -277,9 +230,11 @@ async fn build_pays_table(
         let (description, msats_requested, destination) =
             extract_pay_metadata(rpc, &pay, description_wanted, destination_wanted).await;
 
+        let mut is_self_pay = false;
+
         if let Some(dest) = destination {
             if dest == full_node_data.my_pubkey {
-                continue;
+                is_self_pay = true;
             }
             destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?);
         }
@@ -289,53 +244,64 @@ async fn build_pays_table(
             fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
             sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
 
-            if let Some(fee_amt) = &mut full_node_data.totals.pays_fees_msat {
-                *fee_amt += fee_msat.unwrap();
+            if is_self_pay {
+                accumulate_msat(
+                    &mut full_node_data.totals.pays_self_fees_msat,
+                    fee_msat.unwrap(),
+                );
+                accumulate_msat(
+                    &mut full_node_data.totals.pays_self_amount_msat,
+                    amount_msat,
+                );
             } else {
-                full_node_data.totals.pays_fees_msat = fee_msat;
-            }
-
-            if let Some(pay_amt) = &mut full_node_data.totals.pays_amount_msat {
-                *pay_amt += amount_msat;
-            } else {
-                full_node_data.totals.pays_amount_msat = Some(amount_msat);
+                accumulate_msat(&mut full_node_data.totals.pays_fees_msat, fee_msat.unwrap());
+                accumulate_msat(&mut full_node_data.totals.pays_amount_msat, amount_msat);
             }
         }
 
-        if let Some(pay_amt_sent) = &mut full_node_data.totals.pays_amount_sent_msat {
-            *pay_amt_sent += pay.amount_sent_msat.unwrap().msat();
+        if is_self_pay {
+            accumulate_msat(
+                &mut full_node_data.totals.pays_self_amount_sent_msat,
+                pay.amount_sent_msat.unwrap().msat(),
+            );
         } else {
-            full_node_data.totals.pays_amount_sent_msat =
-                Some(pay.amount_sent_msat.unwrap().msat());
+            accumulate_msat(
+                &mut full_node_data.totals.pays_amount_sent_msat,
+                pay.amount_sent_msat.unwrap().msat(),
+            );
         }
 
-        pays_acc.pays_map.insert(
-            updated_index,
-            Pays {
-                completed_at,
-                completed_at_str: timestamp_to_localized_datetime_string(config, completed_at)?,
-                payment_hash: pay.payment_hash.to_string(),
-                msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-                sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
-                destination: if let Some(dest) = destination_alias {
-                    if dest == NODE_GOSSIP_MISS || dest == NO_ALIAS_SET {
-                        Some(destination.unwrap().to_string())
-                    } else if config.utf8 {
-                        Some(dest)
+        if is_self_pay {
+            pays_acc.filtered_set.insert(updated_index);
+        } else {
+            pays_acc.pays_map.insert(
+                updated_index,
+                Pays {
+                    completed_at,
+                    completed_at_str: timestamp_to_localized_datetime_string(config, completed_at)?,
+                    payment_hash: pay.payment_hash.to_string(),
+                    msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
+                    sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
+                    destination: if let Some(dest) = destination_alias {
+                        if dest == NODE_GOSSIP_MISS || dest == NO_ALIAS_SET {
+                            Some(destination.unwrap().to_string())
+                        } else if config.utf8 {
+                            Some(dest)
+                        } else {
+                            Some(dest.replace(|c: char| !c.is_ascii(), "?"))
+                        }
                     } else {
-                        Some(dest.replace(|c: char| !c.is_ascii(), "?"))
-                    }
-                } else {
-                    None
+                        None
+                    },
+                    description,
+                    preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
+                    msats_requested,
+                    sats_requested,
+                    fee_msats: fee_msat,
+                    fee_sats,
                 },
-                description,
-                preimage: hex_encode(&pay.preimage.unwrap().to_vec()),
-                msats_requested,
-                sats_requested,
-                fee_msats: fee_msat,
-                fee_sats,
-            },
-        );
+            );
+        }
     }
     Ok(())
 }
@@ -381,15 +347,6 @@ async fn extract_pay_metadata(
     }
 
     (description, msats_requested, destination)
-}
-
-fn pay_index_reset_if_needed(plugin: &Plugin<PluginState>, config: &Config) {
-    let mut pay_index = plugin.state().pay_index.lock();
-
-    if pay_index.age != config.pays {
-        *pay_index = PagingIndex::new();
-        log::debug!("pay_index: pays window changed, resetting index");
-    }
 }
 
 #[allow(clippy::too_many_lines)]
@@ -487,8 +444,11 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
     )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
+    let mut pays_totals = String::new();
+
     if full_node_data.totals.pays_amount_sent_msat.is_some() {
-        let pays_totals = format!(
+        write!(
+            pays_totals,
             "\nTotal pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
             config.pays,
             if let Some(amt) = full_node_data.totals.pays_amount_msat {
@@ -505,7 +465,35 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
             } else {
                 MISSING_VALUE.to_owned()
             },
-        );
+        )?;
+    }
+
+    if full_node_data.totals.pays_self_amount_sent_msat.is_some() {
+        write!(
+            pays_totals,
+            "\nTotal self-pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            config.pays,
+            if let Some(amt) = full_node_data.totals.pays_self_amount_msat {
+                u64_to_sat_string(config, rounded_div_u64(amt, 1_000))?
+            } else {
+                MISSING_VALUE.to_owned()
+            },
+            u64_to_sat_string(
+                config,
+                rounded_div_u64(
+                    full_node_data.totals.pays_self_amount_sent_msat.unwrap(),
+                    1_000
+                )
+            )?,
+            if let Some(fee) = full_node_data.totals.pays_self_fees_msat {
+                u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
+            } else {
+                MISSING_VALUE.to_owned()
+            },
+        )?;
+    }
+
+    if !pays_totals.is_empty() {
         paystable.with(Panel::footer(pays_totals));
     }
 
