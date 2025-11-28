@@ -21,7 +21,7 @@ use tokio::{self, time};
 
 use crate::{
     config::get_startup_options,
-    structs::{ForwardsColumns, InvoicesColumns, PaysColumns, SummaryColumns, TableColumn},
+    structs::{ForwardsColumns, InvoicesColumns, Opt, PaysColumns, SummaryColumns, TableColumn},
 };
 mod config;
 mod forwards;
@@ -31,33 +31,6 @@ mod structs;
 mod summary;
 mod tasks;
 mod util;
-
-const OPT_COLUMNS: &str = "summars-columns";
-const OPT_SORT_BY: &str = "summars-sort-by";
-const OPT_EXCLUDE_CHANNEL_STATES: &str = "summars-exclude-states";
-const OPT_FORWARDS: &str = "summars-forwards";
-const OPT_FORWARDS_LIMIT: &str = "summars-forwards-limit";
-const OPT_FORWARDS_COLUMNS: &str = "summars-forwards-columns";
-const OPT_FORWARDS_FILTER_AMT: &str = "summars-forwards-filter-amount-msat";
-const OPT_FORWARDS_FILTER_FEE: &str = "summars-forwards-filter-fee-msat";
-const OPT_PAYS: &str = "summars-pays";
-const OPT_PAYS_LIMIT: &str = "summars-pays-limit";
-const OPT_PAYS_COLUMNS: &str = "summars-pays-columns";
-const OPT_MAX_DESC_LENGTH: &str = "summars-max-description-length";
-const OPT_INVOICES: &str = "summars-invoices";
-const OPT_INVOICES_LIMIT: &str = "summars-invoices-limit";
-const OPT_INVOICES_COLUMNS: &str = "summars-invoices-columns";
-const OPT_MAX_LABEL_LENGTH: &str = "summars-max-label-length";
-const OPT_INVOICES_FILTER_AMT: &str = "summars-invoices-filter-amount-msat";
-const OPT_LOCALE: &str = "summars-locale";
-const OPT_REFRESH_ALIAS: &str = "summars-refresh-alias";
-const OPT_MAX_ALIAS_LENGTH: &str = "summars-max-alias-length";
-const OPT_AVAILABILITY_INTERVAL: &str = "summars-availability-interval";
-const OPT_AVAILABILITY_WINDOW: &str = "summars-availability-window";
-const OPT_UTF8: &str = "summars-utf8";
-const OPT_STYLE: &str = "summars-style";
-const OPT_FLOW_STYLE: &str = "summars-flow-style";
-const OPT_JSON: &str = "summars-json";
 
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::cast_possible_wrap)]
@@ -71,7 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_columns = SummaryColumns::to_list_string(&default_config.columns);
     let opt_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_COLUMNS,
+        Opt::Columns.as_key(),
         &default_columns,
         "Enabled columns in the channel table. Available columns are: \
         `GRAPH_SATS,PERC_US,OUT_SATS,IN_SATS,TOTAL_SATS,SCID,MIN_HTLC,MAX_HTLC,FLAG,BASE,IN_BASE,\
@@ -81,7 +54,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_sort_col = default_config.sort_by.to_string();
     let opt_sort_by: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_SORT_BY,
+        Opt::SortBy.as_key(),
         &default_sort_col,
         "Sort by column name. Available values are: \
         `OUT_SATS,IN_SATS,SCID,MAX_HTLC,FLAG,BASE,PPM,ALIAS,PEER_ID,\
@@ -90,7 +63,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_exclude_channel_states: StringConfigOption = ConfigOption::new_str_no_default(
-        OPT_EXCLUDE_CHANNEL_STATES,
+        Opt::ExcludeChannelStates.as_key(),
         "Exclude channels with given state from the summary table. Comma-separated string with \
         these available states: `OPENING,AWAIT_LOCK,OK,SHUTTING_DOWN,CLOSINGD_SIGEX,CLOSINGD_DONE,\
         AWAIT_UNILATERAL,FUNDING_SPEND,ONCHAIN,DUAL_OPEN,DUAL_COMITTED,DUAL_COMMIT_RDY,DUAL_AWAIT,\
@@ -99,14 +72,14 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_forwards: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_FORWARDS,
+        Opt::Forwards.as_key(),
         default_config.forwards as i64,
         "Show last x hours of forwards.",
     )
     .dynamic();
 
     let opt_forwards_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_FORWARDS_LIMIT,
+        Opt::ForwardsLimit.as_key(),
         default_config.forwards_limit as i64,
         "Limit forwards table to the last x entries.",
     )
@@ -115,7 +88,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let default_forwards_columns =
         ForwardsColumns::to_list_string(&default_config.forwards_columns);
     let opt_forwards_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_FORWARDS_COLUMNS,
+        Opt::ForwardsColumns.as_key(),
         &default_forwards_columns,
         "Enabled columns in the forwards table. Available columns are: \
         `received_time, resolved_time, in_channel, out_channel, in_alias, out_alias, \
@@ -124,7 +97,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_forwards_filter_amt: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_FORWARDS_FILTER_AMT,
+        Opt::ForwardsFilterAmt.as_key(),
         default_config
             .forwards_filter_amt_msat
             .map_or(-1, |v| v as i64),
@@ -133,7 +106,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_forwards_filter_fee: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_FORWARDS_FILTER_FEE,
+        Opt::ForwardsFilterFee.as_key(),
         default_config
             .forwards_filter_fee_msat
             .map_or(-1, |v| v as i64),
@@ -142,14 +115,14 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_pays: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_PAYS,
+        Opt::Pays.as_key(),
         default_config.pays as i64,
         "Show last x hours of pays.",
     )
     .dynamic();
 
     let opt_pays_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_PAYS_LIMIT,
+        Opt::PaysLimit.as_key(),
         default_config.pays_limit as i64,
         "Limit pays table to the last x entries.",
     )
@@ -157,7 +130,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_pays_columns = PaysColumns::to_list_string(&default_config.pays_columns);
     let opt_pays_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_PAYS_COLUMNS,
+        Opt::PaysColumns.as_key(),
         &default_pays_columns,
         "Enabled columns in the pays table. Available columns are: \
         `completed_at, payment_hash, sats_requested, msats_requested, sats_sent, msats_sent, \
@@ -166,21 +139,21 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_max_desc_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_MAX_DESC_LENGTH,
+        Opt::MaxDescLength.as_key(),
         default_config.max_desc_length,
         "Max string length of an invoice description.",
     )
     .dynamic();
 
     let opt_invoices: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_INVOICES,
+        Opt::Invoices.as_key(),
         default_config.invoices as i64,
         "Show last x hours of invoices.",
     )
     .dynamic();
 
     let opt_invoices_limit: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_INVOICES_LIMIT,
+        Opt::InvoicesLimit.as_key(),
         default_config.invoices_limit as i64,
         "Limit invoices table to the last x entries.",
     )
@@ -189,7 +162,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let default_invoices_columns =
         InvoicesColumns::to_list_string(&default_config.invoices_columns);
     let opt_invoices_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_INVOICES_COLUMNS,
+        Opt::InvoicesColumns.as_key(),
         &default_invoices_columns,
         "Enabled columns in the invoices table. Available columns are: \
         `paid_at, label, description, sats_received, msats_received, payment_hash, preimage`",
@@ -197,14 +170,14 @@ async fn main() -> Result<(), anyhow::Error> {
     .dynamic();
 
     let opt_max_label_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_MAX_LABEL_LENGTH,
+        Opt::MaxLabelLength.as_key(),
         default_config.max_label_length,
         "Max string length of an invoice label.",
     )
     .dynamic();
 
     let opt_invoices_filter_amt: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_INVOICES_FILTER_AMT,
+        Opt::InvoicesFilterAmt.as_key(),
         default_config
             .invoices_filter_amt_msat
             .map_or(-1, |v| v as i64),
@@ -214,42 +187,42 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_locale = default_config.locale.to_string();
     let opt_locale: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_LOCALE,
+        Opt::Locale.as_key(),
         &default_locale,
         "Set locale used for thousand delimiter, time etc.",
     )
     .dynamic();
 
     let opt_refresh_alias: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_REFRESH_ALIAS,
+        Opt::RefreshAlias.as_key(),
         default_config.refresh_alias as i64,
         "Set frequency of alias cache refresh in hours.",
     )
     .dynamic();
 
     let opt_max_alias_length: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_MAX_ALIAS_LENGTH,
+        Opt::MaxAliasLength.as_key(),
         default_config.max_alias_length,
         "Max string length of alias.",
     )
     .dynamic();
 
     let opt_availability_interval: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_AVAILABILITY_INTERVAL,
+        Opt::AvailabilityInterval.as_key(),
         default_config.availability_interval as i64,
         "How often in seconds the availability should be calculated.",
     )
     .dynamic();
 
     let opt_availability_window: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
-        OPT_AVAILABILITY_WINDOW,
+        Opt::AvailabilityWindow.as_key(),
         default_config.availability_window as i64,
         "How many hours the availability should be averaged over.",
     )
     .dynamic();
 
     let opt_utf8: DefaultBooleanConfigOption = ConfigOption::new_bool_with_default(
-        OPT_UTF8,
+        Opt::Utf8.as_key(),
         default_config.utf8,
         "Switch on/off special characters in node alias.",
     )
@@ -257,7 +230,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_style = default_config.style.to_string();
     let opt_style: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_STYLE,
+        Opt::Style.as_key(),
         &default_style,
         "Set style for the summary table.",
     )
@@ -265,15 +238,18 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let default_flow_style = default_config.flow_style.to_string();
     let opt_flow_style: DefaultStringConfigOption = ConfigOption::new_str_with_default(
-        OPT_FLOW_STYLE,
+        Opt::FlowStyle.as_key(),
         &default_flow_style,
         "Set style for the flow tables (forwards, pays, invoices).",
     )
     .dynamic();
 
-    let opt_json: DefaultBooleanConfigOption =
-        ConfigOption::new_bool_with_default(OPT_JSON, default_config.json, "Set output to json.")
-            .dynamic();
+    let opt_json: DefaultBooleanConfigOption = ConfigOption::new_bool_with_default(
+        Opt::Json.as_key(),
+        default_config.json,
+        "Set output to json.",
+    )
+    .dynamic();
 
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(opt_columns)

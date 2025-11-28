@@ -14,18 +14,147 @@ use serde::{Deserialize, Serialize};
 use sys_locale::get_locales;
 use tabled::{settings::Style, Table, Tabled};
 
-use crate::{
-    impl_table_column,
-    OPT_COLUMNS,
-    OPT_FORWARDS_COLUMNS,
-    OPT_INVOICES_COLUMNS,
-    OPT_PAYS_COLUMNS,
-};
+use crate::impl_table_column;
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
 pub const NODE_GOSSIP_MISS: &str = "NODE_GOSSIP_MISS";
 pub const MISSING_VALUE: &str = "N/A";
 pub const PAGE_SIZE: u64 = 1000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Opt {
+    Columns,
+    SortBy,
+    ExcludeChannelStates,
+    Forwards,
+    ForwardsLimit,
+    ForwardsColumns,
+    ForwardsFilterAmt,
+    ForwardsFilterFee,
+    Pays,
+    PaysLimit,
+    PaysColumns,
+    MaxDescLength,
+    Invoices,
+    InvoicesLimit,
+    InvoicesColumns,
+    MaxLabelLength,
+    InvoicesFilterAmt,
+    Locale,
+    RefreshAlias,
+    MaxAliasLength,
+    AvailabilityInterval,
+    AvailabilityWindow,
+    Utf8,
+    Style,
+    FlowStyle,
+    Json,
+}
+
+impl Opt {
+    pub fn as_key(self) -> &'static str {
+        match self {
+            Opt::Columns => "summars-columns",
+            Opt::SortBy => "summars-sort-by",
+            Opt::ExcludeChannelStates => "summars-exclude-states",
+            Opt::Forwards => "summars-forwards",
+            Opt::ForwardsLimit => "summars-forwards-limit",
+            Opt::ForwardsColumns => "summars-forwards-columns",
+            Opt::ForwardsFilterAmt => "summars-forwards-filter-amount-msat",
+            Opt::ForwardsFilterFee => "summars-forwards-filter-fee-msat",
+            Opt::Pays => "summars-pays",
+            Opt::PaysLimit => "summars-pays-limit",
+            Opt::PaysColumns => "summars-pays-columns",
+            Opt::MaxDescLength => "summars-max-description-length",
+            Opt::Invoices => "summars-invoices",
+            Opt::InvoicesLimit => "summars-invoices-limit",
+            Opt::InvoicesColumns => "summars-invoices-columns",
+            Opt::MaxLabelLength => "summars-max-label-length",
+            Opt::InvoicesFilterAmt => "summars-invoices-filter-amount-msat",
+            Opt::Locale => "summars-locale",
+            Opt::RefreshAlias => "summars-refresh-alias",
+            Opt::MaxAliasLength => "summars-max-alias-length",
+            Opt::AvailabilityInterval => "summars-availability-interval",
+            Opt::AvailabilityWindow => "summars-availability-window",
+            Opt::Utf8 => "summars-utf8",
+            Opt::Style => "summars-style",
+            Opt::FlowStyle => "summars-flow-style",
+            Opt::Json => "summars-json",
+        }
+    }
+
+    pub fn from_key(s: &str) -> Result<Opt, Error> {
+        match s {
+            "summars-columns" => Ok(Opt::Columns),
+            "summars-sort-by" => Ok(Opt::SortBy),
+            "summars-exclude-states" => Ok(Opt::ExcludeChannelStates),
+            "summars-forwards" => Ok(Opt::Forwards),
+            "summars-forwards-limit" => Ok(Opt::ForwardsLimit),
+            "summars-forwards-columns" => Ok(Opt::ForwardsColumns),
+            "summars-forwards-filter-amount-msat" => Ok(Opt::ForwardsFilterAmt),
+            "summars-forwards-filter-fee-msat" => Ok(Opt::ForwardsFilterFee),
+            "summars-pays" => Ok(Opt::Pays),
+            "summars-pays-limit" => Ok(Opt::PaysLimit),
+            "summars-pays-columns" => Ok(Opt::PaysColumns),
+            "summars-max-description-length" => Ok(Opt::MaxDescLength),
+            "summars-invoices" => Ok(Opt::Invoices),
+            "summars-invoices-limit" => Ok(Opt::InvoicesLimit),
+            "summars-invoices-columns" => Ok(Opt::InvoicesColumns),
+            "summars-max-label-length" => Ok(Opt::MaxLabelLength),
+            "summars-invoices-filter-amount-msat" => Ok(Opt::InvoicesFilterAmt),
+            "summars-locale" => Ok(Opt::Locale),
+            "summars-refresh-alias" => Ok(Opt::RefreshAlias),
+            "summars-max-alias-length" => Ok(Opt::MaxAliasLength),
+            "summars-availability-interval" => Ok(Opt::AvailabilityInterval),
+            "summars-availability-window" => Ok(Opt::AvailabilityWindow),
+            "summars-utf8" => Ok(Opt::Utf8),
+            "summars-style" => Ok(Opt::Style),
+            "summars-flow-style" => Ok(Opt::FlowStyle),
+            "summars-json" => Ok(Opt::Json),
+            _ => Err(anyhow!("Unknown option: {s}")),
+        }
+    }
+
+    pub const ALL: &[Opt] = &[
+        Opt::Columns,
+        Opt::SortBy,
+        Opt::ExcludeChannelStates,
+        Opt::Forwards,
+        Opt::ForwardsLimit,
+        Opt::ForwardsColumns,
+        Opt::ForwardsFilterAmt,
+        Opt::ForwardsFilterFee,
+        Opt::Pays,
+        Opt::PaysLimit,
+        Opt::PaysColumns,
+        Opt::MaxDescLength,
+        Opt::Invoices,
+        Opt::InvoicesLimit,
+        Opt::InvoicesColumns,
+        Opt::MaxLabelLength,
+        Opt::InvoicesFilterAmt,
+        Opt::Locale,
+        Opt::RefreshAlias,
+        Opt::MaxAliasLength,
+        Opt::AvailabilityInterval,
+        Opt::AvailabilityWindow,
+        Opt::Utf8,
+        Opt::Style,
+        Opt::FlowStyle,
+        Opt::Json,
+    ];
+
+    pub fn iter() -> impl Iterator<Item = Opt> + 'static {
+        Self::ALL.iter().copied()
+    }
+
+    pub fn is_internal(self) -> bool {
+        matches!(
+            self,
+            Opt::RefreshAlias | Opt::AvailabilityInterval | Opt::AvailabilityWindow
+        )
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -272,7 +401,7 @@ pub enum SummaryColumns {
 }
 impl_table_column!(
     SummaryColumns,
-    env_var = OPT_COLUMNS,
+    env_var = Opt::Columns.as_key(),
     exclude_default = [GRAPH_SATS, PERC_US, TOTAL_SATS, MIN_HTLC, IN_BASE, IN_PPM, PING],
     numerical = [OUT_SATS, IN_SATS, TOTAL_SATS, MIN_HTLC, MAX_HTLC, BASE, PPM],
     optional_numerical = [IN_BASE, IN_PPM],
@@ -328,7 +457,7 @@ pub enum ForwardsColumns {
 }
 impl_table_column!(
     ForwardsColumns,
-    env_var = OPT_FORWARDS_COLUMNS,
+    env_var = Opt::ForwardsColumns.as_key(),
     exclude_default = [
         received_time,
         in_msats,
@@ -409,7 +538,7 @@ pub enum PaysColumns {
 }
 impl_table_column!(
     PaysColumns,
-    env_var = OPT_PAYS_COLUMNS,
+    env_var = Opt::PaysColumns.as_key(),
     exclude_default = [
         description,
         preimage,
@@ -463,7 +592,7 @@ pub enum InvoicesColumns {
 }
 impl_table_column!(
     InvoicesColumns,
-    env_var = OPT_INVOICES_COLUMNS,
+    env_var = Opt::InvoicesColumns.as_key(),
     exclude_default = [description, preimage, msats_received],
     numerical = [sats_received, msats_received],
     optional_numerical = [],
@@ -729,5 +858,12 @@ mod tests {
             await_splice.parse::<ShortChannelState>().unwrap().0,
             ChannelState::CHANNELD_AWAITING_SPLICE
         );
+    }
+
+    #[test]
+    fn test_opt_from_key() {
+        for opt in Opt::iter() {
+            assert_eq!(Opt::from_key(opt.as_key()).unwrap(), opt);
+        }
     }
 }

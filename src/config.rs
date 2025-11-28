@@ -20,6 +20,7 @@ use crate::{
         ExcludeStates,
         ForwardsColumns,
         InvoicesColumns,
+        Opt,
         PaysColumns,
         ShortChannelState,
         Styles,
@@ -27,32 +28,6 @@ use crate::{
         TableColumn,
     },
     PluginState,
-    OPT_AVAILABILITY_INTERVAL,
-    OPT_AVAILABILITY_WINDOW,
-    OPT_COLUMNS,
-    OPT_EXCLUDE_CHANNEL_STATES,
-    OPT_FLOW_STYLE,
-    OPT_FORWARDS,
-    OPT_FORWARDS_COLUMNS,
-    OPT_FORWARDS_FILTER_AMT,
-    OPT_FORWARDS_FILTER_FEE,
-    OPT_FORWARDS_LIMIT,
-    OPT_INVOICES,
-    OPT_INVOICES_COLUMNS,
-    OPT_INVOICES_FILTER_AMT,
-    OPT_INVOICES_LIMIT,
-    OPT_JSON,
-    OPT_LOCALE,
-    OPT_MAX_ALIAS_LENGTH,
-    OPT_MAX_DESC_LENGTH,
-    OPT_MAX_LABEL_LENGTH,
-    OPT_PAYS,
-    OPT_PAYS_COLUMNS,
-    OPT_PAYS_LIMIT,
-    OPT_REFRESH_ALIAS,
-    OPT_SORT_BY,
-    OPT_STYLE,
-    OPT_UTF8,
 };
 
 pub async fn setconfig_callback(
@@ -68,7 +43,9 @@ pub async fn setconfig_callback(
         .get("val")
         .ok_or_else(|| anyhow!("Bad CLN object. No value found for option: {name}"))?;
 
-    let opt_value = parse_option(name, value).map_err(|e| {
+    let opt = Opt::from_key(name)?;
+
+    let opt_value = parse_option(opt, value).map_err(|e| {
         anyhow!(json!(RpcError {
             code: Some(-32602),
             message: e.to_string(),
@@ -78,7 +55,7 @@ pub async fn setconfig_callback(
 
     let mut config = plugin.state().config.lock();
 
-    check_option(&mut config, name, &opt_value).map_err(|e| {
+    check_option(&mut config, opt, &opt_value).map_err(|e| {
         anyhow!(json!(RpcError {
             code: Some(-32602),
             message: e.to_string(),
@@ -97,24 +74,23 @@ pub async fn setconfig_callback(
     Ok(json!({}))
 }
 
-fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value, Error> {
-    match name {
-        n if n.eq(OPT_FORWARDS)
-            || n.eq(OPT_FORWARDS_LIMIT)
-            || n.eq(OPT_FORWARDS_FILTER_AMT)
-            || n.eq(OPT_FORWARDS_FILTER_FEE)
-            || n.eq(OPT_PAYS)
-            || n.eq(OPT_PAYS_LIMIT)
-            || n.eq(OPT_MAX_DESC_LENGTH)
-            || n.eq(OPT_INVOICES)
-            || n.eq(OPT_INVOICES_LIMIT)
-            || n.eq(OPT_MAX_LABEL_LENGTH)
-            || n.eq(OPT_INVOICES_FILTER_AMT)
-            || n.eq(OPT_REFRESH_ALIAS)
-            || n.eq(OPT_MAX_ALIAS_LENGTH)
-            || n.eq(OPT_AVAILABILITY_INTERVAL)
-            || n.eq(OPT_AVAILABILITY_WINDOW) =>
-        {
+fn parse_option(opt: Opt, value: &serde_json::Value) -> Result<options::Value, Error> {
+    match opt {
+        Opt::Forwards
+        | Opt::ForwardsLimit
+        | Opt::ForwardsFilterAmt
+        | Opt::ForwardsFilterFee
+        | Opt::Pays
+        | Opt::PaysLimit
+        | Opt::MaxDescLength
+        | Opt::Invoices
+        | Opt::InvoicesLimit
+        | Opt::MaxLabelLength
+        | Opt::InvoicesFilterAmt
+        | Opt::RefreshAlias
+        | Opt::MaxAliasLength
+        | Opt::AvailabilityInterval
+        | Opt::AvailabilityWindow => {
             if let Some(n_i64) = value.as_i64() {
                 return Ok(options::Value::Integer(n_i64));
             } else if let Some(n_str) = value.as_str() {
@@ -122,9 +98,9 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
                     return Ok(options::Value::Integer(n_neg_i64));
                 }
             }
-            Err(anyhow!("{n} is not a valid integer!"))
+            Err(anyhow!("{} is not a valid integer!", opt.as_key()))
         }
-        n if n.eq(OPT_UTF8) || n.eq(OPT_JSON) => {
+        Opt::Utf8 | Opt::Json => {
             if let Some(n_bool) = value.as_bool() {
                 return Ok(options::Value::Boolean(n_bool));
             } else if let Some(n_str) = value.as_str() {
@@ -132,13 +108,13 @@ fn parse_option(name: &str, value: &serde_json::Value) -> Result<options::Value,
                     return Ok(options::Value::Boolean(n_str_bool));
                 }
             }
-            Err(anyhow!("{n} is not a valid boolean!"))
+            Err(anyhow!("{} is not a valid boolean!", opt.as_key()))
         }
         _ => {
             if value.is_string() {
                 Ok(options::Value::String(value.as_str().unwrap().to_owned()))
             } else {
-                Err(anyhow!("{name} is not a valid string!"))
+                Err(anyhow!("{} is not a valid string!", opt.as_key()))
             }
         }
     }
@@ -283,53 +259,17 @@ pub fn validateargs(args: serde_json::Value, config: &mut Config) -> Result<(), 
         return Ok(());
     };
 
-    let valid_options: [&str; 23] = [
-        OPT_COLUMNS,
-        OPT_SORT_BY,
-        OPT_EXCLUDE_CHANNEL_STATES,
-        OPT_FORWARDS,
-        OPT_FORWARDS_LIMIT,
-        OPT_FORWARDS_COLUMNS,
-        OPT_FORWARDS_FILTER_AMT,
-        OPT_FORWARDS_FILTER_FEE,
-        OPT_PAYS,
-        OPT_PAYS_LIMIT,
-        OPT_PAYS_COLUMNS,
-        OPT_MAX_DESC_LENGTH,
-        OPT_INVOICES,
-        OPT_INVOICES_LIMIT,
-        OPT_INVOICES_COLUMNS,
-        OPT_MAX_LABEL_LENGTH,
-        OPT_INVOICES_FILTER_AMT,
-        OPT_LOCALE,
-        OPT_MAX_ALIAS_LENGTH,
-        OPT_UTF8,
-        OPT_STYLE,
-        OPT_FLOW_STYLE,
-        OPT_JSON,
-    ];
-
-    let forbidden_here: [&str; 3] = [
-        OPT_REFRESH_ALIAS,
-        OPT_AVAILABILITY_INTERVAL,
-        OPT_AVAILABILITY_WINDOW,
-    ];
-
     for (key, value) in map {
-        let key = key.as_str();
+        let opt = Opt::from_key(&key)?;
 
-        if forbidden_here.contains(&key) {
+        if opt.is_internal() {
             return Err(anyhow!(
                 "Setting {key} here does not make sense, please use a longer-lasting method!"
             ));
         }
 
-        if valid_options.contains(&key) {
-            let parsed = parse_option(key, &value)?;
-            check_option(config, key, &parsed)?;
-        } else {
-            return Err(anyhow!("option not found: {key}"));
-        }
+        let parsed = parse_option(opt, &value)?;
+        check_option(config, opt, &parsed)?;
     }
 
     check_options_dependencies(config)?;
@@ -344,146 +284,71 @@ pub fn get_startup_options(
     {
         let mut config = state.config.lock();
 
-        if let Some(cols) = plugin.option_str(OPT_COLUMNS)? {
-            check_option(&mut config, OPT_COLUMNS, &cols)?;
-        }
-        if let Some(sort_by) = plugin.option_str(OPT_SORT_BY)? {
-            check_option(&mut config, OPT_SORT_BY, &sort_by)?;
-        }
-        if let Some(states) = plugin.option_str(OPT_EXCLUDE_CHANNEL_STATES)? {
-            check_option(&mut config, OPT_EXCLUDE_CHANNEL_STATES, &states)?;
-        }
-        if let Some(fws) = plugin.option_str(OPT_FORWARDS)? {
-            check_option(&mut config, OPT_FORWARDS, &fws)?;
-        }
-        if let Some(fwsl) = plugin.option_str(OPT_FORWARDS_LIMIT)? {
-            check_option(&mut config, OPT_FORWARDS_LIMIT, &fwsl)?;
-        }
-        if let Some(cols) = plugin.option_str(OPT_FORWARDS_COLUMNS)? {
-            check_option(&mut config, OPT_FORWARDS_COLUMNS, &cols)?;
-        }
-        if let Some(ffa) = plugin.option_str(OPT_FORWARDS_FILTER_AMT)? {
-            check_option(&mut config, OPT_FORWARDS_FILTER_AMT, &ffa)?;
-        }
-        if let Some(fff) = plugin.option_str(OPT_FORWARDS_FILTER_FEE)? {
-            check_option(&mut config, OPT_FORWARDS_FILTER_FEE, &fff)?;
-        }
-        if let Some(pays) = plugin.option_str(OPT_PAYS)? {
-            check_option(&mut config, OPT_PAYS, &pays)?;
-        }
-        if let Some(paysl) = plugin.option_str(OPT_PAYS_LIMIT)? {
-            check_option(&mut config, OPT_PAYS_LIMIT, &paysl)?;
-        }
-        if let Some(cols) = plugin.option_str(OPT_PAYS_COLUMNS)? {
-            check_option(&mut config, OPT_PAYS_COLUMNS, &cols)?;
-        }
-        if let Some(mdl) = plugin.option_str(OPT_MAX_DESC_LENGTH)? {
-            check_option(&mut config, OPT_MAX_DESC_LENGTH, &mdl)?;
-        }
-        if let Some(invs) = plugin.option_str(OPT_INVOICES)? {
-            check_option(&mut config, OPT_INVOICES, &invs)?;
-        }
-        if let Some(invsl) = plugin.option_str(OPT_INVOICES_LIMIT)? {
-            check_option(&mut config, OPT_INVOICES_LIMIT, &invsl)?;
-        }
-        if let Some(cols) = plugin.option_str(OPT_INVOICES_COLUMNS)? {
-            check_option(&mut config, OPT_INVOICES_COLUMNS, &cols)?;
-        }
-        if let Some(mll) = plugin.option_str(OPT_MAX_LABEL_LENGTH)? {
-            check_option(&mut config, OPT_MAX_LABEL_LENGTH, &mll)?;
-        }
-        if let Some(invfa) = plugin.option_str(OPT_INVOICES_FILTER_AMT)? {
-            check_option(&mut config, OPT_INVOICES_FILTER_AMT, &invfa)?;
-        }
-        if let Some(loc) = plugin.option_str(OPT_LOCALE)? {
-            check_option(&mut config, OPT_LOCALE, &loc)?;
-        }
-        if let Some(ra) = plugin.option_str(OPT_REFRESH_ALIAS)? {
-            check_option(&mut config, OPT_REFRESH_ALIAS, &ra)?;
-        }
-        if let Some(mal) = plugin.option_str(OPT_MAX_ALIAS_LENGTH)? {
-            check_option(&mut config, OPT_MAX_ALIAS_LENGTH, &mal)?;
-        }
-        if let Some(ai) = plugin.option_str(OPT_AVAILABILITY_INTERVAL)? {
-            check_option(&mut config, OPT_AVAILABILITY_INTERVAL, &ai)?;
-        }
-        if let Some(aw) = plugin.option_str(OPT_AVAILABILITY_WINDOW)? {
-            check_option(&mut config, OPT_AVAILABILITY_WINDOW, &aw)?;
-        }
-        if let Some(utf8) = plugin.option_str(OPT_UTF8)? {
-            check_option(&mut config, OPT_UTF8, &utf8)?;
-        }
-        if let Some(style) = plugin.option_str(OPT_STYLE)? {
-            check_option(&mut config, OPT_STYLE, &style)?;
-        }
-        if let Some(fstyle) = plugin.option_str(OPT_FLOW_STYLE)? {
-            check_option(&mut config, OPT_FLOW_STYLE, &fstyle)?;
-        }
-        if let Some(js) = plugin.option_str(OPT_JSON)? {
-            check_option(&mut config, OPT_JSON, &js)?;
+        for opt in Opt::iter() {
+            if let Some(opt_val) = plugin.option_str(opt.as_key())? {
+                check_option(&mut config, opt, &opt_val)?;
+            }
         }
     }
     Ok(())
 }
 
-fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Result<(), Error> {
-    match name {
-        n if n.eq(OPT_COLUMNS) => {
+fn check_option(config: &mut Config, opt: Opt, value: &options::Value) -> Result<(), Error> {
+    match opt {
+        Opt::Columns => {
             config.columns = SummaryColumns::parse_columns(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_SORT_BY) => {
+        Opt::SortBy => {
             (config.sort_by, config.sort_reverse) = parse_sort_input(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_EXCLUDE_CHANNEL_STATES) => {
+        Opt::ExcludeChannelStates => {
             config.exclude_channel_states = validate_exclude_states_input(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_FORWARDS) => {
-            config.forwards = options_value_to_u64(OPT_FORWARDS, value.as_i64().unwrap(), 0, true)?;
+        Opt::Forwards => {
+            config.forwards = options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 0, true)?;
         }
-        n if n.eq(OPT_FORWARDS_LIMIT) => {
-            config.forwards_limit =
-                options_value_to_usize(OPT_FORWARDS_LIMIT, value.as_i64().unwrap())?;
+        Opt::ForwardsLimit => {
+            config.forwards_limit = options_value_to_usize(opt.as_key(), value.as_i64().unwrap())?;
         }
-        n if n.eq(OPT_FORWARDS_COLUMNS) => {
+        Opt::ForwardsColumns => {
             config.forwards_columns = ForwardsColumns::parse_columns(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_FORWARDS_FILTER_AMT) => {
+        Opt::ForwardsFilterAmt => {
             config.forwards_filter_amt_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
-        n if n.eq(OPT_FORWARDS_FILTER_FEE) => {
+        Opt::ForwardsFilterFee => {
             config.forwards_filter_fee_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
-        n if n.eq(OPT_PAYS) => {
-            config.pays = options_value_to_u64(OPT_PAYS, value.as_i64().unwrap(), 0, true)?;
+        Opt::Pays => {
+            config.pays = options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 0, true)?;
         }
-        n if n.eq(OPT_PAYS_LIMIT) => {
-            config.pays_limit = options_value_to_usize(OPT_PAYS_LIMIT, value.as_i64().unwrap())?;
+        Opt::PaysLimit => {
+            config.pays_limit = options_value_to_usize(opt.as_key(), value.as_i64().unwrap())?;
         }
-        n if n.eq(OPT_PAYS_COLUMNS) => {
+        Opt::PaysColumns => {
             config.pays_columns = PaysColumns::parse_columns(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_MAX_DESC_LENGTH) => {
+        Opt::MaxDescLength => {
             config.max_desc_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_DESC_LENGTH, 5)?;
+                validate_i64_input_absolute(value.as_i64().unwrap(), opt.as_key(), 5)?;
         }
-        n if n.eq(OPT_INVOICES) => {
-            config.invoices = options_value_to_u64(OPT_INVOICES, value.as_i64().unwrap(), 0, true)?;
+        Opt::Invoices => {
+            config.invoices = options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 0, true)?;
         }
-        n if n.eq(OPT_INVOICES_LIMIT) => {
-            config.invoices_limit =
-                options_value_to_usize(OPT_INVOICES_LIMIT, value.as_i64().unwrap())?;
+        Opt::InvoicesLimit => {
+            config.invoices_limit = options_value_to_usize(opt.as_key(), value.as_i64().unwrap())?;
         }
-        n if n.eq(OPT_INVOICES_COLUMNS) => {
+        Opt::InvoicesColumns => {
             config.invoices_columns = InvoicesColumns::parse_columns(value.as_str().unwrap())?;
         }
-        n if n.eq(OPT_MAX_LABEL_LENGTH) => {
+        Opt::MaxLabelLength => {
             config.max_label_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_LABEL_LENGTH, 5)?;
+                validate_i64_input_absolute(value.as_i64().unwrap(), opt.as_key(), 5)?;
         }
-        n if n.eq(OPT_INVOICES_FILTER_AMT) => {
+        Opt::InvoicesFilterAmt => {
             config.invoices_filter_amt_msat = validate_i64_as_u64_input(value.as_i64().unwrap());
         }
-        n if n.eq(OPT_LOCALE) => {
+        Opt::Locale => {
             config.locale = match Locale::from_str(value.as_str().unwrap()) {
                 Ok(l) => l,
                 Err(e) => {
@@ -495,27 +360,27 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
                 }
             }
         }
-        n if n.eq(OPT_REFRESH_ALIAS) => {
+        Opt::RefreshAlias => {
             config.refresh_alias =
-                options_value_to_u64(OPT_REFRESH_ALIAS, value.as_i64().unwrap(), 1, false)?;
+                options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 1, false)?;
         }
-        n if n.eq(OPT_MAX_ALIAS_LENGTH) => {
+        Opt::MaxAliasLength => {
             config.max_alias_length =
-                validate_i64_input_absolute(value.as_i64().unwrap(), OPT_MAX_ALIAS_LENGTH, 5)?;
+                validate_i64_input_absolute(value.as_i64().unwrap(), opt.as_key(), 5)?;
         }
-        n if n.eq(OPT_AVAILABILITY_INTERVAL) => {
+        Opt::AvailabilityInterval => {
             config.availability_interval =
-                options_value_to_u64(OPT_AVAILABILITY_INTERVAL, value.as_i64().unwrap(), 1, false)?;
+                options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 1, false)?;
         }
-        n if n.eq(OPT_AVAILABILITY_WINDOW) => {
+        Opt::AvailabilityWindow => {
             config.availability_window =
-                options_value_to_u64(OPT_AVAILABILITY_WINDOW, value.as_i64().unwrap(), 1, false)?;
+                options_value_to_u64(opt.as_key(), value.as_i64().unwrap(), 1, false)?;
         }
-        n if n.eq(OPT_UTF8) => config.utf8 = value.as_bool().unwrap(),
-        n if n.eq(OPT_STYLE) => config.style = Styles::from_str(value.as_str().unwrap())?,
-        n if n.eq(OPT_FLOW_STYLE) => config.flow_style = Styles::from_str(value.as_str().unwrap())?,
-        n if n.eq(OPT_JSON) => config.json = value.as_bool().unwrap(),
-        _ => return Err(anyhow!("Unknown option: {name}")),
+        Opt::Utf8 => config.utf8 = value.as_bool().unwrap(),
+        Opt::Style => config.style = Styles::from_str(value.as_str().unwrap())?,
+        Opt::FlowStyle => config.flow_style = Styles::from_str(value.as_str().unwrap())?,
+        Opt::Json => config.json = value.as_bool().unwrap(),
+        // _ => return Err(anyhow!("Unknown option: {name}")),
     }
     Ok(())
 }
@@ -523,17 +388,23 @@ fn check_option(config: &mut Config, name: &str, value: &options::Value) -> Resu
 fn check_options_dependencies(config: &Config) -> Result<(), Error> {
     if config.forwards_limit > 0 && config.forwards == 0 {
         return Err(anyhow!(
-            "You must set `{OPT_FORWARDS}` for `{OPT_FORWARDS_LIMIT}` to have an effect!"
+            "You must set `{}` for `{}` to have an effect!",
+            Opt::Forwards.as_key(),
+            Opt::ForwardsLimit.as_key()
         ));
     }
     if config.pays_limit > 0 && config.pays == 0 {
         return Err(anyhow!(
-            "You must set `{OPT_PAYS}` for `{OPT_PAYS_LIMIT}` to have an effect!"
+            "You must set `{}` for `{}` to have an effect!",
+            Opt::Pays.as_key(),
+            Opt::PaysLimit.as_key()
         ));
     }
     if config.invoices_limit > 0 && config.invoices == 0 {
         return Err(anyhow!(
-            "You must set `{OPT_INVOICES}` for `{OPT_INVOICES_LIMIT}` to have an effect!"
+            "You must set `{}` for `{}` to have an effect!",
+            Opt::Invoices.as_key(),
+            Opt::InvoicesLimit.as_key()
         ));
     }
     Ok(())
