@@ -9,14 +9,15 @@ rust-version = "1.85"
 [dependencies]
 anyhow = "1"
 log = { version = "0.4", features = ['std'] }
+log-panics = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-tokio = { version = "1", features = ["fs", "sync", "rt-multi-thread"] }
+tokio = { version = "1", features = ["fs", "sync"] }
 cln-rpc = "0.5"
-# cln-rpc = { path="../lightning/cln-rpc/", version = "^0.4" }
+# cln-rpc = { path = "../lightning/cln-rpc/", version = "^0.5" }
 cln-plugin = "0.5"
-# cln-plugin = { path="../lightning/plugins/", version = "^0.4" }
+# cln-plugin = { path = "../lightning/plugins/", version = "^0.5" }
 
 tabled = "0.20"
 
