@@ -61,7 +61,7 @@ const OPT_JSON: &str = "summars-json";
 
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::cast_possible_wrap)]
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
     std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,trace");
     log_panics::init();
