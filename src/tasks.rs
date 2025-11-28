@@ -62,7 +62,7 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
             index: Some(ListpaysIndex::UPDATED),
             limit: Some(u32::try_from(PAGE_SIZE)?),
             payment_hash: None,
-            start: Some(current_index.saturating_sub(PAGE_SIZE + 1)),
+            start: Some(current_index.saturating_sub(PAGE_SIZE - 1)),
             status: Some(ListpaysStatus::COMPLETE),
         })
         .await?

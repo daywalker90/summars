@@ -134,9 +134,6 @@ pub struct PluginState {
     pub alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
     pub config: Arc<Mutex<Config>>,
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
-    pub fw_index: Arc<Mutex<PagingIndex>>,
-    pub inv_index: Arc<Mutex<PagingIndex>>,
-    pub pay_index: Arc<Mutex<PagingIndex>>,
 }
 impl PluginState {
     pub fn new() -> PluginState {
@@ -144,9 +141,6 @@ impl PluginState {
             alias_map: Arc::new(Mutex::new(BTreeMap::new())),
             config: Arc::new(Mutex::new(Config::new())),
             avail: Arc::new(Mutex::new(BTreeMap::new())),
-            fw_index: Arc::new(Mutex::new(PagingIndex::new())),
-            inv_index: Arc::new(Mutex::new(PagingIndex::new())),
-            pay_index: Arc::new(Mutex::new(PagingIndex::new())),
         }
     }
 }
@@ -363,22 +357,6 @@ pub struct ForwardsFilterStats {
     pub count: u64,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct PagingIndex {
-    pub timestamp: u64,
-    pub start: u64,
-    pub age: u64,
-}
-impl PagingIndex {
-    pub fn new() -> PagingIndex {
-        PagingIndex {
-            timestamp: 0,
-            start: u64::MAX,
-            age: 0,
-        }
-    }
-}
-
 #[derive(Debug, Tabled, Serialize)]
 pub struct Pays {
     #[tabled(skip)]
@@ -506,6 +484,12 @@ pub struct Totals {
     pub pays_amount_sent_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pays_fees_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_self_amount_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_self_amount_sent_msat: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pays_self_fees_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub invoices_amount_received_msat: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]

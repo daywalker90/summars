@@ -411,6 +411,15 @@ pub const fn rounded_div_u64(dividend: u64, divisor: u64) -> u64 {
     quotient + (remainder << 1 >= divisor) as u64
 }
 
+#[inline]
+pub fn accumulate_msat(slot: &mut Option<u64>, value: u64) {
+    if let Some(existing) = slot {
+        *existing += value;
+    } else {
+        *slot = Some(value);
+    }
+}
+
 #[test]
 fn test_flags() {
     assert_eq!(make_channel_flags(false, false), "[__]");
