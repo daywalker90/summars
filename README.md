@@ -103,33 +103,35 @@ There are currently two commands:
 lightning-cli summars summars-forwards=200 summars-pays=3 summars-invoices=3
 address=03da2efc78ba5420048e636e541e3b484d3e314e2fca7672c0450214f7a9f2fd2e@189.78.23.211:9735
 num_utxos=11
-utxo_amount=0.125046909 BTC
+utxo_amount=0.12589003 BTC
 num_channels=13
 num_connected=12
 num_gossipers=2
-avail_out=0.05614095 BTC
+avail_out=0.05529782 BTC
 avail_in=0.09208059 BTC
 fees_collected=0.00001555 BTC
 channels_flags=P:private O:offline
- OUT_SATS  |  IN_SATS   |     SCID      |  MAX_HTLC  | FLAG | BASE |  PPM  |        ALIAS         |                              PEER_ID                               | UPTIME | HTLCS | STATE
------------+------------+---------------+------------+------+------+-------+----------------------+--------------------------------------------------------------------+--------+-------+-------
-   103,313 |     96,686 | 2471854x37x7  |     51,000 | [__] |    0 |     1 | node204.fra.memp[..] | 039c14fdec2d958e3d14cebf657451bbd9e039196615785e82c917f274e3fb2205 |   100% |     0 |  OK
-    84,313 |    115,686 | 2471854x37x9  |     51,000 | [_O] |    0 |     1 | node205.fra.memp[..] | 033589bbcb233ffc416cefd5437c7f37e9d7cb7942d405e39e72c4c846d9b37f18 |    81% |     0 |  OK
-   172,977 |     27,022 | 2471854x37x10 |     51,000 | [__] |    0 |     1 | OLYMPUS by ZEUS      | 03e84a109cd70e57864274932fc87c5e6434c59ebb8e6e7d28532219ba38f7f6df |   100% |     0 |  OK
-   194,978 |      5,021 | 2471854x37x12 |     51,000 | [__] |    0 |     1 | 1ML.com node ALPHA   | 02312627fdf07fbdd7e5ddb136611bdde9b00d26821d14d94891395452f67af248 |   100% |     0 |  OK
-    10,147 |    189,852 | 2471854x37x13 |          1 | [P_] |    0 |     1 | cyclopes             | 028ec70462207b57e3d4d9332d9e0aee676c92d89b7c9fb0850fc2a24814d4d83c |   100% |     0 |  OK
-    13,947 |    186,052 | 2471854x37x14 |          1 | [__] |    0 |     1 | 030f375d8aecdddc8523 | 030f375d8aecdddc852309c15c3b67c2934de0de4d31e1e04a03d656ca0a78d008 |   100% |     0 |  OK
-   127,035 |    873,964 | 2476625x46x0  |     51,000 | [__] |    0 | 1,849 | lndus1.next.zaphq.io | 022251a9fa007cd60acee9cbc6ab4b15d2ad52cad5f271b0276d3b2d97e3d87b43 |    87% |     0 |  OK
-    48,836 |    952,163 | 2476625x46x1  |          1 | [__] |    0 | 1,849 | lndus0.next.zaphq.io | 028c3640c57ffe47eb41db8225968833c5032f297aeba98672d6f7037090d59e3f |    86% |     0 |  OK
-   380,431 |    620,568 | 2476625x46x2  |     51,000 | [__] |    0 |     1 | Bitnob(Jos, 2001)    | 035c32eded21dd4a073153c4e3c1e56618f1f77b8edb66653a0a643f7a78260117 |    99% |     0 |  OK
-   375,512 |    625,487 | 2476625x46x3  |    990,990 | [__] |    0 |     1 | lndus0.dev.zaphq.io  | 03819f6e407d3890484bed25b56b2ca582a883a4aa5671965462f591732381b358 |   100% |     0 |  OK
-   253,922 |    747,077 | 2476625x46x4  |    990,990 | [__] |    0 |     1 | lndus1.dev.zaphq.io  | 02be8f360e57600486b93dd33ea0872a4e14a259924ba4084f27d693a77d151158 |   100% |     0 |  OK
-    26,738 |  1,819,119 | 2476654x19x0  |          1 | [__] |    0 |     1 | Boltz                | 03f060953bef5b777dc77e44afa3859d022fc1a77c55138deb232ad7255e869c00 |   100% |     0 |  OK
-    49,714 |    951,285 | 2501790x6x4   |          1 | [__] |    0 |     1 | endurance            | 03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134 |   100% |     0 |  OK
+ OUT_SATS  |  IN_SATS   |     SCID      |  MAX_HTLC  | FLAG | BASE |  PPM  |        ALIAS         |                              PEER_ID                               | UPTIME | HTLCS |  STATE
+-----------+------------+---------------+------------+------+------+-------+----------------------+--------------------------------------------------------------------+--------+-------+---------
+   103,313 |     96,686 | 2471854x37x7  |     51,000 | [__] |    0 |     1 | node204.fra.memp[..] | 039c14fdec2d958e3d14cebf657451bbd9e039196615785e82c917f274e3fb2205 |   100% |     0 |   OK
+    84,313 |    115,686 | 2471854x37x9  |     51,000 | [_O] |    0 |     1 | node205.fra.memp[..] | 033589bbcb233ffc416cefd5437c7f37e9d7cb7942d405e39e72c4c846d9b37f18 |    81% |     0 | ONCHAIN
+   172,977 |     27,022 | 2471854x37x10 |     51,000 | [__] |    0 |     1 | OLYMPUS by ZEUS      | 03e84a109cd70e57864274932fc87c5e6434c59ebb8e6e7d28532219ba38f7f6df |   100% |     0 |   OK
+   194,978 |      5,021 | 2471854x37x12 |     51,000 | [__] |    0 |     1 | 1ML.com node ALPHA   | 02312627fdf07fbdd7e5ddb136611bdde9b00d26821d14d94891395452f67af248 |   100% |     0 |   OK
+    10,147 |    189,852 | 2471854x37x13 |          1 | [P_] |    0 |     1 | cyclopes             | 028ec70462207b57e3d4d9332d9e0aee676c92d89b7c9fb0850fc2a24814d4d83c |   100% |     0 |   OK
+    13,947 |    186,052 | 2471854x37x14 |          1 | [__] |    0 |     1 | 030f375d8aecdddc8523 | 030f375d8aecdddc852309c15c3b67c2934de0de4d31e1e04a03d656ca0a78d008 |   100% |     0 |   OK
+   127,035 |    873,964 | 2476625x46x0  |     51,000 | [__] |    0 | 1,849 | lndus1.next.zaphq.io | 022251a9fa007cd60acee9cbc6ab4b15d2ad52cad5f271b0276d3b2d97e3d87b43 |    87% |     0 |   OK
+    48,836 |    952,163 | 2476625x46x1  |          1 | [__] |    0 | 1,849 | lndus0.next.zaphq.io | 028c3640c57ffe47eb41db8225968833c5032f297aeba98672d6f7037090d59e3f |    86% |     0 |   OK
+   380,431 |    620,568 | 2476625x46x2  |     51,000 | [__] |    0 |     1 | Bitnob(Jos, 2001)    | 035c32eded21dd4a073153c4e3c1e56618f1f77b8edb66653a0a643f7a78260117 |    99% |     0 |   OK
+   375,512 |    625,487 | 2476625x46x3  |    990,990 | [__] |    0 |     1 | lndus0.dev.zaphq.io  | 03819f6e407d3890484bed25b56b2ca582a883a4aa5671965462f591732381b358 |   100% |     0 |   OK
+   253,922 |    747,077 | 2476625x46x4  |    990,990 | [__] |    0 |     1 | lndus1.dev.zaphq.io  | 02be8f360e57600486b93dd33ea0872a4e14a259924ba4084f27d693a77d151158 |   100% |     0 |   OK
+    26,738 |  1,819,119 | 2476654x19x0  |          1 | [__] |    0 |     1 | Boltz                | 03f060953bef5b777dc77e44afa3859d022fc1a77c55138deb232ad7255e869c00 |   100% |     0 |   OK
+    49,714 |    951,285 | 2501790x6x4   |          1 | [__] |    0 |     1 | endurance            | 03933884aaf1d6b108397e5efe5c86bcf2d8ca8d2f700eda99db9214fc2712b134 |   100% |     0 |   OK
 
                                   forwards (last 200h, limit: off)
  resolved_time         in_alias               out_alias             in_sats   out_sats   fee_msats
  5/16/24, 3:48:58 PM   lndus1.next.zaphq.io   02758997f184be06f435    11,503     11,503          11
+
+ Total forwards stats in the last 200h: 11,503 in_sats 11,503 out_sats 0 fee_sats
 
                                                  pays (last 3h, limit: off)
  completed_at          payment_hash                                                       sats_sent  fee_msats   destination
@@ -140,6 +142,8 @@ channels_flags=P:private O:offline
  5/19/24, 5:35:03 PM   71ce7cabc80f55b51dd9373f2ea57acaa21b9087e993ebfad3b4302dc46a943b      50,000           0   Boltz
  5/19/24, 5:35:04 PM   cbd929f8a0bc4bc46dba51b0dc3188662708d1bd8e6ae5ee71ccd894194d40db      50,000           0   Boltz
 
+ Total pays stats in the last 3: 300,000 sats_requested 300,000 sats_sent 0 fee_sats
+
                                                  invoices (last 3h, limit: off)
  paid_at               label                            sats_received   payment_hash
  5/19/24, 5:35:21 PM   WpcvbXKW                                50,000   39eb0fa161fb85ab7c653bdfb49da8ca4914287b2ecd567968a3c4156c285768
@@ -148,6 +152,8 @@ channels_flags=P:private O:offline
  5/19/24, 5:35:25 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   623743a48f5d0a8f20b9605228b4da0be7bd2cd72f7da39ec0028bf953317785
  5/19/24, 5:35:26 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   be5fe3a6fff1efe77362186f357414f69d6d43e26f35af6233135fb2fcac06e3
  5/19/24, 5:35:27 PM   82ac9e392f2dd41f4d53ff9ebe[..]          50,000   7ad2e0bb16ecc6f3f893c9f626cdb85802aa27c0ff00d24bce32e28dbebb32ab
+
+ Total invoices stats in the last 3h: 300,000 sats_received
 ```
 
 
