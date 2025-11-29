@@ -127,7 +127,22 @@ async fn process_pay_batches(
         .await?
         .updated
         .unwrap();
-    log::debug!("Current pays index: {current_index}");
+
+    let first_index = rpc
+        .call_typed(&ListpaysRequest {
+            bolt11: None,
+            payment_hash: None,
+            status: Some(ListpaysStatus::COMPLETE),
+            index: Some(ListpaysIndex::UPDATED),
+            start: Some(0),
+            limit: Some(1),
+        })
+        .await?
+        .pays
+        .first()
+        .and_then(|p| p.updated_index)
+        .unwrap_or(0);
+    log::debug!("Current pays index: {current_index}, first index: {first_index}");
 
     let mut loop_count = 0;
 
@@ -151,7 +166,7 @@ async fn process_pay_batches(
 
         build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin.clone()).await?;
 
-        if current_index <= 1 {
+        if current_index <= 1 || current_index <= first_index {
             break;
         }
         limit = u32::min(u32::try_from(PAGE_SIZE)?, u32::try_from(current_index)?);
