@@ -128,7 +128,22 @@ async fn process_forward_batches(
         .await?
         .updated
         .unwrap();
-    log::debug!("Current forward index: {current_index}");
+
+    let first_index = rpc
+        .call_typed(&ListforwardsRequest {
+            status: Some(ListforwardsStatus::SETTLED),
+            in_channel: None,
+            out_channel: None,
+            index: Some(ListforwardsIndex::UPDATED),
+            start: Some(0),
+            limit: Some(1),
+        })
+        .await?
+        .forwards
+        .first()
+        .and_then(|f| f.updated_index)
+        .unwrap_or(0);
+    log::debug!("Current forward index: {current_index}, first index: {first_index}");
 
     let mut loop_count = 0;
 
@@ -161,7 +176,7 @@ async fn process_forward_batches(
         )
         .await?;
 
-        if current_index <= 1 {
+        if current_index <= 1 || current_index <= first_index {
             break;
         }
         limit = u32::min(u32::try_from(PAGE_SIZE)?, u32::try_from(current_index)?);

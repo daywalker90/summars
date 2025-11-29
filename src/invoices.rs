@@ -99,7 +99,23 @@ async fn process_invoice_batches(
         .await?
         .updated
         .unwrap();
-    log::debug!("Current invoices index: {current_index}");
+
+    let first_index = rpc
+        .call_typed(&ListinvoicesRequest {
+            label: None,
+            invstring: None,
+            payment_hash: None,
+            offer_id: None,
+            index: Some(ListinvoicesIndex::UPDATED),
+            start: Some(0),
+            limit: Some(1),
+        })
+        .await?
+        .invoices
+        .first()
+        .and_then(|i| i.updated_index)
+        .unwrap_or(0);
+    log::debug!("Current invoices index: {current_index}, first index: {first_index}");
 
     let mut loop_count = 0;
 
@@ -124,7 +140,7 @@ async fn process_invoice_batches(
 
         build_invoices_table(invoices_acc, invoices, full_node_data, config)?;
 
-        if current_index <= 1 {
+        if current_index <= 1 || current_index <= first_index {
             break;
         }
         limit = u32::min(u32::try_from(PAGE_SIZE)?, u32::try_from(current_index)?);
