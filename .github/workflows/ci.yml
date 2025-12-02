@@ -146,6 +146,7 @@ jobs:
           tar -xvf ${url##*/} -C tests
 
           cargo build
+          cargo test
         fi
 
     - name: Run tests
