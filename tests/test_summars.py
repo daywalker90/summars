@@ -7,6 +7,7 @@ import pytest
 from pyln.client import RpcError
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import only_one, sync_blockheight, wait_for
+from pathlib import Path
 from util import get_plugin, my_xpay  # noqa: F401
 
 columns = [
@@ -843,7 +844,7 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
             "log-level": "debug",
             "plugin": [
                 get_plugin,
-                os.path.join(os.getcwd(), "tests/holdinvoice"),
+                os.path.join(Path(__file__).parent.resolve(), "holdinvoice"),
             ],
         },
     )
