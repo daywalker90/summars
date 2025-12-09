@@ -7,8 +7,9 @@ from pathlib import Path
 from pyln.testing.utils import TIMEOUT
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
-COMPILED_PATH = Path.cwd() / "target" / RUST_PROFILE / "summars"
-DOWNLOAD_PATH = Path.cwd() / "tests" / "summars"
+plugin_dir = Path(__file__).parent.parent.resolve()
+COMPILED_PATH = plugin_dir / "target" / RUST_PROFILE / "summars"
+DOWNLOAD_PATH = plugin_dir / "tests" / "summars"
 
 
 @pytest.fixture
