@@ -6,6 +6,10 @@ rust-version = "1.85"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+hold = ["dep:tonic", "dep:prost", "dep:tonic-prost"]
+default = ["hold"]
+
 [dependencies]
 anyhow = "1"
 log = { version = "0.4", features = ['std'] }
@@ -35,6 +39,19 @@ chrono = "0.4"
 parking_lot = "0.12"
 
 strum = { version = "0.27", features = ["derive"] }
+
+tonic = { version = "0.14", optional = true, default-features = false, features = [
+    "codegen",
+    "transport",
+    "tls-ring",
+] }
+prost = { version = "0.14", optional = true }
+tonic-prost = { version = "0.14", optional = true }
+
+lightning-invoice = "0.34.0"
+
+[build-dependencies]
+tonic-prost-build = "0.14"
 
 [profile.optimized]
 inherits = "release"

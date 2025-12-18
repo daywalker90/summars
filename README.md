@@ -56,6 +56,7 @@ A core lightning plugin to show a summary of your channels and optionally recent
 * [Building](#building)
 * [Methods](#methods)
 * [Example Usage](#example-usage)
+* [Supported plugins](#supported-plugins)
 * [How to set options](#how-to-set-options)
 * [Options](#options)
 * [Availability Database](#availability-database)
@@ -83,13 +84,21 @@ git clone https://github.com/daywalker90/summars.git
 
 Install a recent rust version ([rustup](https://rustup.rs/) is recommended) and in the ``summars`` folder run:
 
+With [Supported plugins](#supported-plugins):
+
 ```
 cargo build --release
 ```
 
+Without [Supported plugins](#supported-plugins):
+
+```
+cargo build --no-default-features --release
+```
+
 After that the binary will be here: ``target/release/summars``
 
-Note: Release binaries are built using ``cross`` and the ``optimized`` profile.
+Note: Release binaries are built using ``cross`` and the ``optimized`` profile and with [Supported plugins](#supported-plugins).
 
 # Methods
 
@@ -176,6 +185,9 @@ channels_flags=P:private O:offline
                    ├────┼─────────────────┤       2531339x15x0
                         ╟──────────────────────┤  2576452x228x0
 ```
+
+# Supported plugins
+- [hold](https://github.com/BoltzExchange/hold) `v0.3.3+` is supported and their paid invoices will show up in the invoices table just like normal CLN invoices but all with the same label: `holdinvoice`. `summars` uses the grpc server of hold to fetch invoices. Note on performance: `summars` goes through all holdinvoices starting from id 1 and remembers the earliest index necessary for your invoices time window. It has to remember the earliest index of any `accepted` or `unpaid` invoice aswell since they might get paid in the future and it might happen that a very old `accepted` or `unpaid` invoice exists and `summars` has to start at that index every time. So for best performance make sure every holdinvoice resolves to `paid` or `cancelled` in a timely manner.
 
 # How to set options
 ``summars`` is a dynamic plugin with dynamic options, so you can start it after CLN is already running and modify it's options after the plugin is started. There are three different methods of setting the options:

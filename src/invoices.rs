@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, HashSet};
+#[cfg(feature = "hold")]
+use std::str::FromStr;
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
+use cln_plugin::Plugin;
 use cln_rpc::{
     model::{
         requests::{
@@ -16,6 +19,8 @@ use cln_rpc::{
     primitives::Amount,
     ClnRpc,
 };
+#[cfg(feature = "hold")]
+use lightning_invoice::Bolt11Invoice;
 use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
@@ -33,8 +38,22 @@ use tabled::{
 };
 use tokio::time::Instant;
 
+#[cfg(feature = "hold")]
+use crate::hold::{
+    list_request::{Constraint, Pagination},
+    InvoiceState,
+    ListRequest,
+};
 use crate::{
-    structs::{Config, FullNodeData, Invoices, InvoicesColumns, TableColumn, PAGE_SIZE},
+    structs::{
+        Config,
+        FullNodeData,
+        Invoices,
+        InvoicesColumns,
+        PluginState,
+        TableColumn,
+        PAGE_SIZE,
+    },
     util::{
         accumulate_msat,
         hex_encode,
@@ -50,10 +69,12 @@ struct InvoicesAccumulator {
     oldest_updated: u64,
     cutoff_timestamp: u64,
     invoices_map: BTreeMap<u64, Invoices>,
+    holdinvoices_map: BTreeMap<i64, Invoices>,
     filtered_set: HashSet<u64>,
 }
 
 pub async fn gather_invoices_data(
+    #[cfg_attr(not(feature = "hold"), allow(unused_variables))] plugin: Plugin<PluginState>,
     rpc: &mut ClnRpc,
     config: &Config,
     now: Instant,
@@ -66,6 +87,7 @@ pub async fn gather_invoices_data(
     let oldest_updated = now_utc;
 
     let invoices_map: BTreeMap<u64, Invoices> = BTreeMap::new();
+    let holdinvoices_map: BTreeMap<i64, Invoices> = BTreeMap::new();
 
     let filtered_set: HashSet<u64> = HashSet::new();
 
@@ -73,12 +95,37 @@ pub async fn gather_invoices_data(
         oldest_updated,
         cutoff_timestamp,
         invoices_map,
+        holdinvoices_map,
         filtered_set,
     };
 
     process_invoice_batches(now, &mut invoices_acc, config, rpc, full_node_data).await?;
 
-    limit_and_sort_invoices_data(invoices_acc, config, full_node_data);
+    #[cfg(feature = "hold")]
+    if plugin.state().hold_client.lock().is_some() {
+        process_hold_invoices(
+            plugin.clone(),
+            now,
+            &mut invoices_acc,
+            config,
+            full_node_data,
+        )
+        .await?;
+    }
+
+    full_node_data.invoices = invoices_acc
+        .invoices_map
+        .into_values()
+        .chain(invoices_acc.holdinvoices_map.into_values())
+        .collect();
+    log::debug!("Chained invoices. Total {}ms", now.elapsed().as_millis());
+
+    limit_and_sort_invoices_data(config, full_node_data);
+
+    #[cfg(feature = "hold")]
+    if plugin.state().hold_client.lock().is_some() {
+        decode_holdinvoice_descriptions(now, full_node_data, config);
+    }
 
     Ok(())
 }
@@ -155,26 +202,175 @@ async fn process_invoice_batches(
     Ok(())
 }
 
-fn limit_and_sort_invoices_data(
-    invoices_acc: InvoicesAccumulator,
-    config: &Config,
-    full_node_data: &mut FullNodeData,
-) {
-    if config.invoices_limit > 0 && invoices_acc.invoices_map.len() > config.invoices_limit {
-        full_node_data.invoices = invoices_acc
-            .invoices_map
-            .into_values()
-            .rev()
-            .take(config.invoices_limit)
-            .rev()
-            .collect();
-    } else {
-        full_node_data.invoices = invoices_acc.invoices_map.into_values().collect();
-    }
-
+fn limit_and_sort_invoices_data(config: &Config, full_node_data: &mut FullNodeData) {
     full_node_data.invoices.sort_by_key(|x| x.paid_at);
+
+    if config.invoices_limit > 0 && full_node_data.invoices.len() > config.invoices_limit {
+        full_node_data
+            .invoices
+            .drain(0..full_node_data.invoices.len() - config.invoices_limit);
+    }
 }
 
+#[cfg(feature = "hold")]
+async fn process_hold_invoices(
+    plugin: Plugin<PluginState>,
+    now: Instant,
+    invoices_acc: &mut InvoicesAccumulator,
+    config: &Config,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let Some(mut hold_client) = plugin.state().hold_client.lock().clone() else {
+        return Err(anyhow!("hold client vanished"));
+    };
+
+    #[allow(clippy::clone_on_copy)]
+    let mut index_helper = plugin.state().hold_pagination_helper.lock().clone();
+
+    if config.invoices > index_helper.last_window {
+        index_helper.last_window = config.invoices;
+        index_helper.first_index = 1;
+    }
+
+    log::debug!("first_index: {}", index_helper.first_index);
+
+    let mut current_index = index_helper.first_index;
+    let mut new_first_index = i64::MAX;
+    let mut loop_count = 0;
+
+    loop {
+        loop_count += 1;
+        let holdinvoices = hold_client
+            .list(ListRequest {
+                constraint: Some(Constraint::Pagination(Pagination {
+                    index_start: current_index,
+                    limit: PAGE_SIZE,
+                })),
+            })
+            .await?
+            .into_inner()
+            .invoices;
+
+        if holdinvoices.is_empty() {
+            break;
+        }
+        let last_len = holdinvoices.len();
+        current_index = holdinvoices.last().unwrap().id + 1;
+
+        for invoice in holdinvoices {
+            if invoice.state() == InvoiceState::Cancelled {
+                continue;
+            }
+            if invoice.state() != InvoiceState::Paid {
+                if invoice.id < new_first_index {
+                    new_first_index = invoice.id;
+                }
+                continue;
+            }
+
+            let Some(inv_paid_at) = invoice.settled_at else {
+                continue;
+            };
+
+            if inv_paid_at >= invoices_acc.cutoff_timestamp {
+                if invoice.id < new_first_index {
+                    new_first_index = invoice.id;
+                }
+                let msats_received = invoice.htlcs.iter().map(|h| h.msat).sum();
+                accumulate_msat(
+                    &mut full_node_data.totals.invoices_amount_received_msat,
+                    msats_received,
+                );
+
+                if let Some(if_amt) = config.invoices_filter_amt_msat {
+                    if msats_received <= if_amt {
+                        full_node_data.invoices_filter_stats.filter_count += 1;
+                        full_node_data.invoices_filter_stats.filter_amt_sum_msat += msats_received;
+
+                        continue;
+                    }
+                }
+
+                // Save the bolt11 in the description field and only decode the description after
+                // limit is applied
+                let description = invoice.invoice;
+
+                invoices_acc.holdinvoices_map.insert(
+                    invoice.id,
+                    Invoices {
+                        paid_at: invoice.settled_at.unwrap(),
+                        paid_at_str: timestamp_to_localized_datetime_string(
+                            config,
+                            invoice.settled_at.unwrap(),
+                        )?,
+                        label: "holdinvoice".to_owned(),
+                        msats_received,
+                        sats_received: rounded_div_u64(msats_received, 1_000),
+                        description,
+                        payment_hash: hex_encode(&invoice.payment_hash),
+                        preimage: hex_encode(&invoice.preimage.unwrap()),
+                    },
+                );
+            }
+        }
+
+        if last_len < usize::try_from(PAGE_SIZE)? {
+            break;
+        }
+    }
+
+    log::debug!("last_index: {}", current_index - 1);
+    if new_first_index < i64::MAX {
+        index_helper.first_index = new_first_index;
+    }
+    log::debug!("new_first_index: {}", index_helper.first_index);
+    log::debug!(
+        "Build holdinvoices table in {} calls. Total: {}ms",
+        loop_count,
+        now.elapsed().as_millis()
+    );
+
+    *plugin.state().hold_pagination_helper.lock() = index_helper;
+    Ok(())
+}
+
+#[cfg(feature = "hold")]
+fn decode_holdinvoice_descriptions(
+    now: Instant,
+    full_node_data: &mut FullNodeData,
+    config: &Config,
+) {
+    let description_wanted = config
+        .invoices_columns
+        .contains(&InvoicesColumns::description)
+        || config.json;
+
+    if !description_wanted {
+        return;
+    }
+
+    for invoice in &mut full_node_data.invoices {
+        if invoice.label == "holdinvoice" {
+            let decoded_invoice = match Bolt11Invoice::from_str(&invoice.description) {
+                Ok(o) => o,
+                Err(e) => {
+                    log::warn!(
+                        "Could not decode bolt11 `{}`, if this is NOT your one CLN \
+                    invoice with the label `holdinvoice`, please report this error: {}",
+                        invoice.description,
+                        e
+                    );
+                    continue;
+                }
+            };
+            invoice.description = decoded_invoice.description().to_string();
+        }
+    }
+    log::debug!(
+        "Decoded descriptions for holdinvoices. Total {}ms",
+        now.elapsed().as_millis()
+    );
+}
 fn build_invoices_table(
     invoices_acc: &mut InvoicesAccumulator,
     invoices: Vec<ListinvoicesInvoices>,

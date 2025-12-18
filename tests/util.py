@@ -4,6 +4,7 @@ import logging
 import os
 import pytest
 from pathlib import Path
+from hashlib import sha256
 from pyln.testing.utils import TIMEOUT
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
@@ -57,3 +58,8 @@ def my_xpay(node, invstring, partial_msat=None):
     except Exception as e:
         LOGGER.info(f"Error paying payment hash:{e}")
         pass
+
+
+def new_preimage() -> tuple[str, str]:
+    preimage = os.urandom(32)
+    return preimage.hex(), sha256(preimage).hexdigest()
