@@ -327,7 +327,7 @@ async fn main() -> Result<(), anyhow::Error> {
     }
     if let Ok(plugin) = confplugin.start(state).await {
         #[cfg(feature = "hold")]
-        match check_hold_support(plugin.clone()).await {
+        match check_hold_support(&plugin).await {
             Ok(()) => {
                 log::info!("Hold support activated");
             }
@@ -364,8 +364,8 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 #[cfg(feature = "hold")]
-async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
-    let rpc_path = make_rpc_path(&plugin);
+async fn check_hold_support(plugin: &Plugin<PluginState>) -> Result<(), anyhow::Error> {
+    let rpc_path = make_rpc_path(plugin);
     let mut rpc = ClnRpc::new(&rpc_path).await?;
     let hold_grpc_host_response: serde_json::Value = rpc
         .call_raw("listconfigs", &json!({"config": "hold-grpc-host"}))

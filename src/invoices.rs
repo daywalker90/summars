@@ -103,14 +103,7 @@ pub async fn gather_invoices_data(
 
     #[cfg(feature = "hold")]
     if plugin.state().hold_client.lock().is_some() {
-        process_hold_invoices(
-            plugin.clone(),
-            now,
-            &mut invoices_acc,
-            config,
-            full_node_data,
-        )
-        .await?;
+        process_hold_invoices(&plugin, now, &mut invoices_acc, config, full_node_data).await?;
     }
 
     full_node_data.invoices = invoices_acc
@@ -214,7 +207,7 @@ fn limit_and_sort_invoices_data(config: &Config, full_node_data: &mut FullNodeDa
 
 #[cfg(feature = "hold")]
 async fn process_hold_invoices(
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
     now: Instant,
     invoices_acc: &mut InvoicesAccumulator,
     config: &Config,
