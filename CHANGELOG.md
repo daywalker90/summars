@@ -5,6 +5,10 @@
 ### Added
 - support for holdinvoices from [hold](https://github.com/BoltzExchange/hold)
 
+### Changed
+- improved performance of `pays` table in case of activated description column and description has to be read from a bolt11 string
+- small performance improvements to all flow tables for giant nodes
+
 ## [6.0.0] - 2025-11-28
 
 ### Added

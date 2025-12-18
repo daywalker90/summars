@@ -340,7 +340,7 @@ async fn process_channels_data(
                 full_node_data.node_summary.filter_count += 1;
                 continue;
             }
-            let alias = get_alias(rpc, plugin.clone(), chan.peer_id).await?;
+            let alias = get_alias(rpc, &plugin, chan.peer_id).await?;
 
             let to_us_msat = Amount::msat(
                 &chan

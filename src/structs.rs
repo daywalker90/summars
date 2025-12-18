@@ -516,11 +516,7 @@ pub struct ForwardsFilterStats {
 
 #[derive(Debug, Tabled, Serialize)]
 pub struct Pays {
-    #[tabled(skip)]
     pub completed_at: u64,
-    #[tabled(rename = "completed_at")]
-    #[serde(skip_serializing)]
-    pub completed_at_str: String,
     pub payment_hash: String,
     #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -544,6 +540,16 @@ pub struct Pays {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub preimage: String,
+    #[serde(skip_serializing)]
+    #[tabled(skip)]
+    pub description_status: DescriptionStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DescriptionStatus {
+    Processed,
+    Bolt11,
+    Bolt12,
 }
 
 #[derive(
