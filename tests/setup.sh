@@ -69,9 +69,9 @@ else
 fi
 
 # Need holdinvoice for some tests
-HOLDINVOICE_VERSION="4.0.0"
-HOLDINVOICE_ARCHIVE="holdinvoice-v$HOLDINVOICE_VERSION-$platform_file_end"
-HOLDINVOICE_FILE_URL="https://github.com/daywalker90/holdinvoice/releases/download/v$HOLDINVOICE_VERSION/$HOLDINVOICE_ARCHIVE"
+HOLDINVOICE_VERSION="0.3.3"
+HOLDINVOICE_ARCHIVE="hold-linux-amd64.tar.gz"
+HOLDINVOICE_FILE_URL="https://github.com/BoltzExchange/hold/releases/download/v$HOLDINVOICE_VERSION/$HOLDINVOICE_ARCHIVE"
 
 if ! curl -L "$HOLDINVOICE_FILE_URL" -o "$script_dir/$HOLDINVOICE_ARCHIVE"; then
     echo "Error downloading the file from $HOLDINVOICE_FILE_URL" >&2
@@ -82,6 +82,8 @@ if ! tar -xzvf "$script_dir/$HOLDINVOICE_ARCHIVE" -C "$script_dir"; then
     echo "Error extracting the contents of $HOLDINVOICE_ARCHIVE" >&2
     exit 1
 fi
+
+mv "$script_dir/build/hold-linux-amd64" "$script_dir/hold"
 
 proto_path="$script_dir/../proto"
 if [ -d "$proto_path" ]; then

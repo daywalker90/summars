@@ -8,7 +8,7 @@ from pyln.client import RpcError
 from pyln.testing.fixtures import *  # noqa: F403
 from pyln.testing.utils import only_one, sync_blockheight, wait_for
 from pathlib import Path
-from util import get_plugin, my_xpay  # noqa: F401
+from util import get_plugin, my_xpay, new_preimage  # noqa: F401
 
 columns = [
     "GRAPH_SATS",
@@ -838,15 +838,21 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
 
 
 def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
+    grpc_port = node_factory.get_unused_port()
     l1, l2, l3 = node_factory.get_nodes(
         3,
-        opts={
-            "log-level": "debug",
-            "plugin": [
-                get_plugin,
-                os.path.join(Path(__file__).parent.resolve(), "holdinvoice"),
-            ],
-        },
+        opts=[
+            {"log-level": "debug", "plugin": get_plugin},
+            {"log-level": "debug", "plugin": get_plugin},
+            {
+                "log-level": "debug",
+                "plugin": [
+                    get_plugin,
+                    os.path.join(Path(__file__).parent.resolve(), "hold"),
+                ],
+                "hold-grpc-port": grpc_port,
+            },
+        ],
     )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
@@ -872,29 +878,29 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     l2.wait_channel_active(cl2)
     l3.wait_channel_active(cl2)
 
+    preimage, payment_hash = new_preimage()
     hold_inv = l3.rpc.call(
         "holdinvoice",
         {
-            "amount_msat": 1_000,
-            "description": "hold_inv1",
-            "label": "hold_inv1",
-            "cltv": 144,
+            "amount": 1_000,
+            "payment_hash": payment_hash,
         },
     )
-    assert "payment_hash" in hold_inv
 
     threading.Thread(target=my_xpay, args=(l1, hold_inv["bolt11"])).start()
 
     wait_for(
-        lambda: l3.rpc.holdinvoicelookup(hold_inv["payment_hash"])["state"]
-        == "ACCEPTED"
+        lambda: l3.rpc.call("listholdinvoices", {"payment_hash": payment_hash})[
+            "holdinvoices"
+        ][0]["state"]
+        == "accepted"
     )
     result = l1.rpc.call("summars", {"summars-pays": 1})
-    assert hold_inv["payment_hash"] not in result["result"]
+    assert payment_hash not in result["result"]
     result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
     assert len(result["forwards"]) == 0
     result = l3.rpc.call("summars", {"summars-invoices": 1})
-    assert hold_inv["payment_hash"] not in result["result"]
+    assert payment_hash not in result["result"]
 
     new_inv = l3.rpc.invoice(1_000, "new_inv", "new_inv")
 
@@ -902,33 +908,35 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] not in result["result"]
+    assert payment_hash not in result["result"]
     result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
     assert len(result["forwards"]) == 1
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] not in result["result"]
+    assert payment_hash not in result["result"]
 
-    result_settle = l3.rpc.call(
-        "holdinvoicesettle", {"payment_hash": hold_inv["payment_hash"]}
-    )
-    assert result_settle["state"] == "SETTLED"
+    l3.rpc.call("settleholdinvoice", {"preimage": preimage})
 
     wait_for(
-        lambda: l1.rpc.listpays(payment_hash=hold_inv["payment_hash"])["pays"][0][
-            "status"
-        ]
+        lambda: l1.rpc.listpays(payment_hash=payment_hash)["pays"][0]["status"]
         == "complete"
+    )
+
+    wait_for(
+        lambda: l3.rpc.listholdinvoices(payment_hash=payment_hash)["holdinvoices"][0][
+            "state"
+        ]
+        == "paid"
     )
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] in result["result"]
+    assert payment_hash in result["result"]
     result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
     assert len(result["forwards"]) == 2
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] in result["result"]
+    assert payment_hash in result["result"]
 
     new_inv2 = l3.rpc.invoice(1_000, "new_inv2", "new_inv2")
 
@@ -937,10 +945,10 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert new_inv2["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] in result["result"]
+    assert payment_hash in result["result"]
     result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
     assert len(result["forwards"]) == 3
     result = l3.rpc.call("summars", {"summars-invoices": 1})
     assert new_inv["payment_hash"] in result["result"]
     assert new_inv2["payment_hash"] in result["result"]
-    assert hold_inv["payment_hash"] in result["result"]
+    assert payment_hash in result["result"]

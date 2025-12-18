@@ -13,7 +13,11 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sys_locale::get_locales;
 use tabled::{settings::Style, Table, Tabled};
+#[cfg(feature = "hold")]
+use tonic::transport::Channel;
 
+#[cfg(feature = "hold")]
+use crate::hold::hold_client::HoldClient;
 use crate::impl_table_column;
 
 pub const NO_ALIAS_SET: &str = "NO_ALIAS_SET";
@@ -263,6 +267,10 @@ pub struct PluginState {
     pub alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
     pub config: Arc<Mutex<Config>>,
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
+    #[cfg(feature = "hold")]
+    pub hold_client: Arc<Mutex<Option<HoldClient<Channel>>>>,
+    #[cfg(feature = "hold")]
+    pub hold_pagination_helper: Arc<Mutex<HoldInvoicePageHelper>>,
 }
 impl PluginState {
     pub fn new() -> PluginState {
@@ -270,6 +278,26 @@ impl PluginState {
             alias_map: Arc::new(Mutex::new(BTreeMap::new())),
             config: Arc::new(Mutex::new(Config::new())),
             avail: Arc::new(Mutex::new(BTreeMap::new())),
+            #[cfg(feature = "hold")]
+            hold_client: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "hold")]
+            hold_pagination_helper: Arc::new(Mutex::new(HoldInvoicePageHelper::default())),
+        }
+    }
+}
+
+#[cfg(feature = "hold")]
+#[derive(Debug, Clone, Copy)]
+pub struct HoldInvoicePageHelper {
+    pub first_index: i64,
+    pub last_window: u64,
+}
+#[cfg(feature = "hold")]
+impl Default for HoldInvoicePageHelper {
+    fn default() -> Self {
+        Self {
+            first_index: 1,
+            last_window: 0,
         }
     }
 }

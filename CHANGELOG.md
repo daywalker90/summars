@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.1.0] - Unreleased
+
+### Added
+- support for holdinvoices from [hold](https://github.com/BoltzExchange/hold)
+
 ## [6.0.0] - 2025-11-28
 
 ### Added
