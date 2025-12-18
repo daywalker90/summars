@@ -1,8 +1,12 @@
 extern crate serde_json;
 
 use std::time::Duration;
+#[cfg(feature = "hold")]
+use std::{path::PathBuf, str::FromStr};
 
 use anyhow::anyhow;
+#[cfg(feature = "hold")]
+use cln_plugin::Plugin;
 use cln_plugin::{
     options::{
         ConfigOption,
@@ -13,16 +17,25 @@ use cln_plugin::{
     },
     Builder,
 };
+#[cfg(feature = "hold")]
+use cln_rpc::ClnRpc;
 use config::setconfig_callback;
+#[cfg(feature = "hold")]
+use serde_json::json;
 use structs::PluginState;
 use summary::summary;
 use tasks::summars_refreshalias;
 use tokio::{self, time};
+#[cfg(feature = "hold")]
+use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 
 use crate::{
     config::get_startup_options,
     structs::{ForwardsColumns, InvoicesColumns, Opt, PaysColumns, SummaryColumns, TableColumn},
 };
+#[cfg(feature = "hold")]
+use crate::{hold::hold_client::HoldClient, util::make_rpc_path};
+
 mod config;
 mod forwards;
 mod invoices;
@@ -32,11 +45,19 @@ mod summary;
 mod tasks;
 mod util;
 
+#[cfg(feature = "hold")]
+pub mod hold {
+    tonic::include_proto!("hold");
+}
+
 #[allow(clippy::too_many_lines)]
 #[allow(clippy::cast_possible_wrap)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
-    std::env::set_var("CLN_PLUGIN_LOG", "cln_plugin=info,cln_rpc=info,trace");
+    std::env::set_var(
+        "CLN_PLUGIN_LOG",
+        "cln_plugin=info,cln_rpc=info,summars=trace,warn",
+    );
     log_panics::init();
     let state = PluginState::new();
     let default_config = state.config.lock().clone();
@@ -305,6 +326,14 @@ async fn main() -> Result<(), anyhow::Error> {
         None => return Err(anyhow!("Error configuring the plugin!")),
     }
     if let Ok(plugin) = confplugin.start(state).await {
+        #[cfg(feature = "hold")]
+        match check_hold_support(plugin.clone()).await {
+            Ok(()) => {
+                log::info!("Hold support activated");
+            }
+            Err(e) => log::info!("Hold support not activated: {e}"),
+        }
+
         log::info!("starting uptime task");
         let plugin_clone_avail = plugin.clone();
         tokio::spawn(async move {
@@ -332,4 +361,107 @@ async fn main() -> Result<(), anyhow::Error> {
     } else {
         Err(anyhow!("Error starting the plugin!"))
     }
+}
+
+#[cfg(feature = "hold")]
+async fn check_hold_support(plugin: Plugin<PluginState>) -> Result<(), anyhow::Error> {
+    let rpc_path = make_rpc_path(&plugin);
+    let mut rpc = ClnRpc::new(&rpc_path).await?;
+    let hold_grpc_host_response: serde_json::Value = rpc
+        .call_raw("listconfigs", &json!({"config": "hold-grpc-host"}))
+        .await?;
+
+    let Some(hold_grpc_host_configs) = hold_grpc_host_response.get("configs") else {
+        return Err(anyhow!("Unsopprted listconfigs response!"));
+    };
+    let Some(hold_grpc_host_config) = hold_grpc_host_configs.get("hold-grpc-host") else {
+        return Err(anyhow!("hold-grpc-host config not found"));
+    };
+    let Some(hold_grpc_host_value) = hold_grpc_host_config.get("value_str") else {
+        return Err(anyhow!("hold-grpc-host config not a string"));
+    };
+    let Some(hold_grpc_host) = hold_grpc_host_value.as_str() else {
+        return Err(anyhow!("hold-grpc-host config not convertable to string"));
+    };
+
+    let hold_grpc_port_response: serde_json::Value = rpc
+        .call_raw("listconfigs", &json!({"config": "hold-grpc-port"}))
+        .await?;
+    let Some(hold_grpc_port_configs) = hold_grpc_port_response.get("configs") else {
+        return Err(anyhow!("Unsopprted listconfigs response!"));
+    };
+    let Some(hold_grpc_port_config) = hold_grpc_port_configs.get("hold-grpc-port") else {
+        return Err(anyhow!("hold-grpc-port config not found"));
+    };
+    let Some(hold_grpc_port_value) = hold_grpc_port_config.get("value_int") else {
+        return Err(anyhow!("hold-grpc-port config not a number"));
+    };
+    let hold_grpc_port = if let Some(hgh) = hold_grpc_port_value.as_u64() {
+        u16::try_from(hgh)?
+    } else {
+        return Err(anyhow!("hold-grpc-port config not convertable to integer"));
+    };
+
+    let cert_dir = PathBuf::from_str(&plugin.configuration().lightning_dir)?.join("hold");
+
+    log::debug!(
+        "Searching {} for hold plugin certs",
+        cert_dir.to_str().unwrap()
+    );
+
+    let mut retries = 10;
+
+    let mut ca_cert;
+    let mut client_cert;
+    let client_key;
+
+    loop {
+        retries -= 1;
+        if retries < 0 {
+            return Err(anyhow!(
+                "Could not find hold plugin certs in {:?}",
+                cert_dir.to_str()
+            ));
+        }
+
+        ca_cert = match tokio::fs::read(cert_dir.join("ca.pem")).await {
+            Ok(o) => o,
+            Err(_e) => {
+                time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+        client_cert = match tokio::fs::read(cert_dir.join("client.pem")).await {
+            Ok(o) => o,
+            Err(_e) => {
+                time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+        client_key = match tokio::fs::read(cert_dir.join("client-key.pem")).await {
+            Ok(o) => o,
+            Err(_e) => {
+                time::sleep(Duration::from_secs(1)).await;
+                continue;
+            }
+        };
+        break;
+    }
+
+    let identity = Identity::from_pem(client_cert, client_key);
+
+    let ca = Certificate::from_pem(ca_cert);
+
+    let tls_config = ClientTlsConfig::new()
+        .ca_certificate(ca)
+        .identity(identity)
+        .domain_name("hold");
+
+    let hold_channel = Endpoint::from_shared(format!("https://{hold_grpc_host}:{hold_grpc_port}"))?
+        .tls_config(tls_config)?
+        .keep_alive_while_idle(true)
+        .connect_lazy();
+    *plugin.state().hold_client.lock() = Some(HoldClient::new(hold_channel));
+
+    Ok(())
 }
