@@ -95,7 +95,7 @@ pub async fn gather_forwards_data(
     };
 
     process_forward_batches(
-        plugin.clone(),
+        &plugin,
         now,
         &mut forwards_acc,
         config,
@@ -111,7 +111,7 @@ pub async fn gather_forwards_data(
 }
 
 async fn process_forward_batches(
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
     now: Instant,
     forwards_acc: &mut ForwardsAccumulator,
     config: &Config,
@@ -167,7 +167,7 @@ async fn process_forward_batches(
 
         build_forwards_table(
             rpc,
-            plugin.clone(),
+            plugin,
             forwards_acc,
             config,
             settled_forwards,
@@ -213,7 +213,7 @@ fn limit_and_sort_forwards_data(
 
 async fn build_forwards_table(
     rpc: &mut ClnRpc,
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
     forwards_acc: &mut ForwardsAccumulator,
     config: &Config,
     settled_forwards: Vec<ListforwardsForwards>,
@@ -236,11 +236,10 @@ async fn build_forwards_table(
             forwards_acc.oldest_updated = received_time;
         }
         if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > forwards_acc.cutoff_timestamp {
-            let inchan =
-                get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin.clone()).await;
+            let inchan = get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin).await;
 
             let fw_outchan = forward.out_channel.unwrap();
-            let outchan = get_alias_from_scid(fw_outchan, chanmap, rpc, plugin.clone()).await;
+            let outchan = get_alias_from_scid(fw_outchan, chanmap, rpc, plugin).await;
 
             let mut should_filter = false;
             if let Some(ff_msat) = config.forwards_filter_amt_msat {

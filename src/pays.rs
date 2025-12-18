@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashSet},
     fmt::Write as _,
+    str::FromStr,
 };
 
 use anyhow::{anyhow, Error};
@@ -19,9 +20,10 @@ use cln_rpc::{
         },
         responses::ListpaysPays,
     },
-    primitives::{Amount, PublicKey},
+    primitives::Amount,
     ClnRpc,
 };
+use lightning_invoice::Bolt11Invoice;
 use strum::IntoEnumIterator;
 use tabled::{
     grid::records::{vec_records::Cell, Records},
@@ -42,6 +44,7 @@ use tokio::time::Instant;
 use crate::{
     structs::{
         Config,
+        DescriptionStatus,
         FullNodeData,
         Pays,
         PaysColumns,
@@ -95,23 +98,21 @@ pub async fn gather_pays_data(
         filtered_set,
     };
 
-    process_pay_batches(
-        plugin.clone(),
-        now,
-        &mut pays_acc,
-        config,
-        rpc,
-        full_node_data,
-    )
-    .await?;
+    process_pay_batches(&plugin, now, &mut pays_acc, config, rpc, full_node_data).await?;
 
     limit_and_sort_pays_data(pays_acc, config, full_node_data);
+
+    let description_wanted = config.pays_columns.contains(&PaysColumns::description) || config.json;
+
+    if description_wanted {
+        extract_pay_descriptions(now, rpc, full_node_data).await?;
+    }
 
     Ok(())
 }
 
 async fn process_pay_batches(
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
     now: Instant,
     pays_acc: &mut PaysAccumulator,
     config: &Config,
@@ -164,7 +165,7 @@ async fn process_pay_batches(
             .await?
             .pays;
 
-        build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin.clone()).await?;
+        build_pays_table(pays_acc, config, pays, full_node_data, rpc, plugin).await?;
 
         if current_index <= 1 || current_index <= first_index {
             break;
@@ -207,11 +208,8 @@ async fn build_pays_table(
     pays: Vec<ListpaysPays>,
     full_node_data: &mut FullNodeData,
     rpc: &mut ClnRpc,
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
 ) -> Result<(), Error> {
-    let description_wanted = config.pays_columns.contains(&PaysColumns::description) || config.json;
-    let destination_wanted = config.pays_columns.contains(&PaysColumns::destination) || config.json;
-
     for pay in pays.into_iter().rev() {
         let Some(updated_index) = pay.updated_index else {
             continue;
@@ -239,52 +237,48 @@ async fn build_pays_table(
 
         let mut fee_msat = None;
         let mut fee_sats = None;
+        let mut msats_requested = None;
         let mut sats_requested = None;
         let mut destination_alias = None;
 
-        let (description, msats_requested, destination) =
-            extract_pay_metadata(rpc, &pay, description_wanted, destination_wanted).await;
-
         let mut is_self_pay = false;
 
-        if let Some(dest) = destination {
+        if let Some(dest) = pay.destination {
             if dest == full_node_data.my_pubkey {
                 is_self_pay = true;
             }
-            destination_alias = Some(get_alias(rpc, plugin.clone(), dest).await?);
+            destination_alias = Some(get_alias(rpc, plugin, dest).await?);
         }
 
-        if let Some(amount_msat) = msats_requested {
-            fee_msat = Some(pay.amount_sent_msat.unwrap().msat() - amount_msat);
-            fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
-            sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
+        if let Some(amount_msat) = pay.amount_msat.map(|a| Amount::msat(&a)) {
+            msats_requested = Some(amount_msat);
+            if let Some(amount_sent_msat) = pay.amount_sent_msat.map(|a| Amount::msat(&a)) {
+                fee_msat = Some(amount_sent_msat.saturating_sub(amount_msat));
+                fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
+                sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
 
-            if is_self_pay {
-                accumulate_msat(
-                    &mut full_node_data.totals.pays_self_fees_msat,
-                    fee_msat.unwrap(),
-                );
-                accumulate_msat(
-                    &mut full_node_data.totals.pays_self_amount_msat,
+                accumulate_totals(
+                    is_self_pay,
+                    fee_msat,
+                    full_node_data,
                     amount_msat,
+                    amount_sent_msat,
                 );
-            } else {
-                accumulate_msat(&mut full_node_data.totals.pays_fees_msat, fee_msat.unwrap());
-                accumulate_msat(&mut full_node_data.totals.pays_amount_msat, amount_msat);
             }
         }
 
-        if is_self_pay {
-            accumulate_msat(
-                &mut full_node_data.totals.pays_self_amount_sent_msat,
-                pay.amount_sent_msat.unwrap().msat(),
-            );
+        let mut description_status = DescriptionStatus::Processed;
+        let description = if let Some(desc) = pay.description {
+            Some(desc)
+        } else if let Some(b11) = pay.bolt11 {
+            description_status = DescriptionStatus::Bolt11;
+            Some(b11)
+        } else if let Some(b12) = pay.bolt12 {
+            description_status = DescriptionStatus::Bolt12;
+            Some(b12)
         } else {
-            accumulate_msat(
-                &mut full_node_data.totals.pays_amount_sent_msat,
-                pay.amount_sent_msat.unwrap().msat(),
-            );
-        }
+            None
+        };
 
         if is_self_pay {
             pays_acc.filtered_set.insert(updated_index);
@@ -293,13 +287,12 @@ async fn build_pays_table(
                 updated_index,
                 Pays {
                     completed_at,
-                    completed_at_str: timestamp_to_localized_datetime_string(config, completed_at)?,
                     payment_hash: pay.payment_hash.to_string(),
                     msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
                     sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
                     destination: if let Some(dest) = destination_alias {
                         if dest == NODE_GOSSIP_MISS || dest == NO_ALIAS_SET {
-                            Some(destination.unwrap().to_string())
+                            Some(pay.destination.unwrap().to_string())
                         } else if config.utf8 {
                             Some(dest)
                         } else {
@@ -314,6 +307,7 @@ async fn build_pays_table(
                     sats_requested,
                     fee_msats: fee_msat,
                     fee_sats,
+                    description_status,
                 },
             );
         }
@@ -321,47 +315,76 @@ async fn build_pays_table(
     Ok(())
 }
 
-async fn extract_pay_metadata(
+fn accumulate_totals(
+    is_self_pay: bool,
+    fee_msat: Option<u64>,
+    full_node_data: &mut FullNodeData,
+    amount_msat: u64,
+    amount_sent_msat: u64,
+) {
+    if is_self_pay {
+        accumulate_msat(
+            &mut full_node_data.totals.pays_self_fees_msat,
+            fee_msat.unwrap(),
+        );
+        accumulate_msat(
+            &mut full_node_data.totals.pays_self_amount_msat,
+            amount_msat,
+        );
+        accumulate_msat(
+            &mut full_node_data.totals.pays_self_amount_sent_msat,
+            amount_sent_msat,
+        );
+    } else {
+        accumulate_msat(&mut full_node_data.totals.pays_fees_msat, fee_msat.unwrap());
+        accumulate_msat(&mut full_node_data.totals.pays_amount_msat, amount_msat);
+        accumulate_msat(
+            &mut full_node_data.totals.pays_amount_sent_msat,
+            amount_sent_msat,
+        );
+    }
+}
+
+async fn extract_pay_descriptions(
+    now: Instant,
     rpc: &mut ClnRpc,
-    pay: &ListpaysPays,
-    description_wanted: bool,
-    destination_wanted: bool,
-) -> (Option<String>, Option<u64>, Option<PublicKey>) {
-    let mut description = pay.description.clone();
-    let mut msats_requested = pay.amount_msat.map(|a| a.msat());
-    let mut destination = pay.destination;
-
-    let needs_invoice_decode = msats_requested.is_none()
-        || (description.is_none() && description_wanted)
-        || (destination.is_none() && destination_wanted);
-
-    if needs_invoice_decode {
-        if let Some(b11) = &pay.bolt11 {
-            if let Ok(invoice) = rpc
-                .call_typed(&DecodeRequest {
-                    string: b11.to_owned(),
-                })
-                .await
-            {
-                description = invoice.description;
-                msats_requested = invoice.amount_msat.map(|a| a.msat());
-                destination = invoice.payee;
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    for pay in &mut full_node_data.pays {
+        match pay.description_status {
+            DescriptionStatus::Processed => {}
+            DescriptionStatus::Bolt11 => {
+                let Ok(decoded_invoice) = Bolt11Invoice::from_str(
+                    pay.description
+                        .as_ref()
+                        .ok_or_else(|| anyhow!("expected bolt11 string to decode"))?,
+                ) else {
+                    pay.description = None;
+                    log::warn!("Could not decode bolt11, skipping");
+                    continue;
+                };
+                pay.description = Some(decoded_invoice.description().to_string());
             }
-        } else if let Some(b12) = &pay.bolt12 {
-            if let Ok(invoice) = rpc
-                .call_typed(&DecodeRequest {
-                    string: b12.to_owned(),
-                })
-                .await
-            {
-                description = invoice.offer_description;
-                msats_requested = invoice.invoice_amount_msat.map(|a| a.msat());
-                destination = invoice.invoice_node_id;
+            DescriptionStatus::Bolt12 => {
+                pay.description = rpc
+                    .call_typed(&DecodeRequest {
+                        string: pay
+                            .description
+                            .as_ref()
+                            .ok_or_else(|| anyhow!("expected bolt12 string to decode"))?
+                            .to_owned(),
+                    })
+                    .await?
+                    .offer_description;
             }
         }
     }
 
-    (description, msats_requested, destination)
+    log::debug!(
+        "Extracted pays descriptions done. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -447,6 +470,14 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
                 .with(Width::truncate(usize::try_from(config.max_desc_length)?).suffix("[..]")),
         );
     }
+
+    paystable.with(
+        Modify::new(ByColumnName::new(PaysColumns::completed_at.to_string()).not(Rows::first()))
+            .with(Format::content(|timestamp| {
+                timestamp_to_localized_datetime_string(config, timestamp.parse::<u64>().unwrap())
+                    .unwrap_or("ERROR".to_owned())
+            })),
+    );
 
     paystable.with(Panel::header(format!(
         "pays (last {}h, limit: {})",

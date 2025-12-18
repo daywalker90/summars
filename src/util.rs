@@ -238,7 +238,7 @@ pub fn at_or_above_version(my_version: &str, min_version: &str) -> Result<bool, 
 
 pub async fn get_alias(
     rpc: &mut ClnRpc,
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
     peer_id: PublicKey,
 ) -> Result<String, Error> {
     let alias = plugin
@@ -283,7 +283,7 @@ pub async fn get_alias_from_scid(
     scid: ShortChannelId,
     chanmap: &BTreeMap<ShortChannelId, ListpeerchannelsChannels>,
     rpc: &mut ClnRpc,
-    plugin: Plugin<PluginState>,
+    plugin: &Plugin<PluginState>,
 ) -> String {
     let Some(listpeerchannel) = chanmap.get(&scid) else {
         return scid.to_string();
