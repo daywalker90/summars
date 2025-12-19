@@ -15,6 +15,10 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
+            - name: Set up protoc
+              uses: arduino/setup-protoc@v3
+              with:
+                repo-token: ${{ secrets.GITHUB_TOKEN }}
             - name: Install rust
               id: rust
               uses: dtolnay/rust-toolchain@stable
