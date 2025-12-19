@@ -82,17 +82,20 @@ First clone the repo:
 git clone https://github.com/daywalker90/summars.git
 ```
 
-Install a recent rust version ([rustup](https://rustup.rs/) is recommended) and in the ``summars`` folder run:
+Install version 1.85+ of the rust compiler ([rustup](https://rustup.rs/) is recommended).
 
-With [Supported plugins](#supported-plugins):
+With [Supported plugins](#supported-plugins) you need ``protoc``:
 
 ```
+sudo apt install protobuf-compiler
+cd summars
 cargo build --release
 ```
 
 Without [Supported plugins](#supported-plugins):
 
 ```
+cd summars
 cargo build --no-default-features --release
 ```
 

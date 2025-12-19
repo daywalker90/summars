@@ -266,12 +266,14 @@ async fn process_hold_invoices(
             };
 
             if inv_paid_at >= invoices_acc.cutoff_timestamp {
+                full_node_data.totals.invoices.count += 1;
+
                 if invoice.id < new_first_index {
                     new_first_index = invoice.id;
                 }
                 let msats_received = invoice.htlcs.iter().map(|h| h.msat).sum();
                 accumulate_msat(
-                    &mut full_node_data.totals.invoices_amount_received_msat,
+                    &mut full_node_data.totals.invoices.amount_received_msat,
                     msats_received,
                 );
 
@@ -388,8 +390,10 @@ fn build_invoices_table(
                 invoices_acc.oldest_updated = inv_paid_at;
             }
             if inv_paid_at >= invoices_acc.cutoff_timestamp {
+                full_node_data.totals.invoices.count += 1;
+
                 accumulate_msat(
-                    &mut full_node_data.totals.invoices_amount_received_msat,
+                    &mut full_node_data.totals.invoices.amount_received_msat,
                     invoice.amount_received_msat.unwrap().msat(),
                 );
 
@@ -530,9 +534,10 @@ pub fn format_invoices(
         invoicestable.with(Panel::footer(filter_sum_result));
     }
 
-    if let Some(inv_total) = full_node_data.totals.invoices_amount_received_msat {
+    if let Some(inv_total) = full_node_data.totals.invoices.amount_received_msat {
         let invoices_total = format!(
-            "\nTotal invoices stats in the last {}h: {} sats_received",
+            "\nTotal of {} invoices in the last {}h: {} sats_received",
+            full_node_data.totals.invoices.count,
             config.invoices,
             u64_to_sat_string(config, rounded_div_u64(inv_total, 1000))?,
         );

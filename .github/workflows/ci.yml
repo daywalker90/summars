@@ -119,11 +119,11 @@ jobs:
         key: ${{ steps.cache-cln.outputs.cache-primary-key }}
 
     - name: Set up Rust
-      if:  ${{ inputs.tagged-release == false}}
+      if:  ${{ inputs.tagged-release == false }}
       uses: dtolnay/rust-toolchain@stable
 
     - name: Set up protoc
-      if: ${{ inputs.tagged-release == false}} && ${{ steps.cache-cln.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.tagged-release == false }}
       uses: arduino/setup-protoc@v3
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}

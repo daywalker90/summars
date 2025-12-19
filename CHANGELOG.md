@@ -1,9 +1,10 @@
 # Changelog
 
-## [6.1.0] - Unreleased
+## [6.1.0] - 2025-12-19
 
 ### Added
 - support for holdinvoices from [hold](https://github.com/BoltzExchange/hold)
+- Totals summary for flow tables now include the count of flows in the time window, the structure of the `totals` object in json output changed in the process
 
 ### Changed
 - improved performance of `pays` table in case of activated description column and description has to be read from a bolt11 string

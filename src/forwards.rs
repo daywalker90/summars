@@ -236,6 +236,8 @@ async fn build_forwards_table(
             forwards_acc.oldest_updated = received_time;
         }
         if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > forwards_acc.cutoff_timestamp {
+            full_node_data.totals.forwards.count += 1;
+
             let inchan = get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin).await;
 
             let fw_outchan = forward.out_channel.unwrap();
@@ -254,15 +256,15 @@ async fn build_forwards_table(
             }
 
             accumulate_msat(
-                &mut full_node_data.totals.forwards_amount_in_msat,
+                &mut full_node_data.totals.forwards.amount_in_msat,
                 forward.in_msat.msat(),
             );
             accumulate_msat(
-                &mut full_node_data.totals.forwards_amount_out_msat,
+                &mut full_node_data.totals.forwards.amount_out_msat,
                 forward.out_msat.unwrap().msat(),
             );
             accumulate_msat(
-                &mut full_node_data.totals.forwards_fees_msat,
+                &mut full_node_data.totals.forwards.fees_msat,
                 forward.fee_msat.unwrap().msat(),
             );
 
@@ -413,24 +415,25 @@ pub fn format_forwards(
         );
         fwtable.with(Panel::footer(filter_sum_result));
     }
-    if full_node_data.totals.forwards_amount_in_msat.is_some() {
+    if full_node_data.totals.forwards.amount_in_msat.is_some() {
         let forwards_totals = format!(
-            "\nTotal forwards stats in the last {}h: {} in_sats {} out_sats {} fee_sats",
+            "\nTotal of {} forwards in the last {}h: {} in_sats {} out_sats {} fee_sats",
+            full_node_data.totals.forwards.count,
             config.forwards,
             u64_to_sat_string(
                 config,
-                rounded_div_u64(full_node_data.totals.forwards_amount_in_msat.unwrap(), 1000)
+                rounded_div_u64(full_node_data.totals.forwards.amount_in_msat.unwrap(), 1000)
             )?,
             u64_to_sat_string(
                 config,
                 rounded_div_u64(
-                    full_node_data.totals.forwards_amount_out_msat.unwrap(),
+                    full_node_data.totals.forwards.amount_out_msat.unwrap(),
                     1000
                 )
             )?,
             u64_to_sat_string(
                 config,
-                rounded_div_u64(full_node_data.totals.forwards_fees_msat.unwrap(), 1000)
+                rounded_div_u64(full_node_data.totals.forwards.fees_msat.unwrap(), 1000)
             )?
         );
         fwtable.with(Panel::footer(forwards_totals));
