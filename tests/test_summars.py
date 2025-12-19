@@ -791,10 +791,10 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "invoices" in result
     assert pay1["payment_hash"] == result["pays"][0]["payment_hash"]
     assert 223_000 == result["invoices"][0]["msats_received"]
-    assert result["totals"]["invoices_amount_received_msat"] == 236000
-    assert result["totals"]["pays_amount_msat"] == 123000
-    assert result["totals"]["pays_amount_sent_msat"] == 124001
-    assert result["totals"]["pays_fees_msat"] == 1001
+    assert result["totals"]["invoices"]["amount_received_msat"] == 236000
+    assert result["totals"]["pays"]["amount_msat"] == 123000
+    assert result["totals"]["pays"]["amount_sent_msat"] == 124001
+    assert result["totals"]["pays"]["fees_msat"] == 1001
 
     result = l2.rpc.call(
         "summars",
@@ -806,9 +806,9 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         },
     )
     assert len(result["forwards"]) == 3
-    assert result["totals"]["forwards_amount_in_msat"] == 362003
-    assert result["totals"]["forwards_amount_out_msat"] == 359000
-    assert result["totals"]["forwards_fees_msat"] == 3003
+    assert result["totals"]["forwards"]["amount_in_msat"] == 362003
+    assert result["totals"]["forwards"]["amount_out_msat"] == 359000
+    assert result["totals"]["forwards"]["fees_msat"] == 3003
 
     result = l2.rpc.call(
         "summars",
@@ -818,7 +818,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "pays" in result["result"]
     assert "invoices" in result["result"]
     assert (
-        "Total forwards stats in the last 1h: 362 in_sats 359 out_sats 3 fee_sats"
+        "Total of 3 forwards in the last 1h: 362 in_sats 359 out_sats 3 fee_sats"
         in result["result"]
     )
 
@@ -831,10 +831,10 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
             "summars-json": True,
         },
     )
-    assert result["totals"]["invoices_amount_received_msat"] == 123000
-    assert result["totals"]["pays_amount_msat"] == 236000
-    assert result["totals"]["pays_amount_sent_msat"] == 238002
-    assert result["totals"]["pays_fees_msat"] == 2002
+    assert result["totals"]["invoices"]["amount_received_msat"] == 123000
+    assert result["totals"]["pays"]["amount_msat"] == 236000
+    assert result["totals"]["pays"]["amount_sent_msat"] == 238002
+    assert result["totals"]["pays"]["fees_msat"] == 2002
 
 
 def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811

@@ -281,8 +281,10 @@ async fn build_pays_table(
         };
 
         if is_self_pay {
+            full_node_data.totals.pays.self_count += 1;
             pays_acc.filtered_set.insert(updated_index);
         } else {
+            full_node_data.totals.pays.count += 1;
             pays_acc.pays_map.insert(
                 updated_index,
                 Pays {
@@ -324,22 +326,22 @@ fn accumulate_totals(
 ) {
     if is_self_pay {
         accumulate_msat(
-            &mut full_node_data.totals.pays_self_fees_msat,
+            &mut full_node_data.totals.pays.self_fees_msat,
             fee_msat.unwrap(),
         );
         accumulate_msat(
-            &mut full_node_data.totals.pays_self_amount_msat,
+            &mut full_node_data.totals.pays.self_amount_msat,
             amount_msat,
         );
         accumulate_msat(
-            &mut full_node_data.totals.pays_self_amount_sent_msat,
+            &mut full_node_data.totals.pays.self_amount_sent_msat,
             amount_sent_msat,
         );
     } else {
-        accumulate_msat(&mut full_node_data.totals.pays_fees_msat, fee_msat.unwrap());
-        accumulate_msat(&mut full_node_data.totals.pays_amount_msat, amount_msat);
+        accumulate_msat(&mut full_node_data.totals.pays.fees_msat, fee_msat.unwrap());
+        accumulate_msat(&mut full_node_data.totals.pays.amount_msat, amount_msat);
         accumulate_msat(
-            &mut full_node_data.totals.pays_amount_sent_msat,
+            &mut full_node_data.totals.pays.amount_sent_msat,
             amount_sent_msat,
         );
     }
@@ -492,21 +494,22 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
 
     let mut pays_totals = String::new();
 
-    if full_node_data.totals.pays_amount_sent_msat.is_some() {
+    if full_node_data.totals.pays.amount_sent_msat.is_some() {
         write!(
             pays_totals,
-            "\nTotal pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            "\nTotal of {} pays in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            full_node_data.totals.pays.count,
             config.pays,
-            if let Some(amt) = full_node_data.totals.pays_amount_msat {
+            if let Some(amt) = full_node_data.totals.pays.amount_msat {
                 u64_to_sat_string(config, rounded_div_u64(amt, 1_000))?
             } else {
                 MISSING_VALUE.to_owned()
             },
             u64_to_sat_string(
                 config,
-                rounded_div_u64(full_node_data.totals.pays_amount_sent_msat.unwrap(), 1_000)
+                rounded_div_u64(full_node_data.totals.pays.amount_sent_msat.unwrap(), 1_000)
             )?,
-            if let Some(fee) = full_node_data.totals.pays_fees_msat {
+            if let Some(fee) = full_node_data.totals.pays.fees_msat {
                 u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
             } else {
                 MISSING_VALUE.to_owned()
@@ -514,12 +517,13 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
         )?;
     }
 
-    if full_node_data.totals.pays_self_amount_sent_msat.is_some() {
+    if full_node_data.totals.pays.self_amount_sent_msat.is_some() {
         write!(
             pays_totals,
-            "\nTotal self-pays stats in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            "\nTotal of {} self-pays in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
+            full_node_data.totals.pays.self_count,
             config.pays,
-            if let Some(amt) = full_node_data.totals.pays_self_amount_msat {
+            if let Some(amt) = full_node_data.totals.pays.self_amount_msat {
                 u64_to_sat_string(config, rounded_div_u64(amt, 1_000))?
             } else {
                 MISSING_VALUE.to_owned()
@@ -527,11 +531,11 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
             u64_to_sat_string(
                 config,
                 rounded_div_u64(
-                    full_node_data.totals.pays_self_amount_sent_msat.unwrap(),
+                    full_node_data.totals.pays.self_amount_sent_msat.unwrap(),
                     1_000
                 )
             )?,
-            if let Some(fee) = full_node_data.totals.pays_self_fees_msat {
+            if let Some(fee) = full_node_data.totals.pays.self_fees_msat {
                 u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
             } else {
                 MISSING_VALUE.to_owned()
