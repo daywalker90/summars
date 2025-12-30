@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Write,
+};
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
@@ -226,22 +229,28 @@ async fn build_forwards_table(
         };
 
         let received_time = f64_to_u64_trunc(forward.received_time);
+        let resolved_time = if let Some(rt) = forward.resolved_time {
+            f64_to_u64_trunc(rt)
+        } else {
+            log::warn!("Settled forward with updated_index:{updated_index} has no resolved time!");
+            continue;
+        };
         if forwards_acc.forwards_map.contains_key(&updated_index) {
             continue;
         }
         if forwards_acc.filtered_set.contains(&updated_index) {
             continue;
         }
-        if received_time <= forwards_acc.oldest_updated {
-            forwards_acc.oldest_updated = received_time;
+        if resolved_time <= forwards_acc.oldest_updated {
+            forwards_acc.oldest_updated = resolved_time;
         }
-        if f64_to_u64_trunc(forward.resolved_time.unwrap_or(0.0)) > forwards_acc.cutoff_timestamp {
+        if resolved_time > forwards_acc.cutoff_timestamp {
             full_node_data.totals.forwards.count += 1;
 
-            let inchan = get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin).await;
+            let in_alias = get_alias_from_scid(forward.in_channel, chanmap, rpc, plugin).await;
 
-            let fw_outchan = forward.out_channel.unwrap();
-            let outchan = get_alias_from_scid(fw_outchan, chanmap, rpc, plugin).await;
+            let out_channel = forward.out_channel.unwrap();
+            let out_alias = get_alias_from_scid(out_channel, chanmap, rpc, plugin).await;
 
             let mut should_filter = false;
             if let Some(ff_msat) = config.forwards_filter_amt_msat {
@@ -249,8 +258,9 @@ async fn build_forwards_table(
                     should_filter = true;
                 }
             }
+            let fee_msats = forward.fee_msat.unwrap().msat();
             if let Some(ff_msat) = config.forwards_filter_fee_msat {
-                if forward.fee_msat.unwrap().msat() <= ff_msat {
+                if fee_msats <= ff_msat {
                     should_filter = true;
                 }
             }
@@ -259,57 +269,43 @@ async fn build_forwards_table(
                 &mut full_node_data.totals.forwards.amount_in_msat,
                 forward.in_msat.msat(),
             );
+            let out_msats = forward.out_msat.unwrap().msat();
             accumulate_msat(
                 &mut full_node_data.totals.forwards.amount_out_msat,
-                forward.out_msat.unwrap().msat(),
+                out_msats,
             );
-            accumulate_msat(
-                &mut full_node_data.totals.forwards.fees_msat,
-                forward.fee_msat.unwrap().msat(),
-            );
+            accumulate_msat(&mut full_node_data.totals.forwards.fees_msat, fee_msats);
 
             if should_filter {
                 full_node_data.forwards_filter_stats.amt_sum_msat += Amount::msat(&forward.in_msat);
-                full_node_data.forwards_filter_stats.fee_sum_msat +=
-                    Amount::msat(&forward.fee_msat.unwrap());
+                full_node_data.forwards_filter_stats.fee_sum_msat += fee_msats;
                 full_node_data.forwards_filter_stats.count += 1;
                 forwards_acc.filtered_set.insert(updated_index);
             } else {
                 forwards_acc.forwards_map.insert(
                     updated_index,
                     Forwards {
-                        received_time: received_time * 1_000,
-                        received_time_str: timestamp_to_localized_datetime_string(
-                            config,
-                            f64_to_u64_trunc(forward.received_time),
-                        )?,
-                        resolved_time: f64_to_u64_trunc(forward.resolved_time.unwrap()) * 1_000,
-                        resolved_time_str: timestamp_to_localized_datetime_string(
-                            config,
-                            f64_to_u64_trunc(forward.resolved_time.unwrap()),
-                        )?,
+                        received_time,
+                        resolved_time,
                         in_alias: if config.utf8 {
-                            inchan
+                            in_alias
                         } else {
-                            inchan.replace(|c: char| !c.is_ascii(), "?")
+                            in_alias.replace(|c: char| !c.is_ascii(), "?")
                         },
                         in_channel: forward.in_channel,
                         out_alias: if config.utf8 {
-                            outchan
+                            out_alias
                         } else {
-                            outchan.replace(|c: char| !c.is_ascii(), "?")
+                            out_alias.replace(|c: char| !c.is_ascii(), "?")
                         },
-                        out_channel: forward.out_channel.unwrap(),
+                        out_channel,
                         in_msats: Amount::msat(&forward.in_msat),
-                        out_msats: Amount::msat(&forward.out_msat.unwrap()),
-                        fee_msats: Amount::msat(&forward.fee_msat.unwrap()),
+                        out_msats,
+                        fee_msats,
                         in_sats: rounded_div_u64(forward.in_msat.msat(), 1000),
-                        out_sats: rounded_div_u64(forward.out_msat.unwrap().msat(), 1_000),
-                        fee_sats: rounded_div_u64(forward.fee_msat.unwrap().msat(), 1_000),
-                        eff_fee_ppm: feeppm_effective_from_amts(
-                            forward.in_msat.msat(),
-                            forward.out_msat.unwrap().msat(),
-                        ),
+                        out_sats: rounded_div_u64(out_msats, 1_000),
+                        fee_sats: rounded_div_u64(fee_msats, 1_000),
+                        eff_fee_ppm: feeppm_effective_from_amts(forward.in_msat.msat(), out_msats),
                     },
                 );
             }
@@ -387,15 +383,25 @@ pub fn format_forwards(
         );
     }
 
-    fwtable.with(Panel::header(format!(
-        "forwards (last {}h, limit: {})",
-        config.forwards,
-        if config.forwards_limit > 0 {
-            format!("{}/{}", count, config.forwards_limit)
-        } else {
-            "off".to_owned()
-        }
-    )));
+    fwtable.with(
+        Modify::new(
+            ByColumnName::new(ForwardsColumns::received_time.to_string()).not(Rows::first()),
+        )
+        .with(Format::content(|timestamp| {
+            timestamp_to_localized_datetime_string(config, timestamp.parse::<u64>().unwrap())
+                .unwrap_or("ERROR".to_owned())
+        })),
+    );
+    fwtable.with(
+        Modify::new(
+            ByColumnName::new(ForwardsColumns::resolved_time.to_string()).not(Rows::first()),
+        )
+        .with(Format::content(|timestamp| {
+            timestamp_to_localized_datetime_string(config, timestamp.parse::<u64>().unwrap())
+                .unwrap_or("ERROR".to_owned())
+        })),
+    );
+
     fwtable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     if full_node_data.forwards_filter_stats.count > 0 {
@@ -439,5 +445,16 @@ pub fn format_forwards(
         fwtable.with(Panel::footer(forwards_totals));
     }
 
-    Ok(fwtable.to_string())
+    let mut result = format!(
+        "\n\nforwards (last {}h, limit: {}):\n",
+        config.forwards,
+        if config.forwards_limit > 0 {
+            format!("{}/{}", count, config.forwards_limit)
+        } else {
+            "off".to_owned()
+        }
+    );
+    writeln!(result, "{fwtable}")?;
+
+    Ok(result)
 }

@@ -1,6 +1,9 @@
-use std::collections::{BTreeMap, HashSet};
 #[cfg(feature = "hold")]
 use std::str::FromStr;
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt::Write,
+};
 
 use anyhow::{anyhow, Error};
 use chrono::Utc;
@@ -178,7 +181,7 @@ async fn process_invoice_batches(
             .await?
             .invoices;
 
-        build_invoices_table(invoices_acc, invoices, full_node_data, config)?;
+        build_invoices_table(invoices_acc, invoices, full_node_data, config);
 
         if current_index <= 1 || current_index <= first_index {
             break;
@@ -288,16 +291,12 @@ async fn process_hold_invoices(
 
                 // Save the bolt11 in the description field and only decode the description after
                 // limit is applied
-                let description = invoice.invoice;
+                let description = Some(invoice.invoice);
 
                 invoices_acc.holdinvoices_map.insert(
                     invoice.id,
                     Invoices {
                         paid_at: invoice.settled_at.unwrap(),
-                        paid_at_str: timestamp_to_localized_datetime_string(
-                            config,
-                            invoice.settled_at.unwrap(),
-                        )?,
                         label: "holdinvoice".to_owned(),
                         msats_received,
                         sats_received: rounded_div_u64(msats_received, 1_000),
@@ -346,19 +345,19 @@ fn decode_holdinvoice_descriptions(
 
     for invoice in &mut full_node_data.invoices {
         if invoice.label == "holdinvoice" {
-            let decoded_invoice = match Bolt11Invoice::from_str(&invoice.description) {
-                Ok(o) => o,
-                Err(e) => {
-                    log::warn!(
-                        "Could not decode bolt11 `{}`, if this is NOT your one CLN \
-                    invoice with the label `holdinvoice`, please report this error: {}",
-                        invoice.description,
-                        e
-                    );
-                    continue;
-                }
-            };
-            invoice.description = decoded_invoice.description().to_string();
+            if let Some(description) = &invoice.description {
+                let decoded_invoice = match Bolt11Invoice::from_str(description) {
+                    Ok(o) => o,
+                    Err(e) => {
+                        log::warn!(
+                            "Could not decode bolt11 `{description}`, if this is NOT your one CLN \
+                    invoice with the label `holdinvoice`, please report this error: {e}"
+                        );
+                        continue;
+                    }
+                };
+                invoice.description = Some(decoded_invoice.description().to_string());
+            }
         }
     }
     log::debug!(
@@ -371,7 +370,7 @@ fn build_invoices_table(
     invoices: Vec<ListinvoicesInvoices>,
     full_node_data: &mut FullNodeData,
     config: &Config,
-) -> Result<(), Error> {
+) {
     for invoice in invoices.into_iter().rev() {
         if ListinvoicesInvoicesStatus::PAID == invoice.status {
             let Some(updated_index) = invoice.updated_index else {
@@ -392,12 +391,12 @@ fn build_invoices_table(
             if inv_paid_at >= invoices_acc.cutoff_timestamp {
                 full_node_data.totals.invoices.count += 1;
 
+                let msats_received = Amount::msat(&invoice.amount_received_msat.unwrap());
+
                 accumulate_msat(
                     &mut full_node_data.totals.invoices.amount_received_msat,
-                    invoice.amount_received_msat.unwrap().msat(),
+                    msats_received,
                 );
-
-                let msats_received = Amount::msat(&invoice.amount_received_msat.unwrap());
 
                 if let Some(if_amt) = config.invoices_filter_amt_msat {
                     if msats_received <= if_amt {
@@ -412,15 +411,11 @@ fn build_invoices_table(
                 invoices_acc.invoices_map.insert(
                     updated_index,
                     Invoices {
-                        paid_at: invoice.paid_at.unwrap(),
-                        paid_at_str: timestamp_to_localized_datetime_string(
-                            config,
-                            invoice.paid_at.unwrap(),
-                        )?,
+                        paid_at: inv_paid_at,
                         label: invoice.label,
                         msats_received,
                         sats_received: rounded_div_u64(msats_received, 1_000),
-                        description: invoice.description.unwrap_or_default(),
+                        description: invoice.description,
                         payment_hash: invoice.payment_hash.to_string(),
                         preimage: hex_encode(&invoice.payment_preimage.unwrap().to_vec()),
                     },
@@ -428,7 +423,6 @@ fn build_invoices_table(
             }
         }
     }
-    Ok(())
 }
 
 #[allow(clippy::too_many_lines)]
@@ -503,15 +497,14 @@ pub fn format_invoices(
         );
     }
 
-    invoicestable.with(Panel::header(format!(
-        "invoices (last {}h, limit: {})",
-        config.invoices,
-        if config.invoices_limit > 0 {
-            format!("{}/{}", count, config.invoices_limit)
-        } else {
-            "off".to_owned()
-        }
-    )));
+    invoicestable.with(
+        Modify::new(ByColumnName::new(InvoicesColumns::paid_at.to_string()).not(Rows::first()))
+            .with(Format::content(|timestamp| {
+                timestamp_to_localized_datetime_string(config, timestamp.parse::<u64>().unwrap())
+                    .unwrap_or("ERROR".to_owned())
+            })),
+    );
+
     invoicestable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     if full_node_data.invoices_filter_stats.filter_count > 0 {
@@ -544,5 +537,16 @@ pub fn format_invoices(
         invoicestable.with(Panel::footer(invoices_total));
     }
 
-    Ok(invoicestable.to_string())
+    let mut result = format!(
+        "\n\ninvoices (last {}h, limit: {}):\n",
+        config.invoices,
+        if config.invoices_limit > 0 {
+            format!("{}/{}", count, config.invoices_limit)
+        } else {
+            "off".to_owned()
+        }
+    );
+    writeln!(result, "{invoicestable}")?;
+
+    Ok(result)
 }

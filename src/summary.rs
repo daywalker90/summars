@@ -300,22 +300,22 @@ fn node_data_to_output(
         writeln!(result)?;
 
         if config.closed_channels > 0 {
-            writeln!(result, "{}", format_closed_channels(config, node_data)?)?;
+            write!(result, "{}", format_closed_channels(config, node_data)?)?;
             log::debug!(
                 "Format closed channels. Total: {}ms",
                 now.elapsed().as_millis()
             );
         }
         if config.forwards > 0 {
-            writeln!(result, "\n{}", format_forwards(config, node_data)?)?;
+            write!(result, "{}", format_forwards(config, node_data)?)?;
             log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         }
         if config.pays > 0 {
-            writeln!(result, "\n{}", format_pays(config, node_data)?)?;
+            write!(result, "{}", format_pays(config, node_data)?)?;
             log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         }
         if config.invoices > 0 {
-            writeln!(result, "\n{}", format_invoices(config, node_data)?)?;
+            write!(result, "{}", format_invoices(config, node_data)?)?;
             log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
         }
 

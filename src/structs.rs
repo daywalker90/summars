@@ -450,7 +450,7 @@ impl_table_column!(
 );
 
 #[derive(Debug, Tabled, Serialize)]
-#[tabled(display(Option, "display::option", "N/A"))]
+#[tabled(display(Option, "display::option", MISSING_VALUE))]
 #[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct ClosedChannels {
     pub out_sats: u64,
@@ -496,16 +496,8 @@ impl_table_column!(
 
 #[derive(Debug, Tabled, Serialize)]
 pub struct Forwards {
-    #[tabled(skip)]
     pub received_time: u64,
-    #[tabled(rename = "received_time")]
-    #[serde(skip_serializing)]
-    pub received_time_str: String,
-    #[tabled(skip)]
     pub resolved_time: u64,
-    #[tabled(rename = "resolved_time")]
-    #[serde(skip_serializing)]
-    pub resolved_time_str: String,
     pub in_alias: String,
     pub out_alias: String,
     pub in_channel: ShortChannelId,
@@ -574,28 +566,23 @@ pub struct ForwardsFilterStats {
 }
 
 #[derive(Debug, Tabled, Serialize)]
+#[tabled(display(Option, "display::option", MISSING_VALUE))]
 pub struct Pays {
     pub completed_at: u64,
     pub payment_hash: String,
-    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub msats_requested: Option<u64>,
     #[serde(skip_serializing)]
-    #[tabled(display = "fmt_option")]
     pub sats_requested: Option<u64>,
     pub msats_sent: u64,
     #[serde(skip_serializing)]
     pub sats_sent: u64,
-    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fee_msats: Option<u64>,
-    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing)]
     pub fee_sats: Option<u64>,
-    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub destination: Option<String>,
-    #[tabled(display = "fmt_option")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub preimage: String,
@@ -644,24 +631,12 @@ impl_table_column!(
     optional_numerical = [sats_requested, msats_requested, fee_sats, fee_msats],
 );
 
-#[allow(clippy::ref_option)]
-fn fmt_option<T: Display>(o: &Option<T>) -> String {
-    match o {
-        Some(s) => format!("{s}"),
-        None => MISSING_VALUE.to_owned(),
-    }
-}
-
 #[derive(Debug, Tabled, Serialize)]
+#[tabled(display(Option, "display::option", MISSING_VALUE))]
 pub struct Invoices {
-    #[tabled(skip)]
     pub paid_at: u64,
-    #[tabled(rename = "paid_at")]
-    #[serde(skip_serializing)]
-    pub paid_at_str: String,
     pub label: String,
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub description: String,
+    pub description: Option<String>,
     pub msats_received: u64,
     #[serde(skip_serializing)]
     pub sats_received: u64,
