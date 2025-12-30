@@ -1,6 +1,6 @@
 plugin:
   name: summars
-  version: 6.1.0
+  version: 6.2.0
   lang: rust
   install: |
     cargo build --release && cp target/release/summars . && cargo clean

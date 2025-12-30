@@ -1,5 +1,15 @@
 # Changelog
 
+## [6.2.0] - 2025-12-31
+
+### Added
+- ``summars-closed-channels`` List the last x closed channels. They are sorted by ``last_stable_connection`` which might not be consistent with the time they hit the blockchain but it's the only time we can easily get. Default is ``0`` (disabled)
+- ``summars-closed-channels-columns`` Comma-separated list of enabled columns in the closed channels table. Also dictates order of columns. Valid columns: ``LAST_CONNECT``, ``OUT_SATS``, ``IN_SATS``, ``TOTAL_SATS``, ``SCID``, ``PRIVATE``, ``ALIAS``, ``PEER_ID``, ``HTLCS_SENT``, ``CLOSE_CAUSE``. Default columns: ``LAST_CONNECT``, ``OUT_SATS``, ``IN_SATS``, ``SCID``, ``PRIVATE``, ``ALIAS``, ``PEER_ID``, ``HTLCS_SENT``, ``CLOSE_CAUSE``
+
+### Fixed
+- Removed the flow tables name as the table header to fix different flow table styles than the empty one, as a result the flow table names are now left aligned
+- With json output enabled forwards objects would have timestamps in ms, they are now in s just like any other timestamps
+
 ## [6.1.0] - 2025-12-19
 
 ### Added
