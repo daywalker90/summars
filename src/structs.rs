@@ -457,15 +457,12 @@ pub struct ClosedChannels {
     pub in_sats: u64,
     pub total_sats: u64,
     pub scid: Option<String>,
-    #[serde(skip_serializing)]
-    pub flag: String,
-    #[tabled(skip)]
     pub private: bool,
     pub alias: String,
     pub peer_id: Option<String>,
     pub htlcs_sent: u64,
     pub close_cause: String,
-    pub last_connect: Option<u64>,
+    pub last_connect: u64,
 }
 
 #[derive(
@@ -480,7 +477,7 @@ pub enum ClosedChannelsColumns {
     IN_SATS,
     TOTAL_SATS,
     SCID,
-    FLAG,
+    PRIVATE,
     ALIAS,
     PEER_ID,
     HTLCS_SENT,
