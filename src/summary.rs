@@ -1,4 +1,11 @@
-use std::{cmp::Reverse, collections::HashMap, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    cmp::Reverse,
+    collections::HashMap,
+    fmt::Write,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{anyhow, Error};
 use cln_plugin::Plugin;
@@ -6,6 +13,7 @@ use cln_rpc::{
     model::{
         requests::{
             GetinfoRequest,
+            ListclosedchannelsRequest,
             ListfundsRequest,
             ListpeerchannelsRequest,
             ListpeersRequest,
@@ -51,6 +59,8 @@ use crate::{
     pays::{format_pays, gather_pays_data},
     structs::{
         ChannelVisibility,
+        ClosedChannels,
+        ClosedChannelsColumns,
         Config,
         ConnectionStatus,
         FullNodeData,
@@ -72,6 +82,7 @@ use crate::{
         perc_trunc_u64,
         rounded_div_u64,
         sort_columns,
+        timestamp_to_localized_datetime_string,
         u64_to_btc_string,
         u64_to_sat_string,
     },
@@ -178,6 +189,14 @@ async fn build_node_data(
         now.elapsed().as_millis()
     );
 
+    if config.closed_channels > 0 {
+        gather_closed_channels_data(rpc, plugin.clone(), config, now, full_node_data).await?;
+        log::debug!(
+            "End of closed channels table. Total: {}ms",
+            now.elapsed().as_millis()
+        );
+    }
+
     if config.forwards > 0 {
         gather_forwards_data(
             rpc,
@@ -253,6 +272,7 @@ fn node_data_to_output(
             "fees_collected":fees_collected,
         },
         "channels":node_data.channels,
+        "closed_channels":node_data.closed_channels,
         "forwards":node_data.forwards,
         "pays":node_data.pays,
         "invoices":node_data.invoices,
@@ -277,16 +297,25 @@ fn node_data_to_output(
         }
 
         let mut result = sumtable.to_string();
+        writeln!(result)?;
+
+        if config.closed_channels > 0 {
+            writeln!(result, "{}", format_closed_channels(config, node_data)?)?;
+            log::debug!(
+                "Format closed channels. Total: {}ms",
+                now.elapsed().as_millis()
+            );
+        }
         if config.forwards > 0 {
-            result += &("\n\n".to_owned() + &format_forwards(config, node_data)?);
+            writeln!(result, "\n{}", format_forwards(config, node_data)?)?;
             log::debug!("Format forwards. Total: {}ms", now.elapsed().as_millis());
         }
         if config.pays > 0 {
-            result += &("\n\n".to_owned() + &format_pays(config, node_data)?);
+            writeln!(result, "\n{}", format_pays(config, node_data)?)?;
             log::debug!("Format pays. Total: {}ms", now.elapsed().as_millis());
         }
         if config.invoices > 0 {
-            result += &("\n\n".to_owned() + &format_invoices(config, node_data)?);
+            writeln!(result, "\n{}", format_invoices(config, node_data)?)?;
             log::debug!("Format invoices. Total: {}ms", now.elapsed().as_millis());
         }
 
@@ -843,4 +872,169 @@ fn draw_graph_sats_name(
         )),
     );
     Ok(())
+}
+
+async fn gather_closed_channels_data(
+    rpc: &mut ClnRpc,
+    plugin: Plugin<PluginState>,
+    config: &Config,
+    now: Instant,
+    full_node_data: &mut FullNodeData,
+) -> Result<(), Error> {
+    let mut closed_channels = rpc
+        .call_typed(&ListclosedchannelsRequest { id: None })
+        .await?
+        .closedchannels;
+
+    if closed_channels.len() > config.closed_channels {
+        closed_channels.drain(0..closed_channels.len() - config.closed_channels);
+    }
+    log::debug!("Listclosedchannels. Total: {}ms", now.elapsed().as_millis());
+
+    for channel in closed_channels {
+        let total_sats = rounded_div_u64(channel.total_msat.msat(), 1_000);
+        let out_sats = rounded_div_u64(channel.final_to_us_msat.msat(), 1_000);
+        let in_sats = total_sats - out_sats;
+
+        let alias = if let Some(peer_id) = channel.peer_id {
+            get_alias(rpc, &plugin, peer_id).await?
+        } else {
+            "N/A".to_owned()
+        };
+
+        full_node_data.closed_channels.push(ClosedChannels {
+            out_sats,
+            in_sats,
+            total_sats,
+            scid: channel.short_channel_id.map(|s| s.to_string()),
+            flag: make_channel_flags(channel.private, false),
+            private: channel.private,
+            alias: if config.utf8 {
+                alias
+            } else {
+                alias.replace(|c: char| !c.is_ascii(), "?")
+            },
+            peer_id: channel.peer_id.map(|p| p.to_string()),
+            htlcs_sent: channel.total_htlcs_sent,
+            close_cause: channel.close_cause.to_string(),
+            last_connect: channel.last_stable_connection,
+        });
+    }
+    log::debug!(
+        "Closed channels loop. Total: {}ms",
+        now.elapsed().as_millis()
+    );
+
+    Ok(())
+}
+
+fn format_closed_channels(
+    config: &Config,
+    full_node_data: &mut FullNodeData,
+) -> Result<String, Error> {
+    let mut closed_chans_table = Table::new(&full_node_data.closed_channels);
+    config.style.apply(&mut closed_chans_table);
+    for head in ClosedChannelsColumns::iter() {
+        if !config.closed_channels_columns.contains(&head) {
+            closed_chans_table.with(Remove::column(ByColumnName::new(head.to_string())));
+        }
+    }
+
+    let headers = closed_chans_table
+        .get_records()
+        .iter_rows()
+        .next()
+        .unwrap()
+        .iter()
+        .map(|s| ClosedChannelsColumns::parse_column(s.text()).unwrap())
+        .collect::<Vec<ClosedChannelsColumns>>();
+    let records = closed_chans_table.get_records_mut();
+    if headers.len() != config.closed_channels_columns.len() {
+        return Err(anyhow!(
+            "Error formatting closed channels! Length difference detected: {} {}",
+            ClosedChannelsColumns::to_list_string(&headers),
+            ClosedChannelsColumns::to_list_string(&config.closed_channels_columns)
+        ));
+    }
+    sort_columns(records, &headers, &config.closed_channels_columns);
+
+    for numerical in ClosedChannelsColumns::NUMERICAL {
+        closed_chans_table
+            .with(Modify::new(ByColumnName::new(numerical.to_string())).with(Alignment::right()));
+        closed_chans_table.with(
+            Modify::new(ByColumnName::new(numerical.to_string()).not(Rows::first())).with(
+                Format::content(|s| u64_to_sat_string(config, s.parse::<u64>().unwrap()).unwrap()),
+            ),
+        );
+    }
+
+    for opt_num in ClosedChannelsColumns::OPTIONAL_NUMERICAL {
+        closed_chans_table
+            .with(Modify::new(ByColumnName::new(opt_num.to_string())).with(Alignment::right()));
+        closed_chans_table.with(
+            Modify::new(ByColumnName::new(opt_num.to_string()).not(Rows::first())).with(
+                Format::content(|s| {
+                    if let Ok(b) = s.parse::<u64>() {
+                        u64_to_sat_string(config, b).unwrap()
+                    } else {
+                        s.to_owned()
+                    }
+                }),
+            ),
+        );
+    }
+
+    if config.max_alias_length < 0 {
+        closed_chans_table.with(
+            Modify::new(ByColumnName::new(ClosedChannelsColumns::ALIAS.to_string())).with(
+                Width::wrap(usize::try_from(config.max_alias_length.unsigned_abs())?)
+                    .keep_words(true),
+            ),
+        );
+    } else {
+        closed_chans_table.with(
+            Modify::new(ByColumnName::new(ClosedChannelsColumns::ALIAS.to_string()))
+                .with(Width::truncate(usize::try_from(config.max_alias_length)?).suffix("[..]")),
+        );
+    }
+
+    closed_chans_table.with(
+        Modify::new(ByColumnName::new(ClosedChannelsColumns::FLAG.to_string()))
+            .with(Alignment::center()),
+    );
+    closed_chans_table.with(
+        Modify::new(ByColumnName::new(
+            ClosedChannelsColumns::HTLCS_SENT.to_string(),
+        ))
+        .with(Alignment::right()),
+    );
+    closed_chans_table.with(
+        Modify::new(ByColumnName::new(
+            ClosedChannelsColumns::CLOSE_CAUSE.to_string(),
+        ))
+        .with(Alignment::center()),
+    );
+    closed_chans_table.with(
+        Modify::new(
+            ByColumnName::new(ClosedChannelsColumns::LAST_CONNECT.to_string()).not(Rows::first()),
+        )
+        .with(Format::content(|timestamp| {
+            if let Ok(ts) = timestamp.parse::<u64>() {
+                timestamp_to_localized_datetime_string(config, ts).unwrap_or("ERROR".to_owned())
+            } else {
+                timestamp.to_owned()
+            }
+        })),
+    );
+
+    closed_chans_table.with(Modify::new(Rows::first()).with(Alignment::center()));
+
+    let mut result = format!(
+        "\n\nclosed channels (last {}/{}):\n",
+        full_node_data.closed_channels.len(),
+        config.closed_channels
+    );
+    writeln!(result, "{closed_chans_table}")?;
+
+    Ok(result)
 }

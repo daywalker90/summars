@@ -15,6 +15,7 @@ use strum::IntoEnumIterator;
 use crate::{
     structs::{
         ChannelVisibility,
+        ClosedChannelsColumns,
         Config,
         ConnectionStatus,
         ExcludeStates,
@@ -76,7 +77,8 @@ pub async fn setconfig_callback(
 
 fn parse_option(opt: Opt, value: &serde_json::Value) -> Result<options::Value, Error> {
     match opt {
-        Opt::Forwards
+        Opt::ClosedChannels
+        | Opt::Forwards
         | Opt::ForwardsLimit
         | Opt::ForwardsFilterAmt
         | Opt::ForwardsFilterFee
@@ -297,6 +299,13 @@ fn check_option(config: &mut Config, opt: Opt, value: &options::Value) -> Result
     match opt {
         Opt::Columns => {
             config.columns = SummaryColumns::parse_columns(value.as_str().unwrap())?;
+        }
+        Opt::ClosedChannels => {
+            config.closed_channels = options_value_to_usize(opt.as_key(), value.as_i64().unwrap())?;
+        }
+        Opt::ClosedChannelsColumns => {
+            config.closed_channels_columns =
+                ClosedChannelsColumns::parse_columns(value.as_str().unwrap())?;
         }
         Opt::SortBy => {
             (config.sort_by, config.sort_reverse) = parse_sort_input(value.as_str().unwrap())?;
