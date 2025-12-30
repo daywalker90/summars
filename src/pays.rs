@@ -250,35 +250,33 @@ async fn build_pays_table(
             destination_alias = Some(get_alias(rpc, plugin, dest).await?);
         }
 
+        let msats_sent = if let Some(amt_sent) = pay.amount_sent_msat {
+            amt_sent.msat()
+        } else {
+            log::warn!(
+                "Completed pay with payment_hash {} has no amount_sent_msat",
+                pay.payment_hash
+            );
+            continue;
+        };
+
         if let Some(amount_msat) = pay.amount_msat.map(|a| Amount::msat(&a)) {
             msats_requested = Some(amount_msat);
-            if let Some(amount_sent_msat) = pay.amount_sent_msat.map(|a| Amount::msat(&a)) {
-                fee_msat = Some(amount_sent_msat.saturating_sub(amount_msat));
-                fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
-                sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
+            fee_msat = Some(msats_sent.saturating_sub(amount_msat));
+            fee_sats = Some(rounded_div_u64(fee_msat.unwrap(), 1_000));
+            sats_requested = Some(rounded_div_u64(amount_msat, 1_000));
 
-                accumulate_totals(
-                    is_self_pay,
-                    fee_msat,
-                    full_node_data,
-                    amount_msat,
-                    amount_sent_msat,
-                );
-            }
+            accumulate_totals(
+                is_self_pay,
+                fee_msat,
+                full_node_data,
+                amount_msat,
+                msats_sent,
+            );
         }
 
-        let mut description_status = DescriptionStatus::Processed;
-        let description = if let Some(desc) = pay.description {
-            Some(desc)
-        } else if let Some(b11) = pay.bolt11 {
-            description_status = DescriptionStatus::Bolt11;
-            Some(b11)
-        } else if let Some(b12) = pay.bolt12 {
-            description_status = DescriptionStatus::Bolt12;
-            Some(b12)
-        } else {
-            None
-        };
+        let (description_status, description) =
+            get_pay_description_and_status(pay.description, pay.bolt11, pay.bolt12);
 
         if is_self_pay {
             full_node_data.totals.pays.self_count += 1;
@@ -290,8 +288,8 @@ async fn build_pays_table(
                 Pays {
                     completed_at,
                     payment_hash: pay.payment_hash.to_string(),
-                    msats_sent: Amount::msat(&pay.amount_sent_msat.unwrap()),
-                    sats_sent: rounded_div_u64(pay.amount_sent_msat.unwrap().msat(), 1_000),
+                    msats_sent,
+                    sats_sent: rounded_div_u64(msats_sent, 1_000),
                     destination: if let Some(dest) = destination_alias {
                         if dest == NODE_GOSSIP_MISS || dest == NO_ALIAS_SET {
                             Some(pay.destination.unwrap().to_string())
@@ -315,6 +313,26 @@ async fn build_pays_table(
         }
     }
     Ok(())
+}
+
+fn get_pay_description_and_status(
+    description: Option<String>,
+    bolt11: Option<String>,
+    bolt12: Option<String>,
+) -> (DescriptionStatus, Option<String>) {
+    let mut description_status = DescriptionStatus::Processed;
+    let description = if let Some(desc) = description {
+        Some(desc)
+    } else if let Some(b11) = bolt11 {
+        description_status = DescriptionStatus::Bolt11;
+        Some(b11)
+    } else if let Some(b12) = bolt12 {
+        description_status = DescriptionStatus::Bolt12;
+        Some(b12)
+    } else {
+        None
+    };
+    (description_status, description)
 }
 
 fn accumulate_totals(
@@ -481,15 +499,6 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
             })),
     );
 
-    paystable.with(Panel::header(format!(
-        "pays (last {}h, limit: {})",
-        config.pays,
-        if config.pays_limit > 0 {
-            format!("{}/{}", count, config.pays_limit)
-        } else {
-            "off".to_owned()
-        }
-    )));
     paystable.with(Modify::new(Rows::first()).with(Alignment::center()));
 
     let mut pays_totals = String::new();
@@ -547,5 +556,16 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
         paystable.with(Panel::footer(pays_totals));
     }
 
-    Ok(paystable.to_string())
+    let mut result = format!(
+        "\n\npays (last {}h, limit: {}):\n",
+        config.pays,
+        if config.pays_limit > 0 {
+            format!("{}/{}", count, config.pays_limit)
+        } else {
+            "off".to_owned()
+        }
+    );
+    writeln!(result, "{paystable}")?;
+
+    Ok(result)
 }
