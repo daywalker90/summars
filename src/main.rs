@@ -93,7 +93,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let opt_closed_channels_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
         Opt::ClosedChannelsColumns.as_key(),
         &default_closed_channels_columns,
-        "Enabled columns in the closed channels table.",
+        "Enabled columns in the closed channels table. Available columns are: \
+        `LAST_CONNECT, OUT_SATS, IN_SATS, TOTAL_SATS, SCID, PRIVATE, ALIAS, PEER_ID, HTLCS_SENT, \
+        CLOSE_CAUSE`",
     );
 
     let default_sort_col = default_config.sort_by.to_string();

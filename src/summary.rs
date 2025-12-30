@@ -71,6 +71,7 @@ use crate::{
         Summary,
         SummaryColumns,
         TableColumn,
+        MISSING_VALUE,
     },
     util::{
         at_or_above_version,
@@ -497,8 +498,8 @@ fn chan_to_summary(
         chan.peer_id
     ))?);
 
-    let mut in_base = "N/A".to_owned();
-    let mut in_ppm = "N/A".to_owned();
+    let mut in_base = MISSING_VALUE.to_owned();
+    let mut in_ppm = MISSING_VALUE.to_owned();
     if config.columns.contains(&SummaryColumns::IN_BASE)
         || config.columns.contains(&SummaryColumns::IN_PPM)
         || config.sort_by == SummaryColumns::IN_BASE
@@ -777,7 +778,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
                 Format::content(|s| {
                     let av = s.parse::<f64>().unwrap_or(-1.0);
                     if av < 0.0 {
-                        "N/A".to_owned()
+                        MISSING_VALUE.to_owned()
                     } else if percent_col == SummaryColumns::UPTIME {
                         format!("{}%", av.round())
                     } else {
@@ -793,7 +794,7 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
             Format::content(|s| {
                 let ping = s.parse::<u64>().unwrap();
                 if ping > PING_TIMEOUT_MS || ping == 0 {
-                    "N/A".to_owned()
+                    MISSING_VALUE.to_owned()
                 } else {
                     u64_to_sat_string(config, ping).unwrap()
                 }
@@ -881,17 +882,16 @@ async fn gather_closed_channels_data(
     now: Instant,
     full_node_data: &mut FullNodeData,
 ) -> Result<(), Error> {
-    let mut closed_channels = rpc
+    let closed_channels = rpc
         .call_typed(&ListclosedchannelsRequest { id: None })
         .await?
         .closedchannels;
-
-    if closed_channels.len() > config.closed_channels {
-        closed_channels.drain(0..closed_channels.len() - config.closed_channels);
-    }
     log::debug!("Listclosedchannels. Total: {}ms", now.elapsed().as_millis());
 
     for channel in closed_channels {
+        let Some(last_connect) = channel.last_stable_connection else {
+            continue;
+        };
         let total_sats = rounded_div_u64(channel.total_msat.msat(), 1_000);
         let out_sats = rounded_div_u64(channel.final_to_us_msat.msat(), 1_000);
         let in_sats = total_sats - out_sats;
@@ -899,7 +899,7 @@ async fn gather_closed_channels_data(
         let alias = if let Some(peer_id) = channel.peer_id {
             get_alias(rpc, &plugin, peer_id).await?
         } else {
-            "N/A".to_owned()
+            MISSING_VALUE.to_owned()
         };
 
         full_node_data.closed_channels.push(ClosedChannels {
@@ -907,7 +907,6 @@ async fn gather_closed_channels_data(
             in_sats,
             total_sats,
             scid: channel.short_channel_id.map(|s| s.to_string()),
-            flag: make_channel_flags(channel.private, false),
             private: channel.private,
             alias: if config.utf8 {
                 alias
@@ -917,13 +916,23 @@ async fn gather_closed_channels_data(
             peer_id: channel.peer_id.map(|p| p.to_string()),
             htlcs_sent: channel.total_htlcs_sent,
             close_cause: channel.close_cause.to_string(),
-            last_connect: channel.last_stable_connection,
+            last_connect,
         });
     }
     log::debug!(
         "Closed channels loop. Total: {}ms",
         now.elapsed().as_millis()
     );
+
+    full_node_data
+        .closed_channels
+        .sort_by_key(|cc| cc.last_connect);
+
+    if full_node_data.closed_channels.len() > config.closed_channels {
+        full_node_data
+            .closed_channels
+            .drain(0..full_node_data.closed_channels.len() - config.closed_channels);
+    }
 
     Ok(())
 }
@@ -999,8 +1008,10 @@ fn format_closed_channels(
     }
 
     closed_chans_table.with(
-        Modify::new(ByColumnName::new(ClosedChannelsColumns::FLAG.to_string()))
-            .with(Alignment::center()),
+        Modify::new(ByColumnName::new(
+            ClosedChannelsColumns::PRIVATE.to_string(),
+        ))
+        .with(Alignment::center()),
     );
     closed_chans_table.with(
         Modify::new(ByColumnName::new(
