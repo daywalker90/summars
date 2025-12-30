@@ -31,7 +31,15 @@ use tonic::transport::{Certificate, ClientTlsConfig, Endpoint, Identity};
 
 use crate::{
     config::get_startup_options,
-    structs::{ForwardsColumns, InvoicesColumns, Opt, PaysColumns, SummaryColumns, TableColumn},
+    structs::{
+        ClosedChannelsColumns,
+        ForwardsColumns,
+        InvoicesColumns,
+        Opt,
+        PaysColumns,
+        SummaryColumns,
+        TableColumn,
+    },
 };
 #[cfg(feature = "hold")]
 use crate::{hold::hold_client::HoldClient, util::make_rpc_path};
@@ -72,6 +80,21 @@ async fn main() -> Result<(), anyhow::Error> {
         PPM,IN_PPM,ALIAS,PEER_ID,UPTIME,HTLCS,STATE`",
     )
     .dynamic();
+
+    let opt_closed_channels: DefaultIntegerConfigOption = ConfigOption::new_i64_with_default(
+        Opt::ClosedChannels.as_key(),
+        default_config.closed_channels as i64,
+        "Show the last x closed channels.",
+    )
+    .dynamic();
+
+    let default_closed_channels_columns =
+        ClosedChannelsColumns::to_list_string(&default_config.closed_channels_columns);
+    let opt_closed_channels_columns: DefaultStringConfigOption = ConfigOption::new_str_with_default(
+        Opt::ClosedChannelsColumns.as_key(),
+        &default_closed_channels_columns,
+        "Enabled columns in the closed channels table.",
+    );
 
     let default_sort_col = default_config.sort_by.to_string();
     let opt_sort_by: DefaultStringConfigOption = ConfigOption::new_str_with_default(
@@ -274,6 +297,8 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match Builder::new(tokio::io::stdin(), tokio::io::stdout())
         .option(opt_columns)
+        .option(opt_closed_channels)
+        .option(opt_closed_channels_columns)
         .option(opt_sort_by)
         .option(opt_exclude_channel_states)
         .option(opt_forwards)

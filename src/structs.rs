@@ -12,7 +12,7 @@ use icu_locale::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sys_locale::get_locales;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{derive::display, settings::Style, Table, Tabled};
 #[cfg(feature = "hold")]
 use tonic::transport::Channel;
 
@@ -28,6 +28,8 @@ pub const PAGE_SIZE: u64 = 1000;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Opt {
     Columns,
+    ClosedChannels,
+    ClosedChannelsColumns,
     SortBy,
     ExcludeChannelStates,
     Forwards,
@@ -59,6 +61,8 @@ impl Opt {
     pub fn as_key(self) -> &'static str {
         match self {
             Opt::Columns => "summars-columns",
+            Opt::ClosedChannels => "summars-closed-channels",
+            Opt::ClosedChannelsColumns => "summars-closed-channels-columns",
             Opt::SortBy => "summars-sort-by",
             Opt::ExcludeChannelStates => "summars-exclude-states",
             Opt::Forwards => "summars-forwards",
@@ -90,6 +94,8 @@ impl Opt {
     pub fn from_key(s: &str) -> Result<Opt, Error> {
         match s {
             "summars-columns" => Ok(Opt::Columns),
+            "summars-closed-channels" => Ok(Opt::ClosedChannels),
+            "summars-closed-channels-columns" => Ok(Opt::ClosedChannelsColumns),
             "summars-sort-by" => Ok(Opt::SortBy),
             "summars-exclude-states" => Ok(Opt::ExcludeChannelStates),
             "summars-forwards" => Ok(Opt::Forwards),
@@ -121,6 +127,8 @@ impl Opt {
 
     pub const ALL: &[Opt] = &[
         Opt::Columns,
+        Opt::ClosedChannels,
+        Opt::ClosedChannelsColumns,
         Opt::SortBy,
         Opt::ExcludeChannelStates,
         Opt::Forwards,
@@ -163,6 +171,8 @@ impl Opt {
 #[derive(Clone, Debug)]
 pub struct Config {
     pub columns: Vec<SummaryColumns>,
+    pub closed_channels: usize,
+    pub closed_channels_columns: Vec<ClosedChannelsColumns>,
     pub sort_by: SummaryColumns,
     pub sort_reverse: bool,
     pub exclude_channel_states: ExcludeStates,
@@ -194,6 +204,8 @@ impl Config {
     pub fn new() -> Config {
         Config {
             columns: { SummaryColumns::default_columns() },
+            closed_channels: 0,
+            closed_channels_columns: { ClosedChannelsColumns::default_columns() },
             sort_by: SummaryColumns::SCID,
             sort_reverse: false,
             exclude_channel_states: ExcludeStates {
@@ -306,6 +318,7 @@ impl Default for HoldInvoicePageHelper {
 pub struct FullNodeData {
     pub node_summary: NodeSummary,
     pub channels: Vec<Summary>,
+    pub closed_channels: Vec<ClosedChannels>,
     pub forwards: Vec<Forwards>,
     pub forwards_filter_stats: ForwardsFilterStats,
     pub pays: Vec<Pays>,
@@ -325,6 +338,7 @@ impl FullNodeData {
         FullNodeData {
             node_summary: NodeSummary::default(),
             channels: Vec::new(),
+            closed_channels: Vec::new(),
             forwards: Vec::new(),
             forwards_filter_stats: ForwardsFilterStats::default(),
             pays: Vec::new(),
@@ -433,6 +447,51 @@ impl_table_column!(
     exclude_default = [GRAPH_SATS, PERC_US, TOTAL_SATS, MIN_HTLC, IN_BASE, IN_PPM, PING],
     numerical = [OUT_SATS, IN_SATS, TOTAL_SATS, MIN_HTLC, MAX_HTLC, BASE, PPM],
     optional_numerical = [IN_BASE, IN_PPM],
+);
+
+#[derive(Debug, Tabled, Serialize)]
+#[tabled(display(Option, "display::option", "N/A"))]
+#[tabled(rename_all = "SCREAMING_SNAKE_CASE")]
+pub struct ClosedChannels {
+    pub out_sats: u64,
+    pub in_sats: u64,
+    pub total_sats: u64,
+    pub scid: Option<String>,
+    #[serde(skip_serializing)]
+    pub flag: String,
+    #[tabled(skip)]
+    pub private: bool,
+    pub alias: String,
+    pub peer_id: Option<String>,
+    pub htlcs_sent: u64,
+    pub close_cause: String,
+    pub last_connect: Option<u64>,
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, strum::EnumIter, strum::EnumString, strum::Display,
+)]
+#[allow(non_camel_case_types)]
+#[strum(ascii_case_insensitive)]
+#[allow(clippy::upper_case_acronyms)]
+pub enum ClosedChannelsColumns {
+    LAST_CONNECT,
+    OUT_SATS,
+    IN_SATS,
+    TOTAL_SATS,
+    SCID,
+    FLAG,
+    ALIAS,
+    PEER_ID,
+    HTLCS_SENT,
+    CLOSE_CAUSE,
+}
+impl_table_column!(
+    ClosedChannelsColumns,
+    env_var = Opt::ClosedChannelsColumns.as_key(),
+    exclude_default = [TOTAL_SATS],
+    numerical = [OUT_SATS, IN_SATS, TOTAL_SATS],
+    optional_numerical = [],
 );
 
 #[derive(Debug, Tabled, Serialize)]
