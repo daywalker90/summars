@@ -74,14 +74,14 @@ jobs:
         path: |
           /usr/local/bin/lightning*
           /usr/local/libexec/c-lightning
-        key: cache-cln-${{ inputs.cln-version }}-${{ steps.exact_versions.outputs.os_version }}
+        key: cache-cln-${{ inputs.cln-version }}-${{ runner.os }}-${{ steps.exact_versions.outputs.os_version }}
 
     - name: Restore bitcoind cache
       id: cache-bitcoind
       uses: actions/cache/restore@v5
       with:
         path: /usr/local/bin/bitcoin*
-        key: cache-bitcoind-${{ matrix.bitcoind-version }}-${{ steps.exact_versions.outputs.os_version }}
+        key: cache-bitcoind-${{ matrix.bitcoind-version }}-${{ runner.os }}-${{ steps.exact_versions.outputs.os_version }}
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
@@ -89,14 +89,31 @@ jobs:
         enable-cache: true
         cache-dependency-glob: "**/pyproject.toml"
 
+    - name: Install macOs dependencies
+      if: ${{ contains(matrix.os, 'macos') }}
+      run: |
+        brew install postgresql
+
+    - name: Set Bitcoin architecture
+      id: bitcoin-arch
+      run: |
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          echo "arch=x86_64-linux-gnu" >> $GITHUB_OUTPUT
+          echo "use_sudo=sudo" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          echo "arch=arm64-apple-darwin" >> $GITHUB_OUTPUT
+          echo "use_sudo=" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Download Bitcoin ${{ matrix.bitcoind-version }} & install binaries
       if: ${{ steps.cache-bitcoind.outputs.cache-hit != 'true' }}
       run: |
         export BITCOIND_VERSION=${{ matrix.bitcoind-version }}
-        export TARGET_ARCH="x86_64-linux-gnu"
-        wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}/bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
+        export TARGET_ARCH="${{ steps.bitcoin-arch.outputs.arch }}"
+        
+        curl -L -O https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}/bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
         tar -xzf bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
-        sudo mv bitcoin-${BITCOIND_VERSION}/bin/* /usr/local/bin
+        ${{ steps.bitcoin-arch.outputs.use_sudo }} mv bitcoin-${BITCOIND_VERSION}/bin/* /usr/local/bin
         rm -rf bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz bitcoin-${BITCOIND_VERSION}
 
     - name: Save bitcoind cache
