@@ -28,7 +28,7 @@ jobs:
             experimental: [1]
             deprecated: [0]
             python-version: ["3.9", "3.13"]
-            os: ["ubuntu-latest"]
+            os: ["ubuntu-latest", "macos-latest"]
 
     runs-on: ${{ matrix.os }}
 
@@ -42,6 +42,7 @@ jobs:
         sudo mkdir /usr/local/libexec/c-lightning
         sudo mkdir /usr/local/libexec/c-lightning/plugins
         sudo chown -R $USER /usr/local/libexec
+        mkdir -p $HOME/cln-install
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
@@ -98,7 +99,7 @@ jobs:
         path: /usr/local/bin/bitcoin*
         key: ${{ steps.cache-bitcoind.outputs.cache-primary-key }}
 
-    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries
+    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries (ubuntu only)
       if: ${{ contains(matrix.os, 'ubuntu') &&  steps.cache-cln.outputs.cache-hit != 'true' }}
       run: |
           url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/ElementsProject/lightning/releases/tags/${{ inputs.cln-version }} \
@@ -107,6 +108,18 @@ jobs:
           wget $url
           sudo tar -xvf ${url##*/} -C /usr/local --strip-components=2
           echo "CLN_VERSION=$(lightningd --version)" >> "$GITHUB_OUTPUT"
+
+    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries (macOS only)
+      if: ${{ contains(matrix.os, 'macos') &&  steps.cache-cln.outputs.cache-hit != 'true' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release download ${{ inputs.cln-version }} \
+          --repo daywalker90/cln-macos-build \
+          --pattern "cln-macos-${{ inputs.cln-version }}.tar.gz"
+
+        tar -xzf cln-macos-${{ inputs.cln-version }}.tar.gz -C $HOME/cln-install
+        echo "$HOME/cln-install/bin" >> $GITHUB_PATH
 
     - name: Save CLN cache
       id: save-cache-cln
