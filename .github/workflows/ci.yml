@@ -196,16 +196,15 @@ jobs:
             BINARY_NAME="hold-linux-amd64"
           elif [[ "${{ runner.os }}" == "macOS" ]]; then
             REPO="daywalker90/hold-macos-build"
-            FILENAME_PATTERN="darwin-v.*\.tar\.gz"
+            FILENAME_PATTERN='darwin-v.*\\.tar\\.gz'
             BINARY_NAME="hold-darwin"
           fi
 
           # Download the release
           url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${REPO}/releases/latest \
-            | jq ".assets[] | select(.name | test(\"${FILENAME_PATTERN}\")) | .browser_download_url" \
-            | tr -d '\"')
+            | jq -r ".assets[] | select(.name | test(\"${FILENAME_PATTERN}\")) | .browser_download_url")
 
-          curl -f --retry 3 --retry-delay 3 -L -O $url
+          curl -f --retry 3 --retry-delay 3 -L -O "$url"
 
           # Extract and move binary
           tar -xvf ${url##*/} -C tests
