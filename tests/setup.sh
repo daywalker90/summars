@@ -70,8 +70,20 @@ fi
 
 # Need holdinvoice for some tests
 HOLDINVOICE_VERSION="0.3.3"
-HOLDINVOICE_ARCHIVE="hold-linux-amd64.tar.gz"
-HOLDINVOICE_FILE_URL="https://github.com/BoltzExchange/hold/releases/download/v$HOLDINVOICE_VERSION/$HOLDINVOICE_ARCHIVE"
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    HOLDINVOICE_ARCHIVE="hold-linux-amd64.tar.gz"
+    HOLDINVOICE_REPO="BoltzExchange/hold"
+    HOLDINVOICE_BINARY="hold-linux-amd64"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    HOLDINVOICE_ARCHIVE="hold-darwin-v${HOLDINVOICE_VERSION}.tar.gz"
+    HOLDINVOICE_REPO="daywalker90/hold-macos-build"
+    HOLDINVOICE_BINARY="hold-darwin"
+else
+    echo "Unsupported operating system: $OSTYPE" >&2
+    exit 1
+fi
+
+HOLDINVOICE_FILE_URL="https://github.com/${HOLDINVOICE_REPO}/releases/download/v$HOLDINVOICE_VERSION/$HOLDINVOICE_ARCHIVE"
 
 if ! curl -L "$HOLDINVOICE_FILE_URL" -o "$script_dir/$HOLDINVOICE_ARCHIVE"; then
     echo "Error downloading the file from $HOLDINVOICE_FILE_URL" >&2
@@ -83,7 +95,7 @@ if ! tar -xzvf "$script_dir/$HOLDINVOICE_ARCHIVE" -C "$script_dir"; then
     exit 1
 fi
 
-mv "$script_dir/build/hold-linux-amd64" "$script_dir/hold"
+mv "$script_dir/build/${HOLDINVOICE_BINARY}" "$script_dir/hold"
 
 proto_path="$script_dir/../proto"
 if [ -d "$proto_path" ]; then
