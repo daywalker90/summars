@@ -590,12 +590,12 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
     l1.rpc.fundchannel(
-        l2.info["id"] + "@localhost:" + str(l2.port), 1_000_000, mindepth=1
+        l2.info["id"] + "@127.0.0.1:" + str(l2.port), 1_000_000, mindepth=1
     )
     bitcoind.generate_block(1)
     sync_blockheight(bitcoind, [l1, l2, l3])
     l1.rpc.fundchannel(
-        l3.info["id"] + "@localhost:" + str(l3.port),
+        l3.info["id"] + "@127.0.0.1:" + str(l3.port),
         1_000_000,
         mindepth=1,
         announce=False,
@@ -682,9 +682,9 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     )
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
-    l1.rpc.connect(l2.info["id"], "localhost", l2.port)
-    l2.rpc.connect(l3.info["id"], "localhost", l3.port)
-    l1.rpc.connect(l3.info["id"], "localhost", l3.port)
+    l1.rpc.connect(l2.info["id"], "127.0.0.1", l2.port)
+    l2.rpc.connect(l3.info["id"], "127.0.0.1", l3.port)
+    l1.rpc.connect(l3.info["id"], "127.0.0.1", l3.port)
     l1.rpc.fundchannel(l2.info["id"], 2_000_000, push_msat=1_000_000_000, mindepth=1)
     l2.rpc.fundchannel(l3.info["id"], 2_000_000, push_msat=1_000_000_000, mindepth=1)
 
@@ -857,13 +857,13 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.fundwallet(10_000_000)
     l2.fundwallet(10_000_000)
     l1.rpc.fundchannel(
-        l2.info["id"] + "@localhost:" + str(l2.port),
+        l2.info["id"] + "@127.0.0.1:" + str(l2.port),
         1_000_000,
         push_msat=500_000_000,
         mindepth=1,
     )
     l2.rpc.fundchannel(
-        l3.info["id"] + "@localhost:" + str(l3.port),
+        l3.info["id"] + "@127.0.0.1:" + str(l3.port),
         1_000_000,
         push_msat=500_000_000,
         mindepth=1,
