@@ -189,12 +189,27 @@ jobs:
             uv run python -m grpc_tools.protoc --proto_path="proto" --python_out="tests" --grpc_python_out="tests" proto/*.proto
           fi
           
-          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/BoltzExchange/hold/releases/latest \
-            | jq '.assets[] | select(.name | endswith("linux-amd64.tar.gz")) | .browser_download_url' \
+          # Set repo and filename based on OS
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            REPO="BoltzExchange/hold"
+            FILENAME_PATTERN="linux-amd64.tar.gz"
+            BINARY_NAME="hold-linux-amd64"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            REPO="daywalker90/hold-macos-build"
+            FILENAME_PATTERN="darwin-v.*\.tar\.gz"
+            BINARY_NAME="hold-darwin"
+          fi
+
+          # Download the release
+          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${REPO}/releases/latest \
+            | jq ".assets[] | select(.name | test(\"${FILENAME_PATTERN}\")) | .browser_download_url" \
             | tr -d '\"')
-          wget $url
+
+          curl -f --retry 3 --retry-delay 3 -L -O $url
+
+          # Extract and move binary
           tar -xvf ${url##*/} -C tests
-          mv "tests/build/hold-linux-amd64" "tests/hold"
+          mv "tests/build/${BINARY_NAME}" "tests/hold"
 
           cargo build
           cargo test
