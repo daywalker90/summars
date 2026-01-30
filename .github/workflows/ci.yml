@@ -52,12 +52,20 @@ jobs:
     - name: Extract exact python and os version
       id: exact_versions
       run: |
-        PYTHON_VERSION=$(python --version 2>&1 | grep -oP '(?<=Python )\d+\.\d+(\.\d+)?')
+        # Python version
+        PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
         echo "Python version: $PYTHON_VERSION"
         echo "python_version=$PYTHON_VERSION" >> "$GITHUB_OUTPUT"
-        OS_VERSION=$(lsb_release -rs)
+        
+        # OS version using GitHub runner context
+        OS_VERSION="${{ runner.os }}"
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          OS_VERSION=$(lsb_release -rs)
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          OS_VERSION=$(sw_vers -productVersion)
+        fi
         echo "OS version: $OS_VERSION"
-        echo "os_version=$OS_VERSION" >> $GITHUB_OUTPUT
+        echo "os_version=$OS_VERSION" >> $GITHUB_OUTPUT"
 
     - name: Restore CLN cache
       id: cache-cln
