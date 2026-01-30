@@ -65,7 +65,7 @@ jobs:
           OS_VERSION=$(sw_vers -productVersion)
         fi
         echo "OS version: $OS_VERSION"
-        echo "os_version=$OS_VERSION" >> $GITHUB_OUTPUT"
+        echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Restore CLN cache
       id: cache-cln
