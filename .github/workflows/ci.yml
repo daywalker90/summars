@@ -42,7 +42,6 @@ jobs:
         sudo mkdir /usr/local/libexec/c-lightning
         sudo mkdir /usr/local/libexec/c-lightning/plugins
         sudo chown -R $USER /usr/local/libexec
-        mkdir -p $HOME/cln-install
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v6
@@ -143,8 +142,8 @@ jobs:
           --repo daywalker90/cln-macos-build \
           --pattern "cln-macos-${{ inputs.cln-version }}.tar.gz"
 
-        tar -xzf cln-macos-${{ inputs.cln-version }}.tar.gz -C $HOME/cln-install
-        echo "$HOME/cln-install/bin" >> $GITHUB_PATH
+        sudo tar -xzf cln-macos-${{ inputs.cln-version }}.tar.gz -C /usr/local --strip-components=1
+        echo "CLN_VERSION=$(lightningd --version)" >> "$GITHUB_OUTPUT"
 
     - name: Save CLN cache
       id: save-cache-cln
