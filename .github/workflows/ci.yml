@@ -27,7 +27,7 @@ jobs:
             bitcoind-version: ["30.2"]
             experimental: [1]
             deprecated: [0]
-            python-version: ["3.9", "3.14"]
+            python-version: ["3.9", "3.13"]
             os: ["ubuntu-latest"]
 
     runs-on: ${{ matrix.os }}
@@ -51,12 +51,20 @@ jobs:
     - name: Extract exact python and os version
       id: exact_versions
       run: |
-        PYTHON_VERSION=$(python --version 2>&1 | grep -oP '(?<=Python )\d+\.\d+(\.\d+)?')
+        # Python version
+        PYTHON_VERSION=$(python --version 2>&1 | awk '{print $2}')
         echo "Python version: $PYTHON_VERSION"
         echo "python_version=$PYTHON_VERSION" >> "$GITHUB_OUTPUT"
-        OS_VERSION=$(lsb_release -rs)
+        
+        # OS version using GitHub runner context
+        OS_VERSION="${{ runner.os }}"
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          OS_VERSION=$(lsb_release -rs)
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          OS_VERSION=$(sw_vers -productVersion)
+        fi
         echo "OS version: $OS_VERSION"
-        echo "os_version=$OS_VERSION" >> $GITHUB_OUTPUT
+        echo "os_version=$OS_VERSION" >> "$GITHUB_OUTPUT"
 
     - name: Restore CLN cache
       id: cache-cln
@@ -65,14 +73,14 @@ jobs:
         path: |
           /usr/local/bin/lightning*
           /usr/local/libexec/c-lightning
-        key: cache-cln-${{ inputs.cln-version }}-${{ steps.exact_versions.outputs.os_version }}
+        key: cache-cln-${{ inputs.cln-version }}-${{ runner.os }}-${{ steps.exact_versions.outputs.os_version }}
 
     - name: Restore bitcoind cache
       id: cache-bitcoind
       uses: actions/cache/restore@v5
       with:
         path: /usr/local/bin/bitcoin*
-        key: cache-bitcoind-${{ matrix.bitcoind-version }}-${{ steps.exact_versions.outputs.os_version }}
+        key: cache-bitcoind-${{ matrix.bitcoind-version }}-${{ runner.os }}-${{ steps.exact_versions.outputs.os_version }}
 
     - name: Install uv
       uses: astral-sh/setup-uv@v7
@@ -80,14 +88,31 @@ jobs:
         enable-cache: true
         cache-dependency-glob: "**/pyproject.toml"
 
+    - name: Install macOs dependencies
+      if: ${{ contains(matrix.os, 'macos') }}
+      run: |
+        brew install postgresql
+
+    - name: Set Bitcoin architecture
+      id: bitcoin-arch
+      run: |
+        if [[ "${{ runner.os }}" == "Linux" ]]; then
+          echo "arch=x86_64-linux-gnu" >> $GITHUB_OUTPUT
+          echo "use_sudo=sudo" >> $GITHUB_OUTPUT
+        elif [[ "${{ runner.os }}" == "macOS" ]]; then
+          echo "arch=arm64-apple-darwin" >> $GITHUB_OUTPUT
+          echo "use_sudo=" >> $GITHUB_OUTPUT
+        fi
+    
     - name: Download Bitcoin ${{ matrix.bitcoind-version }} & install binaries
       if: ${{ steps.cache-bitcoind.outputs.cache-hit != 'true' }}
       run: |
         export BITCOIND_VERSION=${{ matrix.bitcoind-version }}
-        export TARGET_ARCH="x86_64-linux-gnu"
-        wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}/bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
+        export TARGET_ARCH="${{ steps.bitcoin-arch.outputs.arch }}"
+        
+        curl -L -O https://bitcoincore.org/bin/bitcoin-core-${BITCOIND_VERSION}/bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
         tar -xzf bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz
-        sudo mv bitcoin-${BITCOIND_VERSION}/bin/* /usr/local/bin
+        ${{ steps.bitcoin-arch.outputs.use_sudo }} mv bitcoin-${BITCOIND_VERSION}/bin/* /usr/local/bin
         rm -rf bitcoin-${BITCOIND_VERSION}-${TARGET_ARCH}.tar.gz bitcoin-${BITCOIND_VERSION}
 
     - name: Save bitcoind cache
@@ -98,7 +123,7 @@ jobs:
         path: /usr/local/bin/bitcoin*
         key: ${{ steps.cache-bitcoind.outputs.cache-primary-key }}
 
-    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries
+    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries (ubuntu only)
       if: ${{ contains(matrix.os, 'ubuntu') &&  steps.cache-cln.outputs.cache-hit != 'true' }}
       run: |
           url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/ElementsProject/lightning/releases/tags/${{ inputs.cln-version }} \
@@ -107,6 +132,18 @@ jobs:
           wget $url
           sudo tar -xvf ${url##*/} -C /usr/local --strip-components=2
           echo "CLN_VERSION=$(lightningd --version)" >> "$GITHUB_OUTPUT"
+
+    - name: Download Core Lightning ${{ inputs.cln-version }} & install binaries (macOS only)
+      if: ${{ contains(matrix.os, 'macos') &&  steps.cache-cln.outputs.cache-hit != 'true' }}
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release download ${{ inputs.cln-version }} \
+          --repo daywalker90/cln-macos-build \
+          --pattern "cln-macos-${{ inputs.cln-version }}.tar.gz"
+
+        sudo tar -xzf cln-macos-${{ inputs.cln-version }}.tar.gz -C /usr/local --strip-components=1
+        echo "CLN_VERSION=$(lightningd --version)" >> "$GITHUB_OUTPUT"
 
     - name: Save CLN cache
       id: save-cache-cln
@@ -129,15 +166,15 @@ jobs:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Install cargo-binstall
-      if: ${{ inputs.tagged-release == false }}
+      if: ${{ inputs.tagged-release == false}}
       uses: taiki-e/install-action@cargo-binstall
 
     - name: Install cargo-msrv
-      if: ${{ inputs.tagged-release == false }}
+      if: ${{ inputs.tagged-release == false}}
       run: cargo binstall --no-confirm cargo-msrv
 
     - name: Verify MSRV
-      if: ${{ inputs.tagged-release == false }}
+      if: ${{ inputs.tagged-release == false}}
       run: cargo msrv verify
 
     - name: Get plugin binary
@@ -150,13 +187,27 @@ jobs:
           if [ -d "proto" ]; then
             uv run python -m grpc_tools.protoc --proto_path="proto" --python_out="tests" --grpc_python_out="tests" proto/*.proto
           fi
+          
+          # Set repo and filename based on OS
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            REPO="BoltzExchange/hold"
+            FILENAME_PATTERN="linux-amd64.tar.gz"
+            BINARY_NAME="hold-linux-amd64"
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            REPO="daywalker90/hold-macos-build"
+            FILENAME_PATTERN='darwin-v.*\\.tar\\.gz'
+            BINARY_NAME="hold-darwin"
+          fi
 
-          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/BoltzExchange/hold/releases/latest \
-            | jq '.assets[] | select(.name | endswith("linux-amd64.tar.gz")) | .browser_download_url' \
-            | tr -d '\"')
-          wget $url
+          # Download the release
+          url=$(curl -f --retry 3 --retry-delay 3 -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" https://api.github.com/repos/${REPO}/releases/latest \
+            | jq -r ".assets[] | select(.name | test(\"${FILENAME_PATTERN}\")) | .browser_download_url")
+
+          curl -f --retry 3 --retry-delay 3 -L -O "$url"
+
+          # Extract and move binary
           tar -xvf ${url##*/} -C tests
-          mv "tests/build/hold-linux-amd64" "tests/hold"
+          mv "tests/build/${BINARY_NAME}" "tests/hold"
 
           cargo build
           cargo test
@@ -175,4 +226,4 @@ jobs:
 
         cd tests
         uv add --dev pyln-testing==${{ inputs.pyln-version }} pyln-client==${{ inputs.pyln-version }} pyln-proto==${{ inputs.pyln-version }}
-        uv run -v pytest -n=10
+        uv run -v pytest -n=5
