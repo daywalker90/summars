@@ -28,7 +28,7 @@ jobs:
             experimental: [1]
             deprecated: [0]
             python-version: ["3.9", "3.13"]
-            os: ["ubuntu-latest"]
+            os: ["ubuntu-latest", "macos-latest"]
 
     runs-on: ${{ matrix.os }}
 
@@ -226,4 +226,4 @@ jobs:
 
         cd tests
         uv add --dev pyln-testing==${{ inputs.pyln-version }} pyln-client==${{ inputs.pyln-version }} pyln-proto==${{ inputs.pyln-version }}
-        uv run -v pytest -n=5
+        uv run -v pytest -n=4
