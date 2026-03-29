@@ -1,11 +1,11 @@
 use std::str::FromStr;
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use chrono::Utc;
 use cln_plugin::{
-    options::{self},
     ConfiguredPlugin,
     Plugin,
+    options::{self},
 };
 use cln_rpc::RpcError;
 use icu_locale::Locale;
@@ -13,6 +13,7 @@ use serde_json::json;
 use strum::IntoEnumIterator;
 
 use crate::{
+    PluginState,
     structs::{
         ChannelVisibility,
         ClosedChannelsColumns,
@@ -28,7 +29,6 @@ use crate::{
         SummaryColumns,
         TableColumn,
     },
-    PluginState,
 };
 
 pub async fn setconfig_callback(
@@ -134,18 +134,19 @@ fn parse_sort_input(input: &str) -> Result<(SummaryColumns, bool), Error> {
         Err(anyhow!(
             "Can not sort by `GRAPH_SATS`, use `IN_SATS`, `OUT_SATS` or `TOTAL_SATS` instead!"
         ))
-    } else if let Ok(col) = SummaryColumns::parse_column(&input_sane) {
-        Ok((col, reverse))
     } else {
-        Err(anyhow!(
-            "`{}` is invalid. Can only sort by valid columns. Must be one of: {}",
-            input.to_ascii_uppercase(),
-            SummaryColumns::iter()
-                .filter(|t| t != &SummaryColumns::GRAPH_SATS)
-                .map(|c| c.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))
+        match SummaryColumns::parse_column(&input_sane) {
+            Ok(col) => Ok((col, reverse)),
+            _ => Err(anyhow!(
+                "`{}` is invalid. Can only sort by valid columns. Must be one of: {}",
+                input.to_ascii_uppercase(),
+                SummaryColumns::iter()
+                    .filter(|t| t != &SummaryColumns::GRAPH_SATS)
+                    .map(|c| c.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        }
     }
 }
 
@@ -166,18 +167,23 @@ fn validate_exclude_states_input(input: &str) -> Result<ExcludeStates, Error> {
     let mut parsed_visibility = None;
     let mut parsed_connection_status = None;
     for i in &split_input {
-        if let Ok(state) = ShortChannelState::from_str(i) {
-            parsed_input.push(state);
-        } else if i.eq(&"PUBLIC") {
-            parsed_visibility = Some(ChannelVisibility::Public);
-        } else if i.eq(&"PRIVATE") {
-            parsed_visibility = Some(ChannelVisibility::Private);
-        } else if i.eq(&"ONLINE") {
-            parsed_connection_status = Some(ConnectionStatus::Online);
-        } else if i.eq(&"OFFLINE") {
-            parsed_connection_status = Some(ConnectionStatus::Offline);
-        } else {
-            return Err(anyhow!("Could not parse channel state: `{i}`"));
+        match ShortChannelState::from_str(i) {
+            Ok(state) => {
+                parsed_input.push(state);
+            }
+            _ => {
+                if i.eq(&"PUBLIC") {
+                    parsed_visibility = Some(ChannelVisibility::Public);
+                } else if i.eq(&"PRIVATE") {
+                    parsed_visibility = Some(ChannelVisibility::Private);
+                } else if i.eq(&"ONLINE") {
+                    parsed_connection_status = Some(ConnectionStatus::Online);
+                } else if i.eq(&"OFFLINE") {
+                    parsed_connection_status = Some(ConnectionStatus::Offline);
+                } else {
+                    return Err(anyhow!("Could not parse channel state: `{i}`"));
+                }
+            }
         }
     }
     Ok(ExcludeStates {
@@ -214,11 +220,7 @@ fn validate_u64_input(
 
 #[allow(clippy::cast_sign_loss)]
 fn validate_i64_as_u64_input(n: i64) -> Option<u64> {
-    if n < 0 {
-        None
-    } else {
-        Some(n as u64)
-    }
+    if n < 0 { None } else { Some(n as u64) }
 }
 
 fn validate_i64_input_absolute(n: i64, var_name: &str, gteq: i64) -> Result<i64, Error> {
@@ -365,7 +367,7 @@ fn check_option(config: &mut Config, opt: Opt, value: &options::Value) -> Result
                         "`{}` is not a valid locale: {}",
                         value.as_str().unwrap(),
                         e
-                    ))
+                    ));
                 }
             }
         }

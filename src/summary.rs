@@ -7,9 +7,10 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{
             GetinfoRequest,
@@ -29,27 +30,26 @@ use cln_rpc::{
         },
     },
     primitives::{Amount, ChannelState, PublicKey, ShortChannelId},
-    ClnRpc,
 };
 use serde_json::json;
 use strum::IntoEnumIterator;
 use tabled::{
-    grid::records::{vec_records::Cell, Records},
+    Table,
+    grid::records::{Records, vec_records::Cell},
     settings::{
-        location::{ByColumnName, Locator},
-        object::{Object, Rows},
         Alignment,
         Format,
         Modify,
         Panel,
         Remove,
         Width,
+        location::{ByColumnName, Locator},
+        object::{Object, Rows},
     },
-    Table,
 };
 use tokio::{
     sync::Semaphore,
-    time::{timeout, Instant},
+    time::{Instant, timeout},
 };
 
 use crate::{
@@ -65,13 +65,13 @@ use crate::{
         ConnectionStatus,
         FullNodeData,
         GraphCharset,
+        MISSING_VALUE,
         NodeSummary,
         PluginState,
         ShortChannelState,
         Summary,
         SummaryColumns,
         TableColumn,
-        MISSING_VALUE,
     },
     util::{
         at_or_above_version,
@@ -119,6 +119,7 @@ pub async fn summary(
         .call_typed(&ListpeerchannelsRequest {
             id: None,
             short_channel_id: None,
+            channel_id: None,
         })
         .await?
         .channels;
@@ -356,10 +357,7 @@ async fn process_channels_data(
     rpc: &mut ClnRpc,
 ) -> Result<(), Error> {
     full_node_data.node_summary = NodeSummary {
-        num_gossipers: peers
-            .iter()
-            .filter(|s| s.num_channels.unwrap() == 0)
-            .count(),
+        num_gossipers: peers.iter().filter(|s| s.num_channels == 0).count(),
         ..Default::default()
     };
 
@@ -632,7 +630,7 @@ async fn get_pings(
 
 fn sort_summary(config: &Config, table: &mut [Summary]) {
     macro_rules! sort_by_key {
-        ($key:expr) => {
+        ($key:expr_2021) => {
             if config.sort_reverse {
                 table.sort_by_key(|x| Reverse($key(x)));
             } else {
@@ -808,23 +806,25 @@ fn format_summary(config: &Config, sumtable: &mut Table) -> Result<(), Error> {
 
 fn get_addrstr(getinfo: &GetinfoResponse) -> String {
     let mut address = None;
-    if let Some(addr) = &getinfo.address {
-        if !addr.is_empty() {
-            if addr
-                .iter()
-                .any(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
-            {
-                address = Some(
-                    addr.iter()
-                        .find(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
-                        .unwrap()
-                        .clone(),
-                );
-            } else {
-                address = Some(addr.first().unwrap().clone());
-            }
+    if !getinfo.address.is_empty() {
+        if getinfo
+            .address
+            .iter()
+            .any(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
+        {
+            address = Some(
+                getinfo
+                    .address
+                    .iter()
+                    .find(|x| matches!(x.item_type, GetinfoAddressType::IPV4))
+                    .unwrap()
+                    .clone(),
+            );
+        } else {
+            address = Some(getinfo.address.first().unwrap().clone());
         }
     }
+
     let mut bindaddr = None;
     if address.is_none() {
         if let Some(bind) = &getinfo.binding {
