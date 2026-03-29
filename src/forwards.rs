@@ -3,10 +3,11 @@ use std::{
     fmt::Write,
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{
             ListforwardsIndex,
@@ -19,22 +20,21 @@ use cln_rpc::{
         responses::{ListforwardsForwards, ListpeerchannelsChannels},
     },
     primitives::{Amount, ShortChannelId},
-    ClnRpc,
 };
 use strum::IntoEnumIterator;
 use tabled::{
-    grid::records::{vec_records::Cell, Records},
+    Table,
+    grid::records::{Records, vec_records::Cell},
     settings::{
-        location::ByColumnName,
-        object::{Object, Rows},
         Alignment,
         Format,
         Modify,
         Panel,
         Remove,
         Width,
+        location::ByColumnName,
+        object::{Object, Rows},
     },
-    Table,
 };
 use tokio::time::Instant;
 
@@ -44,9 +44,9 @@ use crate::{
         Forwards,
         ForwardsColumns,
         FullNodeData,
+        PAGE_SIZE,
         PluginState,
         TableColumn,
-        PAGE_SIZE,
     },
     util::{
         accumulate_msat,

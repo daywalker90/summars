@@ -4,9 +4,10 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::requests::{
         ListnodesRequest,
         ListpaysIndex,
@@ -18,7 +19,6 @@ use cln_rpc::{
         WaitSubsystem,
     },
     primitives::PublicKey,
-    ClnRpc,
 };
 use serde_json::json;
 use tokio::{
@@ -27,7 +27,7 @@ use tokio::{
 };
 
 use crate::{
-    structs::{PeerAvailability, PluginState, NODE_GOSSIP_MISS, NO_ALIAS_SET, PAGE_SIZE},
+    structs::{NO_ALIAS_SET, NODE_GOSSIP_MISS, PAGE_SIZE, PeerAvailability, PluginState},
     util::{is_active_state, make_rpc_path},
 };
 
@@ -44,6 +44,7 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
         .call_typed(&ListpeerchannelsRequest {
             id: None,
             short_channel_id: None,
+            channel_id: None,
         })
         .await?
         .channels;
@@ -186,6 +187,7 @@ pub async fn trace_availability(plugin: Plugin<PluginState>) -> Result<(), Error
                 .call_typed(&ListpeerchannelsRequest {
                     id: None,
                     short_channel_id: None,
+                    channel_id: None,
                 })
                 .await?
                 .channels;

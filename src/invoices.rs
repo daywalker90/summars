@@ -5,10 +5,11 @@ use std::{
     fmt::Write,
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{
             ListinvoicesIndex,
@@ -20,32 +21,31 @@ use cln_rpc::{
         responses::{ListinvoicesInvoices, ListinvoicesInvoicesStatus},
     },
     primitives::Amount,
-    ClnRpc,
 };
 #[cfg(feature = "hold")]
 use lightning_invoice::Bolt11Invoice;
 use strum::IntoEnumIterator;
 use tabled::{
-    grid::records::{vec_records::Cell, Records},
+    Table,
+    grid::records::{Records, vec_records::Cell},
     settings::{
-        location::ByColumnName,
-        object::{Object, Rows},
         Alignment,
         Format,
         Modify,
         Panel,
         Remove,
         Width,
+        location::ByColumnName,
+        object::{Object, Rows},
     },
-    Table,
 };
 use tokio::time::Instant;
 
 #[cfg(feature = "hold")]
 use crate::hold::{
-    list_request::{Constraint, Pagination},
     InvoiceState,
     ListRequest,
+    list_request::{Constraint, Pagination},
 };
 use crate::{
     structs::{
@@ -53,9 +53,9 @@ use crate::{
         FullNodeData,
         Invoices,
         InvoicesColumns,
+        PAGE_SIZE,
         PluginState,
         TableColumn,
-        PAGE_SIZE,
     },
     util::{
         accumulate_msat,

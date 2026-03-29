@@ -9,25 +9,25 @@ use anyhow::anyhow;
 use chrono::{Datelike, Local, Timelike};
 use cln_plugin::{Error, Plugin};
 use cln_rpc::{
+    ClnRpc,
     model::{requests::ListnodesRequest, responses::ListpeerchannelsChannels},
     primitives::{ChannelState, PublicKey, ShortChannelId},
-    ClnRpc,
 };
 use fixed_decimal::{FixedInteger, Sign, UnsignedDecimal};
-use icu_datetime::{fieldsets, DateTimeFormatter};
-use icu_decimal::{options::DecimalFormatterOptions, DecimalFormatter};
+use icu_datetime::{DateTimeFormatter, fieldsets};
+use icu_decimal::{DecimalFormatter, options::DecimalFormatterOptions};
 use tabled::grid::records::{
-    vec_records::{Text, VecRecords},
     Resizable,
+    vec_records::{Text, VecRecords},
 };
 
 use crate::structs::{
     Config,
     GraphCharset,
+    NO_ALIAS_SET,
+    NODE_GOSSIP_MISS,
     PluginState,
     TableColumn,
-    NODE_GOSSIP_MISS,
-    NO_ALIAS_SET,
 };
 
 pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
@@ -113,7 +113,7 @@ pub fn u64_to_btc_string(config: &Config, amount_msat: u64) -> Result<String, Er
         Err(e) => {
             return Err(anyhow!(
                 "Could not create DecimalFormatter: locale invalid? {e}"
-            ))
+            ));
         }
     };
     let mut fixed_decimal = UnsignedDecimal::from(amount_msat);
@@ -135,7 +135,7 @@ pub fn u64_to_sat_string(config: &Config, amount_sat: u64) -> Result<String, Err
         Err(e) => {
             return Err(anyhow!(
                 "Could not create DecimalFormatter: locale invalid? {e}"
-            ))
+            ));
         }
     };
     let fixed_decimal = FixedInteger::from(amount_sat);
@@ -331,7 +331,7 @@ pub fn replace_escaping_chars(s: &str) -> String {
 macro_rules! impl_table_column {
     (
         $enum_name:ty,
-        env_var = $env_var:expr,
+        env_var = $env_var:expr_2021,
         exclude_default = [$($exclude:ident),+ $(,)?],
         numerical = [$($numerical:ident),+ $(,)?],
         optional_numerical = [$($optional_numerical:ident),* $(,)?],

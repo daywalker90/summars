@@ -8,6 +8,7 @@ use anyhow::anyhow;
 #[cfg(feature = "hold")]
 use cln_plugin::Plugin;
 use cln_plugin::{
+    Builder,
     options::{
         ConfigOption,
         DefaultBooleanConfigOption,
@@ -15,7 +16,6 @@ use cln_plugin::{
         DefaultStringConfigOption,
         StringConfigOption,
     },
-    Builder,
 };
 #[cfg(feature = "hold")]
 use cln_rpc::ClnRpc;
@@ -62,10 +62,12 @@ pub mod hold {
 #[allow(clippy::cast_possible_wrap)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), anyhow::Error> {
-    std::env::set_var(
-        "CLN_PLUGIN_LOG",
-        "cln_plugin=info,cln_rpc=info,summars=trace,warn",
-    );
+    unsafe {
+        std::env::set_var(
+            "CLN_PLUGIN_LOG",
+            "cln_plugin=info,cln_rpc=info,summars=trace,warn",
+        )
+    };
     log_panics::init();
     let state = PluginState::new();
     let default_config = state.config.lock().clone();
@@ -352,41 +354,42 @@ async fn main() -> Result<(), anyhow::Error> {
         }
         None => return Err(anyhow!("Error configuring the plugin!")),
     }
-    if let Ok(plugin) = confplugin.start(state).await {
-        #[cfg(feature = "hold")]
-        match check_hold_support(&plugin).await {
-            Ok(()) => {
-                log::info!("Hold support activated");
+    match confplugin.start(state).await {
+        Ok(plugin) => {
+            #[cfg(feature = "hold")]
+            match check_hold_support(&plugin).await {
+                Ok(()) => {
+                    log::info!("Hold support activated");
+                }
+                Err(e) => log::info!("Hold support not activated: {e}"),
             }
-            Err(e) => log::info!("Hold support not activated: {e}"),
+
+            log::info!("starting uptime task");
+            let plugin_clone_avail = plugin.clone();
+            tokio::spawn(async move {
+                match tasks::trace_availability(plugin_clone_avail).await {
+                    Ok(()) => (),
+                    Err(e) => log::warn!("Error in trace_availability thread: {e}"),
+                }
+            });
+
+            log::info!("starting refresh alias task");
+            let plugin_clone_alias = plugin.clone();
+            tokio::spawn(async move {
+                loop {
+                    let sleep_time = match tasks::refresh_alias(plugin_clone_alias.clone()).await {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::warn!("Error in refresh_alias thread: {e}");
+                            60
+                        }
+                    };
+                    time::sleep(Duration::from_secs(sleep_time)).await;
+                }
+            });
+            plugin.join().await
         }
-
-        log::info!("starting uptime task");
-        let plugin_clone_avail = plugin.clone();
-        tokio::spawn(async move {
-            match tasks::trace_availability(plugin_clone_avail).await {
-                Ok(()) => (),
-                Err(e) => log::warn!("Error in trace_availability thread: {e}"),
-            }
-        });
-
-        log::info!("starting refresh alias task");
-        let plugin_clone_alias = plugin.clone();
-        tokio::spawn(async move {
-            loop {
-                let sleep_time = match tasks::refresh_alias(plugin_clone_alias.clone()).await {
-                    Ok(s) => s,
-                    Err(e) => {
-                        log::warn!("Error in refresh_alias thread: {e}");
-                        60
-                    }
-                };
-                time::sleep(Duration::from_secs(sleep_time)).await;
-            }
-        });
-        plugin.join().await
-    } else {
-        Err(anyhow!("Error starting the plugin!"))
+        _ => Err(anyhow!("Error starting the plugin!")),
     }
 }
 
