@@ -28,7 +28,7 @@ use tokio::{
 
 use crate::{
     structs::{NO_ALIAS_SET, NODE_GOSSIP_MISS, PAGE_SIZE, PeerAvailability, PluginState},
-    util::{is_active_state, make_rpc_path},
+    util::{is_active_state, make_rpc_path, set_bits},
 };
 
 #[allow(clippy::cast_precision_loss)]
@@ -84,15 +84,34 @@ pub async fn refresh_alias(plugin: Plugin<PluginState>) -> Result<u64, Error> {
             .call_typed(&ListnodesRequest { id: Some(peer_id) })
             .await?
             .nodes;
-        let alias = if let Some(node) = node_response.first() {
-            match &node.alias {
+        let (alias, features) = if let Some(node) = node_response.first() {
+            let alias = match &node.alias {
                 Some(a) => a,
                 None => NO_ALIAS_SET,
-            }
+            };
+            let features = match &node.features {
+                Some(f) => f,
+                None => "",
+            };
+            (alias, features)
         } else {
             miss_count += 1;
-            NODE_GOSSIP_MISS
+            (NODE_GOSSIP_MISS, "")
         };
+
+        let feature_bits = match set_bits(features) {
+            Ok(f) => f,
+            Err(e) => {
+                log::info!("Error reading feature bits: {e}");
+                Vec::new()
+            }
+        };
+        log::debug!("got bitset for {peer_id}: {feature_bits:?}");
+        plugin
+            .state()
+            .node_features
+            .lock()
+            .insert(peer_id, feature_bits);
         plugin
             .state()
             .alias_map

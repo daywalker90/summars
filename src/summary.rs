@@ -331,7 +331,7 @@ num_gossipers={}
 avail_out={}
 avail_in={}
 fees_collected={}
-channels_flags=P:private O:offline
+channels_flags=P:private O:offline S:spliceable
 {}",
             addr_str,
             funds.outputs.len(),
@@ -406,12 +406,18 @@ async fn process_channels_data(
                 None => -1.0,
             };
 
+            let splicing = match plugin.state().node_features.lock().get(&chan.peer_id) {
+                Some(f) => f.contains(&62u16) || f.contains(&63u16),
+                None => false,
+            };
+
             let summary = chan_to_summary(
                 config,
                 chan,
                 alias,
                 avail,
                 full_node_data.graph_max_chan_side_msat,
+                splicing,
             )?;
             channel_map.insert(id, summary);
 
@@ -477,6 +483,7 @@ fn chan_to_summary(
     alias: String,
     avail: f64,
     graph_max_chan_side_msat: u64,
+    splicing: bool,
 ) -> Result<Summary, Error> {
     let statestr = ShortChannelState(chan.state);
 
@@ -530,7 +537,7 @@ fn chan_to_summary(
         },
         min_htlc: rounded_div_u64(chan.minimum_htlc_out_msat.unwrap().msat(), 1_000),
         max_htlc: rounded_div_u64(chan.maximum_htlc_out_msat.unwrap().msat(), 1_000),
-        flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected),
+        flag: make_channel_flags(chan.private.unwrap(), !chan.peer_connected, splicing),
         private: chan.private.unwrap(),
         offline: !chan.peer_connected,
         base: Amount::msat(&chan.fee_base_msat.unwrap()),
