@@ -43,7 +43,7 @@ pub fn is_active_state(channel: &ListpeerchannelsChannels) -> bool {
     }
 }
 
-pub fn make_channel_flags(private: bool, offline: bool) -> String {
+pub fn make_channel_flags(private: bool, offline: bool, splicing: bool) -> String {
     let mut flags = String::from("[");
     if private {
         flags.push('P');
@@ -53,6 +53,12 @@ pub fn make_channel_flags(private: bool, offline: bool) -> String {
 
     if offline {
         flags.push('O');
+    } else {
+        flags.push('_');
+    }
+
+    if splicing {
+        flags.push('S');
     } else {
         flags.push('_');
     }
@@ -420,12 +426,42 @@ pub fn accumulate_msat(slot: &mut Option<u64>, value: u64) {
     }
 }
 
+pub fn set_bits(hex: &str) -> Result<Vec<u16>, Error> {
+    let mut result = Vec::new();
+
+    for (i, hex_char) in hex.chars().rev().enumerate() {
+        let value = hex_char
+            .to_digit(16)
+            .ok_or_else(|| anyhow!("Invalid hexadecimal character: {hex_char}"))?;
+
+        for bit in 0..4 {
+            if (value >> bit) & 1 == 1 {
+                result.push((i * 4 + bit) as u16);
+            }
+        }
+    }
+
+    Ok(result)
+}
+
 #[test]
 fn test_flags() {
-    assert_eq!(make_channel_flags(false, false), "[__]");
-    assert_eq!(make_channel_flags(true, false), "[P_]");
-    assert_eq!(make_channel_flags(false, true), "[_O]");
-    assert_eq!(make_channel_flags(true, true), "[PO]");
+    assert_eq!(make_channel_flags(false, false, true), "[__S]");
+    assert_eq!(make_channel_flags(true, false, true), "[P_S]");
+    assert_eq!(make_channel_flags(false, true, true), "[_OS]");
+    assert_eq!(make_channel_flags(true, true, true), "[POS]");
+    assert_eq!(make_channel_flags(false, false, false), "[___]");
+    assert_eq!(make_channel_flags(true, false, false), "[P__]");
+    assert_eq!(make_channel_flags(false, true, false), "[_O_]");
+    assert_eq!(make_channel_flags(true, true, false), "[PO_]");
+}
+
+#[test]
+fn test_set_bits() {
+    assert_eq!(set_bits("0").unwrap(), Vec::<u16>::new());
+    assert_eq!(set_bits("1").unwrap(), vec![0]);
+    assert_eq!(set_bits("3").unwrap(), vec![0, 1]);
+    assert_eq!(set_bits("F").unwrap(), vec![0, 1, 2, 3]);
 }
 
 pub fn make_rpc_path(plugin: &Plugin<PluginState>) -> PathBuf {

@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
     str::FromStr,
     sync::Arc,
@@ -12,7 +12,7 @@ use icu_locale::Locale;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use sys_locale::get_locales;
-use tabled::{derive::display, settings::Style, Table, Tabled};
+use tabled::{Table, Tabled, derive::display, settings::Style};
 #[cfg(feature = "hold")]
 use tonic::transport::Channel;
 
@@ -277,6 +277,7 @@ pub enum ChannelVisibility {
 #[derive(Clone)]
 pub struct PluginState {
     pub alias_map: Arc<Mutex<BTreeMap<PublicKey, String>>>,
+    pub node_features: Arc<Mutex<HashMap<PublicKey, Vec<u16>>>>,
     pub config: Arc<Mutex<Config>>,
     pub avail: Arc<Mutex<BTreeMap<PublicKey, PeerAvailability>>>,
     #[cfg(feature = "hold")]
@@ -288,6 +289,7 @@ impl PluginState {
     pub fn new() -> PluginState {
         PluginState {
             alias_map: Arc::new(Mutex::new(BTreeMap::new())),
+            node_features: Arc::new(Mutex::new(HashMap::new())),
             config: Arc::new(Mutex::new(Config::new())),
             avail: Arc::new(Mutex::new(BTreeMap::new())),
             #[cfg(feature = "hold")]
@@ -444,7 +446,9 @@ pub enum SummaryColumns {
 impl_table_column!(
     SummaryColumns,
     env_var = Opt::Columns.as_key(),
-    exclude_default = [GRAPH_SATS, PERC_US, TOTAL_SATS, MIN_HTLC, IN_BASE, IN_PPM, PING],
+    exclude_default = [
+        GRAPH_SATS, PERC_US, TOTAL_SATS, MIN_HTLC, IN_BASE, IN_PPM, PING
+    ],
     numerical = [OUT_SATS, IN_SATS, TOTAL_SATS, MIN_HTLC, MAX_HTLC, BASE, PPM],
     optional_numerical = [IN_BASE, IN_PPM],
 );
