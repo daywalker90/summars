@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.2.2] - 2026-04-19
+
+### Added
+- added a flag `S` to show peers supporting splicing
+
 ## [6.2.1] - 2026-03-29
 
 ### Changed
