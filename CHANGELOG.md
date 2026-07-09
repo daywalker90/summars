@@ -1,5 +1,11 @@
 # Changelog
 
+## [6.2.3] - 2026-07-09
+
+### Changed
+- updated dependencies
+- vendor `protoc` for building with `hold` feature
+
 ## [6.2.2] - 2026-04-19
 
 ### Added
