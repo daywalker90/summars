@@ -436,7 +436,7 @@ pub fn set_bits(hex: &str) -> Result<Vec<u16>, Error> {
 
         for bit in 0..4 {
             if (value >> bit) & 1 == 1 {
-                result.push((i * 4 + bit) as u16);
+                result.push(u16::try_from(i * 4 + bit)?);
             }
         }
     }

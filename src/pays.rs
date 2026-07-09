@@ -4,10 +4,11 @@ use std::{
     str::FromStr,
 };
 
-use anyhow::{anyhow, Error};
+use anyhow::{Error, anyhow};
 use chrono::Utc;
 use cln_plugin::Plugin;
 use cln_rpc::{
+    ClnRpc,
     model::{
         requests::{
             DecodeRequest,
@@ -21,23 +22,22 @@ use cln_rpc::{
         responses::ListpaysPays,
     },
     primitives::Amount,
-    ClnRpc,
 };
 use lightning_invoice::Bolt11Invoice;
 use strum::IntoEnumIterator;
 use tabled::{
-    grid::records::{vec_records::Cell, Records},
+    Table,
+    grid::records::{Records, vec_records::Cell},
     settings::{
-        location::ByColumnName,
-        object::{Object, Rows},
         Alignment,
         Format,
         Modify,
         Panel,
         Remove,
         Width,
+        location::ByColumnName,
+        object::{Object, Rows},
     },
-    Table,
 };
 use tokio::time::Instant;
 
@@ -46,14 +46,14 @@ use crate::{
         Config,
         DescriptionStatus,
         FullNodeData,
+        MISSING_VALUE,
+        NO_ALIAS_SET,
+        NODE_GOSSIP_MISS,
+        PAGE_SIZE,
         Pays,
         PaysColumns,
         PluginState,
         TableColumn,
-        MISSING_VALUE,
-        NODE_GOSSIP_MISS,
-        NO_ALIAS_SET,
-        PAGE_SIZE,
     },
     util::{
         accumulate_msat,
@@ -503,7 +503,7 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
 
     let mut pays_totals = String::new();
 
-    if full_node_data.totals.pays.amount_sent_msat.is_some() {
+    if let Some(pays_amount_sent_msat) = full_node_data.totals.pays.amount_sent_msat {
         write!(
             pays_totals,
             "\nTotal of {} pays in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
@@ -514,10 +514,7 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
             } else {
                 MISSING_VALUE.to_owned()
             },
-            u64_to_sat_string(
-                config,
-                rounded_div_u64(full_node_data.totals.pays.amount_sent_msat.unwrap(), 1_000)
-            )?,
+            u64_to_sat_string(config, rounded_div_u64(pays_amount_sent_msat, 1_000))?,
             if let Some(fee) = full_node_data.totals.pays.fees_msat {
                 u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
             } else {
@@ -526,7 +523,7 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
         )?;
     }
 
-    if full_node_data.totals.pays.self_amount_sent_msat.is_some() {
+    if let Some(pays_self_amount_sent_msat) = full_node_data.totals.pays.self_amount_sent_msat {
         write!(
             pays_totals,
             "\nTotal of {} self-pays in the last {}h: {} sats_requested {} sats_sent {} fee_sats",
@@ -537,13 +534,7 @@ pub fn format_pays(config: &Config, full_node_data: &mut FullNodeData) -> Result
             } else {
                 MISSING_VALUE.to_owned()
             },
-            u64_to_sat_string(
-                config,
-                rounded_div_u64(
-                    full_node_data.totals.pays.self_amount_sent_msat.unwrap(),
-                    1_000
-                )
-            )?,
+            u64_to_sat_string(config, rounded_div_u64(pays_self_amount_sent_msat, 1_000))?,
             if let Some(fee) = full_node_data.totals.pays.self_fees_msat {
                 u64_to_sat_string(config, rounded_div_u64(fee, 1000))?
             } else {

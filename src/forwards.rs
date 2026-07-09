@@ -421,15 +421,12 @@ pub fn format_forwards(
         );
         fwtable.with(Panel::footer(filter_sum_result));
     }
-    if full_node_data.totals.forwards.amount_in_msat.is_some() {
+    if let Some(forwards_amount_in_msat) = full_node_data.totals.forwards.amount_in_msat {
         let forwards_totals = format!(
             "\nTotal of {} forwards in the last {}h: {} in_sats {} out_sats {} fee_sats",
             full_node_data.totals.forwards.count,
             config.forwards,
-            u64_to_sat_string(
-                config,
-                rounded_div_u64(full_node_data.totals.forwards.amount_in_msat.unwrap(), 1000)
-            )?,
+            u64_to_sat_string(config, rounded_div_u64(forwards_amount_in_msat, 1000))?,
             u64_to_sat_string(
                 config,
                 rounded_div_u64(

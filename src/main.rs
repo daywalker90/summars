@@ -66,7 +66,7 @@ async fn main() -> Result<(), anyhow::Error> {
         std::env::set_var(
             "CLN_PLUGIN_LOG",
             "cln_plugin=info,cln_rpc=info,summars=trace,warn",
-        )
+        );
     };
     log_panics::init();
     let state = PluginState::new();
