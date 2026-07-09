@@ -809,6 +809,7 @@ impl Display for ShortChannelState {
             }
             ChannelState::DUALOPEND_AWAITING_LOCKIN => write!(f, "DUAL_AWAIT"),
             ChannelState::CHANNELD_AWAITING_SPLICE => write!(f, "AWAIT_SPLICE"),
+            ChannelState::CLOSED => write!(f, "CLOSED"),
         }
     }
 }
@@ -830,6 +831,7 @@ impl FromStr for ShortChannelState {
             "dual_commit_rdy" => Ok(ShortChannelState(ChannelState::DUALOPEND_OPEN_COMMIT_READY)),
             "dual_await" => Ok(ShortChannelState(ChannelState::DUALOPEND_AWAITING_LOCKIN)),
             "await_splice" => Ok(ShortChannelState(ChannelState::CHANNELD_AWAITING_SPLICE)),
+            "closed" => Ok(ShortChannelState(ChannelState::CLOSED)),
             _ => Err(anyhow!("could not parse State from {s}")),
         }
     }

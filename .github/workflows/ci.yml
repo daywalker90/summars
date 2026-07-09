@@ -122,12 +122,6 @@ jobs:
       if:  ${{ inputs.tagged-release == false }}
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Set up protoc
-      if: ${{ inputs.tagged-release == false }}
-      uses: arduino/setup-protoc@v3
-      with:
-        repo-token: ${{ secrets.GITHUB_TOKEN }}
-
     - name: Install cargo-binstall
       if: ${{ inputs.tagged-release == false }}
       uses: taiki-e/install-action@cargo-binstall
