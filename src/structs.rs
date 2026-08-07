@@ -328,15 +328,10 @@ pub struct FullNodeData {
     pub invoices_filter_stats: InvoicesFilterStats,
     pub totals: Totals,
     pub graph_max_chan_side_msat: u64,
-    pub cln_version: String,
     pub my_pubkey: PublicKey,
 }
 impl FullNodeData {
-    pub fn new(
-        my_pubkey: PublicKey,
-        cln_version: String,
-        graph_max_chan_side_msat: u64,
-    ) -> FullNodeData {
+    pub fn new(my_pubkey: PublicKey, graph_max_chan_side_msat: u64) -> FullNodeData {
         FullNodeData {
             node_summary: NodeSummary::default(),
             channels: Vec::new(),
@@ -348,7 +343,6 @@ impl FullNodeData {
             invoices_filter_stats: InvoicesFilterStats::default(),
             totals: Totals::default(),
             graph_max_chan_side_msat,
-            cln_version,
             my_pubkey,
         }
     }

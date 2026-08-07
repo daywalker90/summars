@@ -74,7 +74,6 @@ use crate::{
         TableColumn,
     },
     util::{
-        at_or_above_version,
         draw_chans_graph,
         get_alias,
         is_active_state,
@@ -147,11 +146,7 @@ pub async fn summary(
         .max()
         .unwrap_or(u64::default());
 
-    let mut full_node_data = FullNodeData::new(
-        getinfo.id,
-        getinfo.version.clone(),
-        graph_max_chan_side_msat,
-    );
+    let mut full_node_data = FullNodeData::new(getinfo.id, graph_max_chan_side_msat);
 
     build_node_data(
         now,
@@ -431,13 +426,7 @@ async fn process_channels_data(
     }
     log::debug!("First summary-loop. Total: {}ms", now.elapsed().as_millis());
 
-    get_pings(
-        plugin.clone(),
-        config,
-        &full_node_data.cln_version,
-        &mut channel_map,
-    )
-    .await?;
+    get_pings(plugin.clone(), config, &mut channel_map).await?;
     log::debug!("Got pings. Total: {}ms", now.elapsed().as_millis());
 
     let mut channel_vec = channel_map.into_values().collect::<Vec<Summary>>();
@@ -561,17 +550,11 @@ fn chan_to_summary(
 async fn get_pings(
     plugin: Plugin<PluginState>,
     config: &Config,
-    version: &str,
     table: &mut HashMap<usize, Summary>,
 ) -> Result<(), Error> {
     let rpc_path = make_rpc_path(&plugin);
 
-    if !at_or_above_version(version, "25.09")? {
-        log::info!("Not using ping on pre-v25.09 CLN");
-        return Ok(());
-    } else if config.columns.contains(&SummaryColumns::PING)
-        || config.sort_by == SummaryColumns::PING
-    {
+    if config.columns.contains(&SummaryColumns::PING) || config.sort_by == SummaryColumns::PING {
         let mut peer_table: HashMap<PublicKey, Vec<usize>> = HashMap::with_capacity(table.len());
         for (id, chan) in table.iter() {
             peer_table.entry(chan.peer_id).or_default().push(*id);
