@@ -56,7 +56,8 @@ protoc-bin-vendored = "3"
 
 [profile.optimized]
 inherits = "release"
-strip = "debuginfo"
+panic = "abort"
+strip = true
 codegen-units = 1
 lto = "fat"
 debug = false
