@@ -1,42 +1,6 @@
 <table border="0">
   <tr>
     <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/latest_v25.09.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/latest_v25.09.yml/badge.svg?branch=master">
-      </a>
-    </td>
-    <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/master_v25.09.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/master_v25.09.yml/badge.svg?branch=master">
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/latest_v25.12.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/latest_v25.12.yml/badge.svg?branch=master">
-      </a>
-    </td>
-    <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/master_v25.12.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/master_v25.12.yml/badge.svg?branch=master">
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/latest_v26.04.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/latest_v26.04.yml/badge.svg?branch=master">
-      </a>
-    </td>
-    <td>
-      <a href="https://github.com/daywalker90/summars/actions/workflows/master_v26.04.yml">
-        <img src="https://github.com/daywalker90/summars/actions/workflows/master_v26.04.yml/badge.svg?branch=master">
-      </a>
-    </td>
-  </tr>
-  <tr>
-    <td>
       <a href="https://github.com/daywalker90/summars/actions/workflows/latest_v26.06.yml">
         <img src="https://github.com/daywalker90/summars/actions/workflows/latest_v26.06.yml/badge.svg?branch=master">
       </a>
