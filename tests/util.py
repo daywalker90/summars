@@ -1,10 +1,10 @@
-import string
-import random
-import logging
 import os
-import pytest
-from pathlib import Path
+import random
+import string
 from hashlib import sha256
+from pathlib import Path
+
+import pytest
 from pyln.testing.utils import TIMEOUT
 
 RUST_PROFILE = os.environ.get("RUST_PROFILE", "debug")
@@ -36,28 +36,10 @@ def generate_random_number():
 
 
 def my_xpay(node, invstring, partial_msat=None):
-    LOGGER = logging.getLogger(__name__)
-    try:
-        if partial_msat:
-            node.rpc.call(
-                "xpay",
-                {
-                    "invstring": invstring,
-                    "retry_for": TIMEOUT,
-                    "partial_msat": partial_msat,
-                },
-            )
-        else:
-            node.rpc.call(
-                "xpay",
-                {
-                    "invstring": invstring,
-                    "retry_for": TIMEOUT,
-                },
-            )
-    except Exception as e:
-        LOGGER.info(f"Error paying payment hash:{e}")
-        pass
+    params = {"invstring": invstring, "retry_for": TIMEOUT}
+    if partial_msat:
+        params["partial_msat"] = partial_msat
+    return node.rpc.call("xpay", params)
 
 
 def new_preimage() -> tuple[str, str]:

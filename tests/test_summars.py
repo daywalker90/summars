@@ -1,13 +1,10 @@
-#!/usr/bin/python
-
 import os
-import threading
+from pathlib import Path
 
 import pytest
 from pyln.client import RpcError
-from pyln.testing.fixtures import *  # noqa: F403
-from pyln.testing.utils import only_one, sync_blockheight, wait_for
-from pathlib import Path
+from pyln.testing.fixtures import *
+from pyln.testing.utils import TIMEOUT, only_one, sync_blockheight, wait_for
 from util import get_plugin, my_xpay, new_preimage  # noqa: F401
 
 columns = [
@@ -653,9 +650,11 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     l3.stop()
 
     wait_for(
-        lambda: not only_one(l1.rpc.listpeerchannels(l3.info["id"])["channels"])[
-            "peer_connected"
-        ]
+        lambda: (
+            not only_one(l1.rpc.listpeerchannels(l3.info["id"])["channels"])[
+                "peer_connected"
+            ]
+        )
     )
     result = l1.rpc.call("summars", {"summars-exclude-states": "OFFLINE"})
     assert "O]" not in result["result"]
@@ -668,8 +667,10 @@ def test_chanstates(node_factory, bitcoind, get_plugin):  # noqa: F811
     l1.rpc.close(chans[0]["short_channel_id"])
 
     wait_for(
-        lambda: only_one(l1.rpc.listpeerchannels(l2.info["id"])["channels"])["state"]
-        == "CLOSINGD_COMPLETE"
+        lambda: (
+            only_one(l1.rpc.listpeerchannels(l2.info["id"])["channels"])["state"]
+            == "CLOSINGD_COMPLETE"
+        )
     )
     result = l1.rpc.call("summars")
     assert "CLOSINGD_DONE" in result["result"]
@@ -837,7 +838,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert result["totals"]["pays"]["fees_msat"] == 2002
 
 
-def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
+def test_indexing(node_factory, bitcoind, get_plugin, executor):  # noqa: F811
     grpc_port = node_factory.get_unused_port()
     l1, l2, l3 = node_factory.get_nodes(
         3,
@@ -878,6 +879,9 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     l2.wait_channel_active(cl2)
     l3.wait_channel_active(cl2)
 
+    # The sender needs gossip for the remote hop before xpay can find a route.
+    l1.wait_channel_active(cl2)
+
     preimage, payment_hash = new_preimage()
     hold_inv = l3.rpc.call(
         "holdinvoice",
@@ -887,14 +891,20 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
         },
     )
 
-    threading.Thread(target=my_xpay, args=(l1, hold_inv["bolt11"])).start()
+    hold_payment = executor.submit(my_xpay, l1, hold_inv["bolt11"])
 
-    wait_for(
-        lambda: l3.rpc.call("listholdinvoices", {"payment_hash": payment_hash})[
-            "holdinvoices"
-        ][0]["state"]
-        == "accepted"
-    )
+    def hold_invoice_accepted():
+        if hold_payment.done():
+            hold_payment.result()
+            raise AssertionError("Hold payment finished before invoice acceptance")
+        return (
+            l3.rpc.call("listholdinvoices", {"payment_hash": payment_hash})[
+                "holdinvoices"
+            ][0]["state"]
+            == "accepted"
+        )
+
+    wait_for(hold_invoice_accepted)
     result = l1.rpc.call("summars", {"summars-pays": 1})
     assert payment_hash not in result["result"]
     result = l2.rpc.call("summars", {"summars-forwards": 1, "summars-json": True})
@@ -916,17 +926,22 @@ def test_indexing(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert payment_hash not in result["result"]
 
     l3.rpc.call("settleholdinvoice", {"preimage": preimage})
+    hold_payment.result(timeout=TIMEOUT)
 
     wait_for(
-        lambda: l1.rpc.listpays(payment_hash=payment_hash)["pays"][0]["status"]
-        == "complete"
+        lambda: (
+            l1.rpc.listpays(payment_hash=payment_hash)["pays"][0]["status"]
+            == "complete"
+        )
     )
 
     wait_for(
-        lambda: l3.rpc.listholdinvoices(payment_hash=payment_hash)["holdinvoices"][0][
-            "state"
-        ]
-        == "paid"
+        lambda: (
+            l3.rpc.listholdinvoices(payment_hash=payment_hash)["holdinvoices"][0][
+                "state"
+            ]
+            == "paid"
+        )
     )
 
     result = l1.rpc.call("summars", {"summars-pays": 1})
