@@ -23,7 +23,7 @@ cln-rpc = "0.7"
 cln-plugin = "0.7"
 # cln-plugin = { path = "../lightning/plugins/", version = "^0.6" }
 
-tabled = "0.21"
+tabled = "0.22"
 
 fixed_decimal = "0.7"
 icu_decimal = "2"
