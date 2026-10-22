@@ -1,5 +1,10 @@
 # Changelog
 
+## [6.2.4] - 2026-10-22
+
+### Changed
+- updated dependencies in response to 6 RUSTSEC security advisories: RUSTSEC-2026-0258, RUSTSEC-2026-0346, RUSTSEC-2026-0349, RUSTSEC-2026-0348, RUSTSEC-2026-0285, and RUSTSEC-2026-0382
+
 ## [6.2.3] - 2026-07-09
 
 ### Changed
