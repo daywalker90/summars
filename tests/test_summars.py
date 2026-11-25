@@ -722,7 +722,13 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         description="test_pay_routeboost2",
         dev_routes=[routel1l2l3],
     )
-    pay1 = l1.dev_pay(inv["bolt11"], dev_use_shadow=False)
+    my_xpay(l1, inv["bolt11"])
+    wait_for(
+        lambda: (
+            only_one(l1.rpc.listpays(bolt11=inv["bolt11"])["pays"])["status"]
+            == "complete"
+        )
+    )
 
     result = l2.rpc.call("summars", {"summars-forwards": 1})
     assert "123" in result["result"]
@@ -756,7 +762,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         description="test_pay_routeboost3",
         dev_routes=[routel3l2l1],
     )
-    l3.dev_pay(inv2["bolt11"], dev_use_shadow=False)
+    my_xpay(l3, inv2["bolt11"])
 
     inv3 = l1.dev_invoice(
         amount_msat=13_000,
@@ -764,7 +770,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
         description="test_pay_routeboost4",
         dev_routes=[routel3l2l1],
     )
-    l3.dev_pay(inv3["bolt11"], dev_use_shadow=False)
+    my_xpay(l3, inv3["bolt11"])
 
     result = l1.rpc.call(
         "summars",
@@ -790,7 +796,7 @@ def test_flowtables(node_factory, bitcoind, get_plugin):  # noqa: F811
     assert "forwards" in result
     assert "pays" in result
     assert "invoices" in result
-    assert pay1["payment_hash"] == result["pays"][0]["payment_hash"]
+    assert inv["payment_hash"] == result["pays"][0]["payment_hash"]
     assert 223_000 == result["invoices"][0]["msats_received"]
     assert result["totals"]["invoices"]["amount_received_msat"] == 236000
     assert result["totals"]["pays"]["amount_msat"] == 123000
